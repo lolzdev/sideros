@@ -1,0 +1,16 @@
+.{
+    .name = .sideros,
+    .fingerprint = 0x7341763610f10985,
+
+    .version = "0.0.0",
+
+    .dependencies = .{},
+
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+        "src",
+        "LICENSE",
+        "README.md",
+    },
+}
