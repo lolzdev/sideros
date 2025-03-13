@@ -2,6 +2,46 @@ const std = @import("std");
 const wasm = @import("wasm.zig");
 const Allocator = std.mem.Allocator;
 
+pub fn leb128Result(T: type) type {
+    return struct { len: usize, val: T };
+}
+
+pub fn leb128Decode(comptime T: type, stream: anytype) !leb128Result(T) {
+    switch (@typeInfo(T)) {
+        .int => {},
+        else => @compileError("LEB128 integer decoding only support integers, but got " ++ @typeName(T)),
+    }
+    if (@typeInfo(T).int.bits != 32 and @typeInfo(T).int.bits != 64) {
+        @compileError("LEB128 integer decoding only supports 32 or 64 bits integers but got " ++ std.fmt.comptimePrint("{d} bits", .{@typeInfo(T).int.bits}));
+    }
+
+    var result: T = 0;
+    // TODO: is the type of shift important. Reading Wikipedia (not very much tho) it seems like we can use u32 and call it a day...
+    var shift: if (@typeInfo(T).int.bits == 32) u5 else u6 = 0;
+    var byte: u8 = undefined;
+    var len: usize = 0;
+    while (stream.readByte()) |b| {
+        len += 1;
+        result |= @as(T, @intCast((b & 0x7f))) << shift;
+        if ((b & (0x1 << 7)) == 0) {
+            byte = b;
+            break;
+        }
+        shift += 7;
+    } else |err| {
+        return err;
+    }
+
+    if (@typeInfo(T).int.signedness == .signed) {
+        const size = @sizeOf(T) * 8;
+        if (shift < size and (byte & 0x40) != 0) {
+            result |= (~@as(T, 0) << shift);
+        }
+    }
+
+    return .{ .len = len, .val = result };
+}
+
 pub const Error = error{
     malformed_wasm,
     invalid_utf8,
@@ -242,20 +282,23 @@ pub fn parseWasm(allocator: Allocator, stream: anytype) !Module {
                 code = try allocator.alloc(FunctionBody, code_count);
                 for (0..code_count) |i| {
                     const code_size = try std.leb.readULEB128(u32, stream);
-                    const local_count = try std.leb.readULEB128(u32, stream);
-                    const locals = try allocator.alloc(Local, local_count);
+                    var locals_size: usize = 0;
+                    const local_count = try leb128Decode(u32, stream);
+                    locals_size += local_count.len;
+                    const locals = try allocator.alloc(Local, local_count.val);
                     for (locals) |*l| {
-                        const n = try std.leb.readULEB128(u32, stream);
-                        l.types = try allocator.alloc(u8, n);
+                        const n = try leb128Decode(u32, stream);
+                        l.types = try allocator.alloc(u8, n.val);
                         @memset(l.types, try stream.readByte());
+                        locals_size += n.len + 1;
                     }
                     code[i].locals = locals;
 
                     // TODO: maybe is better to parse code into ast here and not do it every frame?
                     // FIXME: This calculation is plain wrong. Resolving above TODO should help
-                    code[i].code = try allocator.alloc(u8, code_size - local_count - 1);
+                    code[i].code = try allocator.alloc(u8, code_size - locals_size);
                     // TODO: better error reporting
-                    if (try stream.read(code[i].code) != code_size - local_count - 1) return Error.malformed_wasm;
+                    if (try stream.read(code[i].code) != code_size - locals_size) return Error.malformed_wasm;
 
                     const f = Function{ .internal = @intCast(i) };
                     try funcs.append(f);

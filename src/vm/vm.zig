@@ -4,37 +4,10 @@ const Parser = @import("parse.zig");
 const Allocator = std.mem.Allocator;
 const AllocationError = error{OutOfMemory};
 
-pub fn leb128Decode(comptime T: type, bytes: []u8) struct { len: usize, val: T } {
-    switch (@typeInfo(T)) {
-        .int => {},
-        else => @compileError("LEB128 integer decoding only support integers, but got " ++ @typeName(T)),
-    }
-    if (@typeInfo(T).int.bits != 32 and @typeInfo(T).int.bits != 64) {
-        @compileError("LEB128 integer decoding only supports 32 or 64 bits integers but got " ++ std.fmt.comptimePrint("{d} bits", .{@typeInfo(T).int.bits}));
-    }
-
-    var result: T = 0;
-    // TODO: is the type of shift important. Reading Wikipedia (not very much tho) it seems like we can use u32 and call it a day...
-    var shift: if (@typeInfo(T).int.bits == 32) u5 else u6 = 0;
-    var byte: u8 = undefined;
-    var len: usize = 0;
-    for (bytes) |b| {
-        len += 1;
-        result |= @as(T, @intCast((b & 0x7f))) << shift;
-        if ((b & (0x1 << 7)) == 0) {
-            byte = b;
-            break;
-        }
-        shift += 7;
-    }
-    if (@typeInfo(T).int.signedness == .signed) {
-        const size = @sizeOf(T) * 8;
-        if (shift < size and (byte & 0x40) != 0) {
-            result |= (~@as(T, 0) << shift);
-        }
-    }
-
-    return .{ .len = len, .val = result };
+fn leb128Decode(comptime T: type, bytes: []u8) Parser.leb128Result(T) {
+    var fbs = std.io.fixedBufferStream(bytes);
+    // TODO: this catch should be unrecheable
+    return Parser.leb128Decode(T, fbs.reader()) catch .{ .len = 0, .val = 0 };
 }
 
 pub fn decodeLittleEndian(comptime T: type, bytes: []u8) T {
