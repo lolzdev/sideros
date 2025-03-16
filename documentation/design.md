@@ -36,7 +36,7 @@ In case of an attack, players can ask for help to allies whether it's defensive 
 When attacking a player, different ways of managing victory can be choosen:
 - The defeated player can be taxed by the winner.
 - The defeated player can keep independence, but must obey to the winner when receiving orders.
-- The defeated player is completely destroyed and must restart the game.  
+- The defeated player is completely destroyed and must restart the game.
 In the first two cases, the winner can keep soldiers on the conquered territory and the defeated can try to revolt against the winner by fighting.
 
 ## Attacking
@@ -45,5 +45,5 @@ In the first two cases, the winner can keep soldiers on the conquered territory 
 Players can choose different ways of training soldiers:
 - Every adult male will get at least some basic training and develop fighting skills. You will get a lot of soldiers, but with basic fighting skills.
 - A group of regular citizens is selected and trained to develop average fighting skills.
-- Specialized soldiers are trained full-time to develop quality fighting skills. In this case soldiers will need to be payed.  
+- Specialized soldiers are trained full-time to develop quality fighting skills. In this case soldiers will need to be payed.
 Note that enemies can only kill citizens who went through any level of training, otherwise they can only be enslaved. Since the number of slaves a winning player can make in an attack is limited, choosing the second or the third options can assure that at least some citizens will be left.
