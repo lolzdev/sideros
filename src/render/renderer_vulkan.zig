@@ -19,7 +19,7 @@ vertex_buffer: vk.Buffer,
 index_buffer: vk.Buffer,
 
 pub fn create(allocator: Allocator, w: window.Window) !Renderer {
-    const instance = try vk.Instance.create();
+    const instance = try vk.Instance.create(allocator);
 
     const surface = try vk.Surface.create(instance, w);
 
@@ -61,8 +61,8 @@ pub fn create(allocator: Allocator, w: window.Window) !Renderer {
     };
 }
 
-pub fn destroy(self: Renderer) !void {
-    try self.device.waitIdle();
+pub fn destroy(self: Renderer) void {
+    self.device.waitIdle();
     self.index_buffer.destroy(self.device.handle);
     self.vertex_buffer.destroy(self.device.handle);
     self.graphics_pipeline.destroy(self.device);

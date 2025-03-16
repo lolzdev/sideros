@@ -24,19 +24,17 @@ pub fn main() !void {
 
         //var parameters = [_]usize{};
         //try runtime.callExternal(allocator, "fibonacci", &parameters);
-
         const w = try window.Window.create(800, 600, "sideros");
         defer w.destroy();
 
-        // TODO: Renderer.destroy should not return an error?
+        // TODO(luccie-cmd): Renderer.create shouldn't return an error
         var r = try Renderer.create(allocator, w);
-        defer r.destroy() catch {};
+        defer r.destroy();
 
         while (!w.shouldClose()) {
             c.glfwPollEvents();
             try r.tick();
         }
-        try r.device.waitIdle();
     }
 
     if (gpa.detectLeaks()) {

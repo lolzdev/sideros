@@ -70,8 +70,52 @@ pub const BufferFlags = packed struct(u32) {
 pub const Instance = struct {
     handle: c.VkInstance,
 
-    pub fn create() !Instance {
+    pub fn create(allocator: Allocator) !Instance {
         const extensions = window.getExtensions();
+
+        var avaliableExtensionsCount: u32 = 0;
+        _ = c.vkEnumerateInstanceExtensionProperties(null, &avaliableExtensionsCount, null);
+        var availableExtensions = std.ArrayList(c.VkExtensionProperties).init(allocator);
+        try availableExtensions.resize(avaliableExtensionsCount);
+        _ = c.vkEnumerateInstanceExtensionProperties(null, &avaliableExtensionsCount, availableExtensions.items.ptr);
+        for(extensions) |need_ext| {
+            var found = false;
+            for(availableExtensions.items) |useable_ext| {
+                const extensionName: [*c]const u8 = &useable_ext.extensionName;
+                if(std.mem.eql(u8, std.mem.sliceTo(need_ext, 0), std.mem.sliceTo(extensionName, 0))){
+                    found = true;
+                    break;
+                }
+            }
+            if(!found){
+                std.debug.panic("ERROR: Needed vulkan extension {s} not found\n", .{need_ext});
+            }
+        }
+        availableExtensions.deinit();
+
+        var avaliableLayersCount: u32 = 0;
+        _ = c.vkEnumerateInstanceLayerProperties(&avaliableLayersCount, null);
+        var availableLayers = std.ArrayList(c.VkLayerProperties).init(allocator);
+        try availableLayers.resize(avaliableLayersCount);
+        _ = c.vkEnumerateInstanceLayerProperties(&avaliableLayersCount, availableLayers.items.ptr);
+        var newLayers = std.ArrayList([*c]const u8).init(allocator);
+        for(validation_layers) |want_layer| {
+            var found = false;
+            for(availableLayers.items) |useable_validation| {
+                const layer_name: [*c]const u8 = &useable_validation.layerName;
+                if (std.mem.eql(u8, std.mem.sliceTo(want_layer, 0), std.mem.sliceTo(layer_name, 0))){
+                    found = true;
+                    break;
+                }
+            }
+            if(!found){
+                std.debug.print("WARNING: Compiled in debug mode, but wanted validation layer {s} not found.\n", .{want_layer});
+                std.debug.print("NOTE: Validation layer will be removed from the wanted validation layers\n", .{});
+            } else{
+                try newLayers.append(want_layer);
+            }
+        }
+        availableLayers.deinit();
 
         const app_info: c.VkApplicationInfo = .{
             .sType = c.VK_STRUCTURE_TYPE_APPLICATION_INFO,
@@ -87,8 +131,8 @@ pub const Instance = struct {
             .pApplicationInfo = &app_info,
             .enabledExtensionCount = @intCast(extensions.len),
             .ppEnabledExtensionNames = extensions.ptr,
-            .enabledLayerCount = @intCast(validation_layers.len),
-            .ppEnabledLayerNames = validation_layers.ptr,
+            .enabledLayerCount = @intCast(newLayers.capacity),
+            .ppEnabledLayerNames = newLayers.items.ptr,
         };
 
         var instance: c.VkInstance = undefined;
@@ -796,8 +840,12 @@ pub fn Device(comptime n: usize) type {
             try mapError(c.vkResetFences(self.handle, 1, &self.in_flight_fence[frame]));
         }
 
-        pub fn waitIdle(self: Self) !void {
-            try mapError(c.vkDeviceWaitIdle(self.handle));
+        pub fn waitIdle(self: Self) void {
+            const mapErrorRes = mapError(c.vkDeviceWaitIdle(self.handle));
+            if(mapErrorRes) {} else |err| {
+                std.debug.print("ERROR: VULKAN ERROR {any}\n", .{err});
+                std.process.exit(1);
+            }
         }
 
         pub fn bindIndexBuffer(self: Self, buffer: Buffer, frame: usize) void {
