@@ -73,11 +73,14 @@ pub const Instance = struct {
     pub fn create(allocator: Allocator) !Instance {
         const extensions = window.getExtensions();
 
+        // Querry avaliable extensions size
         var avaliableExtensionsCount: u32 = 0;
         _ = c.vkEnumerateInstanceExtensionProperties(null, &avaliableExtensionsCount, null);
+        // Actually querry avaliable extensions
         var availableExtensions = std.ArrayList(c.VkExtensionProperties).init(allocator);
         try availableExtensions.resize(avaliableExtensionsCount);
         _ = c.vkEnumerateInstanceExtensionProperties(null, &avaliableExtensionsCount, availableExtensions.items.ptr);
+        // Check the extensions we want against the extensions the user has
         for(extensions) |need_ext| {
             var found = false;
             for(availableExtensions.items) |useable_ext| {
@@ -93,12 +96,16 @@ pub const Instance = struct {
         }
         availableExtensions.deinit();
 
+        // Querry avaliable layers size
         var avaliableLayersCount: u32 = 0;
         _ = c.vkEnumerateInstanceLayerProperties(&avaliableLayersCount, null);
+        // Actually querry avaliable layers
         var availableLayers = std.ArrayList(c.VkLayerProperties).init(allocator);
         try availableLayers.resize(avaliableLayersCount);
         _ = c.vkEnumerateInstanceLayerProperties(&avaliableLayersCount, availableLayers.items.ptr);
+        // Every layer we do have we add to this list, if we don't have it no worries just print a message and continue
         var newLayers = std.ArrayList([*c]const u8).init(allocator);
+        // Loop over layers we want
         for(validation_layers) |want_layer| {
             var found = false;
             for(availableLayers.items) |useable_validation| {
