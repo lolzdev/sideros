@@ -850,8 +850,7 @@ pub fn Device(comptime n: usize) type {
         pub fn waitIdle(self: Self) void {
             const mapErrorRes = mapError(c.vkDeviceWaitIdle(self.handle));
             if(mapErrorRes) {} else |err| {
-                std.debug.print("ERROR: VULKAN ERROR {any}\n", .{err});
-                std.process.exit(1);
+                std.debug.panic("Vulkan wait idle error: {any}\n", .{err});
             }
         }
 
