@@ -13,17 +13,17 @@ pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     const allocator = gpa.allocator();
     {
-        var global_runtime = wasm.GlobalRuntime.init(allocator);
-        defer global_runtime.deinit();
-        try global_runtime.addFunction("debug", wasm.debug);
+        //var global_runtime = wasm.GlobalRuntime.init(allocator);
+        //defer global_runtime.deinit();
+        //try global_runtime.addFunction("debug", wasm.debug);
 
-        const file = try std.fs.cwd().openFile("assets/core.wasm", .{});
-        const module = try Parser.parseWasm(allocator, file.reader());
-        var runtime = try vm.Runtime.init(allocator, module, &global_runtime);
-        defer runtime.deinit(allocator);
+        //const file = try std.fs.cwd().openFile("assets/core.wasm", .{});
+        //const module = try Parser.parseWasm(allocator, file.reader());
+        //var runtime = try vm.Runtime.init(allocator, module, &global_runtime);
+        //defer runtime.deinit(allocator);
 
-        var parameters = [_]usize{};
-        try runtime.callExternal(allocator, "fibonacci", &parameters);
+        //var parameters = [_]usize{};
+        //try runtime.callExternal(allocator, "fibonacci", &parameters);
 
         const w = try window.Window.create(800, 600, "sideros");
         defer w.destroy();
