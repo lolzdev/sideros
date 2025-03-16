@@ -77,13 +77,14 @@ pub const Instance = struct {
         var avaliableExtensionsCount: u32 = 0;
         _ = c.vkEnumerateInstanceExtensionProperties(null, &avaliableExtensionsCount, null);
         // Actually querry avaliable extensions
-        var availableExtensions = std.ArrayList(c.VkExtensionProperties).init(allocator);
-        try availableExtensions.resize(avaliableExtensionsCount);
-        _ = c.vkEnumerateInstanceExtensionProperties(null, &avaliableExtensionsCount, availableExtensions.items.ptr);
+        var avaliableExtensions = std.ArrayList(c.VkExtensionProperties).init(allocator);
+        try avaliableExtensions.resize(avaliableExtensionsCount);
+        defer avaliableExtensions.deinit();
+        _ = c.vkEnumerateInstanceExtensionProperties(null, &avaliableExtensionsCount, avaliableExtensions.items.ptr);
         // Check the extensions we want against the extensions the user has
         for(extensions) |need_ext| {
             var found = false;
-            for(availableExtensions.items) |useable_ext| {
+            for(avaliableExtensions.items) |useable_ext| {
                 const extensionName: [*c]const u8 = &useable_ext.extensionName;
                 if(std.mem.eql(u8, std.mem.sliceTo(need_ext, 0), std.mem.sliceTo(extensionName, 0))){
                     found = true;
@@ -94,7 +95,6 @@ pub const Instance = struct {
                 std.debug.panic("ERROR: Needed vulkan extension {s} not found\n", .{need_ext});
             }
         }
-        availableExtensions.deinit();
 
         // Querry avaliable layers size
         var avaliableLayersCount: u32 = 0;
@@ -102,6 +102,7 @@ pub const Instance = struct {
         // Actually querry avaliable layers
         var availableLayers = std.ArrayList(c.VkLayerProperties).init(allocator);
         try availableLayers.resize(avaliableLayersCount);
+        defer availableLayers.deinit();
         _ = c.vkEnumerateInstanceLayerProperties(&avaliableLayersCount, availableLayers.items.ptr);
         // Every layer we do have we add to this list, if we don't have it no worries just print a message and continue
         var newLayers = std.ArrayList([*c]const u8).init(allocator);
@@ -122,7 +123,6 @@ pub const Instance = struct {
                 try newLayers.append(want_layer);
             }
         }
-        availableLayers.deinit();
 
         const app_info: c.VkApplicationInfo = .{
             .sType = c.VK_STRUCTURE_TYPE_APPLICATION_INFO,
