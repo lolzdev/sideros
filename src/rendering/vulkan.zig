@@ -106,6 +106,7 @@ pub const Instance = struct {
         _ = c.vkEnumerateInstanceLayerProperties(&avaliableLayersCount, availableLayers.items.ptr);
         // Every layer we do have we add to this list, if we don't have it no worries just print a message and continue
         var newLayers = std.ArrayList([*c]const u8).init(allocator);
+        defer newLayers.deinit();
         // Loop over layers we want
         for (validation_layers) |want_layer| {
             var found = false;
