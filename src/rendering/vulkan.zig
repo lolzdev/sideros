@@ -82,16 +82,16 @@ pub const Instance = struct {
         defer avaliableExtensions.deinit();
         _ = c.vkEnumerateInstanceExtensionProperties(null, &avaliableExtensionsCount, avaliableExtensions.items.ptr);
         // Check the extensions we want against the extensions the user has
-        for(extensions) |need_ext| {
+        for (extensions) |need_ext| {
             var found = false;
-            for(avaliableExtensions.items) |useable_ext| {
+            for (avaliableExtensions.items) |useable_ext| {
                 const extensionName: [*c]const u8 = &useable_ext.extensionName;
-                if(std.mem.eql(u8, std.mem.sliceTo(need_ext, 0), std.mem.sliceTo(extensionName, 0))){
+                if (std.mem.eql(u8, std.mem.sliceTo(need_ext, 0), std.mem.sliceTo(extensionName, 0))) {
                     found = true;
                     break;
                 }
             }
-            if(!found){
+            if (!found) {
                 std.debug.panic("ERROR: Needed vulkan extension {s} not found\n", .{need_ext});
             }
         }
@@ -107,19 +107,19 @@ pub const Instance = struct {
         // Every layer we do have we add to this list, if we don't have it no worries just print a message and continue
         var newLayers = std.ArrayList([*c]const u8).init(allocator);
         // Loop over layers we want
-        for(validation_layers) |want_layer| {
+        for (validation_layers) |want_layer| {
             var found = false;
-            for(availableLayers.items) |useable_validation| {
+            for (availableLayers.items) |useable_validation| {
                 const layer_name: [*c]const u8 = &useable_validation.layerName;
-                if (std.mem.eql(u8, std.mem.sliceTo(want_layer, 0), std.mem.sliceTo(layer_name, 0))){
+                if (std.mem.eql(u8, std.mem.sliceTo(want_layer, 0), std.mem.sliceTo(layer_name, 0))) {
                     found = true;
                     break;
                 }
             }
-            if(!found){
+            if (!found) {
                 std.debug.print("WARNING: Compiled in debug mode, but wanted validation layer {s} not found.\n", .{want_layer});
                 std.debug.print("NOTE: Validation layer will be removed from the wanted validation layers\n", .{});
-            } else{
+            } else {
                 try newLayers.append(want_layer);
             }
         }
@@ -138,7 +138,7 @@ pub const Instance = struct {
             .pApplicationInfo = &app_info,
             .enabledExtensionCount = @intCast(extensions.len),
             .ppEnabledExtensionNames = extensions.ptr,
-            .enabledLayerCount = @intCast(newLayers.capacity),
+            .enabledLayerCount = @intCast(newLayers.items.len),
             .ppEnabledLayerNames = newLayers.items.ptr,
         };
 
@@ -849,7 +849,7 @@ pub fn Device(comptime n: usize) type {
 
         pub fn waitIdle(self: Self) void {
             const mapErrorRes = mapError(c.vkDeviceWaitIdle(self.handle));
-            if(mapErrorRes) {} else |err| {
+            if (mapErrorRes) {} else |err| {
                 std.debug.panic("Vulkan wait idle error: {any}\n", .{err});
             }
         }
