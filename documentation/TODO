@@ -1,0 +1,27 @@
+There are many things to implement in the game, here are listed some of them ranked by difficulty.
+
+EASY:
+
+- Writing a README file:
+Currently, there is no README file, also because the project doesn't have a clear outline yet.
+
+- Code refactoring:
+It's possible that sometimes code that doesn't conform to the style guidelines defined in STYLE will be pushed to the repository.
+Finding that code, and fixing it so that it conforms to the guidelines would be a nice way of getting your hands
+on the project for the first time and a big help to maintainers.
+
+- Documentation:
+One of the goals of the project is to be as welcoming as possible to new contributions, this can't really be the case without good
+documentation. Engine APIs, modding interfaces and modules of the code (rendering, vulkan, ecs, mods, ...) should be
+documented with text files in `documentation/` and in the documentation page of the website (TODO).
+
+MEDIUM:
+
+- Implement internal windowing system:
+The engine now uses GLFW to interface with the user's windowing system. But GLFW lacks flexibility and thus it might be better
+to implement an internal abstraction to create windows and receive input, based on xcb for X11, wayland-client for Wayland,
+Cocoa for MacOS and win32 for Windows.
+
+HARD:
+
+

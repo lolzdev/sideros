@@ -1,0 +1,58 @@
+When contributing to Sideros, you should take account of this
+style guide, which is mostly based on the Zig documentation
+style guide (https://ziglang.org/documentation/0.14.0/#Style-Guide).
+
+1. Avoid these words in type names:
+    - Value
+    - Data
+    - Context
+    - Manager
+    - utils, misc, or somebody's initials
+
+Everything is a value, all types are data, everything is context, all logic manages
+state. Nothing is communicated by using a word that applies to all types.
+Temptation to use "utilities", "miscellaneous", or somebody's initials is a failure
+to categorize, or more commonly, overcategorization. Such declarations can live at the
+root of a module that needs them with no namespace needed.
+
+2. Avoid Redundant Names in Fully-Qualified Namespaces
+Every declaration is assigned a fully qualified namespace by the compiler, creating a
+tree structure. Choose names based on the fully-qualified namespace, and avoid redundant
+name segments. For example, let's say you're writing a wrapping interface over WASM and
+you need to create a structure to hold WebAssembly values. If you are importing that
+file using `@import`, you will assign the code to a namespace, for example `wasm`.
+For this reason, you should avoid calling your WASM value interface something like
+`WasmValue`, because it will end up being used as `wasm.WasmValue`, just call it `Value`
+and the code will be overall more readable (`wasm.Value`).
+
+3. Whitespaces
+    - 4 spaces for indentation
+    - Open braces on same line, unless you need to wrap
+    - If a list of things is longer than 2, put each item
+      on its own row and excercise the ability to put an
+      extra comma at the end.
+    - Aim for 100 as line length.
+
+4. Names
+    - for types, use "TitleCase", unless it's a namespace,
+      in that case use "snake_case".
+    - if x is callable, and returns a `type`, then use "TitleCase"
+    - if x is callable, and doesn't return a `type`, use "camelCase"
+    - everything else should be "snake_case"
+Generally speaking, try to name things using easily understandable identifiers.
+This can mostly be done by just writing names as full english words, and avoiding
+acronyms and similar things. For example, prefer `time` over `t`, `speed` over `spd`
+and so on. Just by doing this most of the code wouldn't need comments, because the
+code will describe the logic by itself.
+
+5. Comments
+Comments should never explain how code works, but rather how code should be used.
+As stated in part 4, Zig has an explicit syntax allowing to write readable code,
+just by using extended words for names and thus, in-code comments, explaining
+how a specific part of code works, can be completely avoided.
+Documentation comments, instead, can be very useful when exposing types and
+functions, so that the behaviour of those can be easily read without going
+to look directly at the source code.
+The only exception is when the code logic can't be easily readable by
+humans for optimization reasons (bitwise magic, for example) and so
+in that case, in-code comments are allowed.
