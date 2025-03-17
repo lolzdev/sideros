@@ -1,13 +1,13 @@
 const std = @import("std");
 const c = @import("c.zig");
-const window = @import("render/window.zig");
+const window = @import("rendering/window.zig");
 
 const config = @import("config");
-const Renderer = @import("render/renderer_vulkan.zig");
+const Renderer = @import("rendering/renderer_vulkan.zig");
 const math = @import("math.zig");
-const Parser = @import("vm/parse.zig");
-const vm = @import("vm/vm.zig");
-const wasm = @import("vm/wasm.zig");
+const Parser = @import("mods/parse.zig");
+const vm = @import("mods/vm.zig");
+const wasm = @import("mods/wasm.zig");
 
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
