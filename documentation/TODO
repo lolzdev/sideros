@@ -15,6 +15,9 @@ One of the goals of the project is to be as welcoming as possible to new contrib
 documentation. Engine APIs, modding interfaces and modules of the code (rendering, vulkan, ecs, mods, ...) should be
 documented with text files in `documentation/` and in the documentation page of the website (TODO).
 
+- Unit testing:
+Zig has built-in unit testing which should be used to verify that everything is working correctly when changing something.
+
 MEDIUM:
 
 - Implement internal windowing system:
