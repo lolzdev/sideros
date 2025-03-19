@@ -206,18 +206,21 @@ pub fn parseWasm(allocator: Allocator, stream: anytype) !Module {
 
                     const b = try stream.readByte();
                     switch (@as(std.wasm.ExternalKind, @enumFromInt(b))) {
-                        std.wasm.ExternalKind.function => try funcs.append(.{ .external = @intCast(i) }),
+                        std.wasm.ExternalKind.function => {
+                            try funcs.append(.{ .external = @intCast(i) });
+
+                            const idx = try std.leb.readULEB128(u32, stream);
+                            try imports.append(.{
+                                .module = mod,
+                                .name = nm,
+                                .signature = idx,
+                            });
+                        },
                         // TODO: not implemented
-                        std.wasm.ExternalKind.table => {},
-                        std.wasm.ExternalKind.memory => {},
-                        std.wasm.ExternalKind.global => {},
+                        std.wasm.ExternalKind.table => try stream.skipBytes(3, .{}),
+                        std.wasm.ExternalKind.memory => try stream.skipBytes(2, .{}),
+                        std.wasm.ExternalKind.global => try stream.skipBytes(2, .{}),
                     }
-                    const idx = try std.leb.readULEB128(u32, stream);
-                    try imports.append(.{
-                        .module = mod,
-                        .name = nm,
-                        .signature = idx,
-                    });
                 }
             },
             std.wasm.Section.function => {
