@@ -8,6 +8,8 @@ const math = @import("math.zig");
 const Parser = @import("mods/parse.zig");
 const vm = @import("mods/vm.zig");
 const wasm = @import("mods/wasm.zig");
+const components = @import("ecs/components.zig");
+const entities = @import("ecs/entities.zig");
 
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
@@ -23,9 +25,13 @@ pub fn main() !void {
         //defer runtime.deinit(allocator);
 
         //var parameters = [_]usize{};
-        //try runtime.callExternal(allocator, "fibonacci", &parameters);
+        //try runtime.callExternal(allocator, "calculate_fibonacci", &parameters);
         const w = try window.Window.create(800, 600, "sideros");
         defer w.destroy();
+
+        var pool = try entities.Pool.init(allocator);
+        _ = try pool.createEntity();
+        //try pool.addComponent(entity, components.Speed{ .speed = 0.0 });
 
         // TODO(luccie-cmd): Renderer.create shouldn't return an error
         var r = try Renderer.create(allocator, w);
