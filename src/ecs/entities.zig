@@ -6,6 +6,8 @@ const sparse = @import("sparse.zig");
 const System = *const fn (Pool) void;
 const SystemGroup = std.ArrayList(System);
 
+//FIXME: for some reason this thing has very weird issues with
+//hash maps
 pub const Pool = struct {
     // Components
     position: sparse.SparseSet(components.Position),
@@ -18,27 +20,28 @@ pub const Pool = struct {
     last_entity: usize,
     free_ids: std.ArrayList(usize),
 
-    component_flags: std.AutoHashMap(usize, usize),
+    component_flags: std.AutoHashMap(u32, usize),
 
     pub fn init(allocator: Allocator) !@This() {
-        var thread_pool: std.Thread.Pool = undefined;
-        try thread_pool.init(.{
-            .allocator = allocator,
-            .n_jobs = 4,
-        });
-
-        return @This(){
+        var pool = @This(){
             .position = sparse.SparseSet(components.Position).init(allocator),
             .speed = sparse.SparseSet(components.Speed).init(allocator),
 
             .system_groups = std.ArrayList(SystemGroup).init(allocator),
-            .thread_pool = thread_pool,
+            .thread_pool = undefined,
             .wait_group = .{},
             .mutex = .{},
             .last_entity = 0,
             .free_ids = std.ArrayList(usize).init(allocator),
-            .component_flags = std.AutoHashMap(usize, usize).init(allocator),
+            .component_flags = std.AutoHashMap(u32, usize).init(allocator),
         };
+
+        try pool.thread_pool.init(.{
+            .allocator = allocator,
+            .n_jobs = 4,
+        });
+
+        return pool;
     }
 
     pub fn tick(self: *@This()) void {
