@@ -1,0 +1,173 @@
+From 5dbe7013e246c7ecf6b81c4e07e4ab264f0a997f Mon Sep 17 00:00:00 2001
+From: luccie-cmd <luccie@sideros.org>
+Date: Fri, 21 Mar 2025 12:35:24 +0100
+Subject: [PATCH] Added block instruction in WASM VM
+
+Signed-off-by: luccie-cmd <luccie@sideros.org>
+---
+ assets/core.wasm | Bin 2912 -> 6017 bytes
+ src/main.zig     |   2 +-
+ src/mods/vm.zig  |  19 +++++++++++++++++++
+ 3 files changed, 20 insertions(+), 1 deletion(-)
+ mode change 100644 => 100755 assets/core.wasm
+
+diff --git a/assets/core.wasm b/assets/core.wasm
+old mode 100644
+new mode 100755
+index fddfb917d536ac6c5481a95466469581173d7d54..bc550f73541a40cd100aabef490e21c6cd3f964c
+GIT binary patch
+literal 6017
+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
+BY+3*S
+
+literal 2912
+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
+aMqwJe-7Y51OskvHKjLXS@!R1HPV-+RuCnF;
+
+diff --git a/src/main.zig b/src/main.zig
+index 9c3e59d..cb3c1db 100644
+--- a/src/main.zig
++++ b/src/main.zig
+@@ -25,7 +25,7 @@ pub fn main() !void {
+         //defer runtime.deinit(allocator);
+ 
+         //var parameters = [_]usize{};
+-        //try runtime.callExternal(allocator, "calculate_fibonacci", &parameters);
++        //try runtime.callExternal(allocator, "preinit", &parameters);
+         const w = try window.Window.create(800, 600, "sideros");
+         defer w.destroy();
+ 
+diff --git a/src/mods/vm.zig b/src/mods/vm.zig
+index f8c7db5..2558ced 100644
+--- a/src/mods/vm.zig
++++ b/src/mods/vm.zig
+@@ -79,6 +79,23 @@ pub const Runtime = struct {
+             frame.program_counter += 1;
+             std.debug.print("b: {x}\n", .{byte});
+             switch (byte) {
++                0x02 => {
++                    var depth: usize = 1;
++                    var pc = frame.program_counter;
++                    while (depth > 0) {
++                        const opcode = frame.code[pc];
++                        const operand = frame.code[pc+1];
++                        if (opcode == 0x02 and operand == 0x40) {
++                            depth += 1;
++                        } else if (opcode == 0x0B) {
++                            depth -= 1;
++                        }
++
++                        pc += 1; // Move forward
++                    }
++                    try self.labels.append(pc);
++                    frame.program_counter += 1;
++                },
+                 0x03 => {
+                     try self.labels.append(frame.program_counter);
+                     frame.program_counter += 1;
+@@ -479,6 +496,8 @@ pub const Runtime = struct {
+     pub fn callExternal(self: *Runtime, allocator: Allocator, name: []const u8, parameters: []usize) !void {
+         if (self.module.exports.get(name)) |function| {
+             try self.call(allocator, function, parameters);
++        } else {
++            std.debug.panic("Function `{s}` not avaliable", .{name});
+         }
+     }
+ 
+-- 
+2.49.0
+

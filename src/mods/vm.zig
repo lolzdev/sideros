@@ -84,14 +84,13 @@ pub const Runtime = struct {
                     var pc = frame.program_counter;
                     while (depth > 0) {
                         const opcode = frame.code[pc];
-                        const operand = frame.code[pc+1];
+                        const operand = frame.code[pc + 1];
                         if (opcode == 0x02 and operand == 0x40) {
                             depth += 1;
                         } else if (opcode == 0x0B) {
                             depth -= 1;
                         }
-
-                        pc += 1; // Move forward
+                        pc += 1;
                     }
                     try self.labels.append(pc);
                     frame.program_counter += 1;
