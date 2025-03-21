@@ -79,6 +79,23 @@ pub const Runtime = struct {
             frame.program_counter += 1;
             std.debug.print("b: {x}\n", .{byte});
             switch (byte) {
+                0x02 => {
+                    var depth: usize = 1;
+                    var pc = frame.program_counter;
+                    while (depth > 0) {
+                        const opcode = frame.code[pc];
+                        const operand = frame.code[pc+1];
+                        if (opcode == 0x02 and operand == 0x40) {
+                            depth += 1;
+                        } else if (opcode == 0x0B) {
+                            depth -= 1;
+                        }
+
+                        pc += 1; // Move forward
+                    }
+                    try self.labels.append(pc);
+                    frame.program_counter += 1;
+                },
                 0x03 => {
                     try self.labels.append(frame.program_counter);
                     frame.program_counter += 1;
@@ -479,6 +496,8 @@ pub const Runtime = struct {
     pub fn callExternal(self: *Runtime, allocator: Allocator, name: []const u8, parameters: []usize) !void {
         if (self.module.exports.get(name)) |function| {
             try self.call(allocator, function, parameters);
+        } else {
+            std.debug.panic("Function `{s}` not avaliable", .{name});
         }
     }
 

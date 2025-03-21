@@ -25,7 +25,7 @@ pub fn main() !void {
         //defer runtime.deinit(allocator);
 
         //var parameters = [_]usize{};
-        //try runtime.callExternal(allocator, "calculate_fibonacci", &parameters);
+        //try runtime.callExternal(allocator, "preinit", &parameters);
         const w = try window.Window.create(800, 600, "sideros");
         defer w.destroy();
 
