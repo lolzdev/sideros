@@ -3,8 +3,8 @@ const Allocator = std.mem.Allocator;
 const components = @import("components.zig");
 const sparse = @import("sparse.zig");
 
-const System = *const fn (*Pool) void;
-const SystemGroup = std.ArrayList(System);
+pub const System = *const fn (*Pool) void;
+pub const SystemGroup = []const System;
 
 pub const Pool = struct {
     // Components
@@ -42,6 +42,10 @@ pub const Pool = struct {
         return pool;
     }
 
+    pub fn addSystemGroup(self: *@This(), group: SystemGroup) !void {
+        try self.system_groups.append(group);
+    }
+
     pub fn deinit(self: *@This(), allocator: Allocator) void {
         self.position.deinit();
         self.speed.deinit();
@@ -54,16 +58,16 @@ pub const Pool = struct {
     }
 
     pub fn tick(self: *@This()) void {
-        for (self.system_groups) |group| {
+        for (0..self.system_groups.items.len) |i| {
             self.thread_pool.spawnWg(&self.wait_group, struct {
-                fn run(pool: *Pool) void {
+                fn run(pool: *Pool, index: usize) void {
+                    const group = pool.system_groups.items[index];
                     for (group) |system| {
                         system(pool);
                     }
                 }
-            }.run, .{self});
+            }.run, .{ self, i });
         }
-        self.wait_group.wait();
     }
 
     pub fn createEntity(self: *@This()) !usize {
@@ -87,8 +91,8 @@ pub const Pool = struct {
 
     pub fn addComponent(self: *@This(), entity: usize, component: anytype) !void {
         var set = switch (@TypeOf(component)) {
-            components.Speed => self.speed,
-            components.Position => self.position,
+            components.Speed => &self.speed,
+            components.Position => &self.position,
             else => unreachable,
         };
 
