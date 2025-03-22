@@ -42,6 +42,50 @@ pub const Pool = struct {
         return pool;
     }
 
+    pub fn getQuery(self: *@This(), comptime T: type) []T {
+        const set = switch (T) {
+            components.Speed => &self.speed,
+            components.Position => &self.position,
+            else => unreachable,
+        };
+
+        return set.components.items;
+    }
+
+    pub fn getEntity(self: *@This(), component: usize, comptime T: type) usize {
+        const set = switch (T) {
+            components.Speed => &self.speed,
+            components.Position => &self.position,
+            else => unreachable,
+        };
+
+        return set.dense.items[component];
+    }
+
+    pub fn getComponent(self: *@This(), entity: usize, comptime T: type) ?T {
+        const set = switch (T) {
+            components.Speed => &self.speed,
+            components.Position => &self.position,
+            else => unreachable,
+        };
+
+        if (self.hasComponent(entity, T)) {
+            return set.components.items[set.sparse.items[entity]];
+        } else {
+            return null;
+        }
+    }
+
+    pub fn hasComponent(self: *@This(), entity: usize, component: type) bool {
+        const set = switch (component) {
+            components.Speed => &self.speed,
+            components.Position => &self.position,
+            else => unreachable,
+        };
+
+        return set.dense.items[set.sparse.items[entity]] == entity;
+    }
+
     pub fn addSystemGroup(self: *@This(), group: SystemGroup) !void {
         try self.system_groups.append(group);
     }
