@@ -3,24 +3,22 @@ const Allocator = std.mem.Allocator;
 const components = @import("components.zig");
 const sparse = @import("sparse.zig");
 
-const System = *const fn (Pool) void;
+const System = *const fn (*Pool) void;
 const SystemGroup = std.ArrayList(System);
 
-//FIXME: for some reason this thing has very weird issues with
-//hash maps
 pub const Pool = struct {
     // Components
     position: sparse.SparseSet(components.Position),
     speed: sparse.SparseSet(components.Speed),
 
     system_groups: std.ArrayList(SystemGroup),
-    thread_pool: std.Thread.Pool,
+    thread_pool: *std.Thread.Pool,
     wait_group: std.Thread.WaitGroup,
     mutex: std.Thread.Mutex,
     last_entity: usize,
     free_ids: std.ArrayList(usize),
 
-    component_flags: std.AutoHashMap(u32, usize),
+    component_flags: std.AutoHashMap(usize, usize),
 
     pub fn init(allocator: Allocator) !@This() {
         var pool = @This(){
@@ -28,12 +26,12 @@ pub const Pool = struct {
             .speed = sparse.SparseSet(components.Speed).init(allocator),
 
             .system_groups = std.ArrayList(SystemGroup).init(allocator),
-            .thread_pool = undefined,
+            .thread_pool = try allocator.create(std.Thread.Pool),
             .wait_group = .{},
             .mutex = .{},
             .last_entity = 0,
             .free_ids = std.ArrayList(usize).init(allocator),
-            .component_flags = std.AutoHashMap(u32, usize).init(allocator),
+            .component_flags = std.AutoHashMap(usize, usize).init(allocator),
         };
 
         try pool.thread_pool.init(.{
@@ -42,6 +40,17 @@ pub const Pool = struct {
         });
 
         return pool;
+    }
+
+    pub fn deinit(self: *@This(), allocator: Allocator) void {
+        self.position.deinit();
+        self.speed.deinit();
+
+        self.system_groups.deinit();
+        self.thread_pool.deinit();
+        allocator.destroy(self.thread_pool);
+        self.free_ids.deinit();
+        self.component_flags.deinit();
     }
 
     pub fn tick(self: *@This()) void {
@@ -60,7 +69,7 @@ pub const Pool = struct {
     pub fn createEntity(self: *@This()) !usize {
         const id = self.free_ids.pop() orelse self.last_entity;
         self.last_entity += 1;
-        try self.component_flags.put(2, 0x2);
+        try self.component_flags.put(id, 0x0);
 
         return id;
     }

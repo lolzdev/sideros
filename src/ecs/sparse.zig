@@ -15,6 +15,12 @@ pub fn SparseSet(comptime T: type) type {
             };
         }
 
+        pub fn deinit(self: *@This()) void {
+            self.sparse.deinit();
+            self.dense.deinit();
+            self.components.deinit();
+        }
+
         pub fn addEntity(self: *@This(), entity: usize, component: T) !void {
             if (entity >= self.sparse.items.len) {
                 try self.sparse.resize(entity + 10);
