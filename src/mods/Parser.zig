@@ -144,7 +144,7 @@ fn parseReftype(self: *Parser) !std.wasm.RefType {
 
 // NOTE: Parsing of Valtype can be improved but it makes it less close to spec so...
 // TODO: Do we really need Valtype?
-const Valtype = union(enum) {
+pub const Valtype = union(enum) {
     val: std.wasm.Valtype,
     ref: std.wasm.RefType,
 };

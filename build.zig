@@ -55,13 +55,21 @@ pub fn build(b: *std.Build) void {
     }, .flags = &[_][]const u8{ "-D_GLFW_X11", "-Wall", "-Wextra" } });
     glfw.linkLibC();
 
+    const mods = b.addModule("mods", .{
+	    .root_source_file = b.path("src/mods/mods.zig"),
+	    .target = target,
+	    .optimize = optimize,
+	});
+
     const exe = b.addExecutable(.{
         .root_source_file = b.path("src/main.zig"),
         .target = target,
         .optimize = optimize,
         .name = "sideros",
     });
+    exe.root_module.addImport("mods", mods);
     exe.addIncludePath(b.path("ext/glfw/include"));
+
 
     exe.linkSystemLibrary("vulkan");
     compileAllShaders(b, exe);
@@ -69,6 +77,27 @@ pub fn build(b: *std.Build) void {
     exe.linkLibC();
 
     b.installArtifact(exe);
+
+	// TODO: This does not generate documentation correctly?
+    const install_docs = b.addInstallDirectory(.{
+	    .source_dir = exe.getEmittedDocs(),
+	    .install_dir = .prefix,
+	    .install_subdir = "docs",
+    });
+    const docs_step = b.step("docs", "Generate documentation");
+    docs_step.dependOn(&install_docs.step);
+
+	// NOTE: This is a hack to generate documentation
+    const mods_lib = b.addStaticLibrary(.{
+	    .root_module = mods,
+	    .name = "mods",
+    });
+    const mods_docs = b.addInstallDirectory(.{
+	    .source_dir = mods_lib.getEmittedDocs(),
+	    .install_dir = .prefix,
+	    .install_subdir = "docs/mods",
+	});
+    docs_step.dependOn(&mods_docs.step);
 
     const run_cmd = b.addRunArtifact(exe);
     run_cmd.step.dependOn(b.getInstallStep());

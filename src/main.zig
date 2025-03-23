@@ -5,9 +5,8 @@ const window = @import("rendering/window.zig");
 const config = @import("config");
 const Renderer = @import("rendering/renderer_vulkan.zig");
 const math = @import("math.zig");
-const Parser = @import("mods/Parser.zig");
-const vm = @import("mods/vm.zig");
-const wasm = @import("mods/wasm.zig");
+const mods = @import("mods");
+
 const components = @import("ecs/components.zig");
 const entities = @import("ecs/entities.zig");
 
@@ -30,7 +29,7 @@ pub fn main() !void {
 
         // const file = try std.fs.cwd().openFile("assets/core.wasm", .{});
         // const all = try file.readToEndAlloc(allocator, 1_000_000); // 1 MB
-        // var parser = Parser{
+        // var parser = mods.Parser{
         //     .bytes = all,
         //     .byte_idx = 0,
         //     .allocator = allocator,
