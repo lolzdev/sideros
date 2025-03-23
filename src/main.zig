@@ -6,14 +6,12 @@ const config = @import("config");
 const Renderer = @import("rendering/renderer_vulkan.zig");
 const math = @import("math.zig");
 const mods = @import("mods");
+const ecs = @import("ecs");
 
-const components = @import("ecs/components.zig");
-const entities = @import("ecs/entities.zig");
-
-fn testSystem2(pool: *entities.Pool) void {
-    for (pool.getQuery(components.Position), 0..) |position, i| {
-        const entity = pool.getEntity(i, components.Position);
-        if (pool.getComponent(entity, components.Speed)) |speed| {
+fn testSystem2(pool: *ecs.Pool) void {
+    for (pool.getQuery(ecs.components.Position), 0..) |position, i| {
+        const entity = pool.getEntity(i, ecs.components.Position);
+        if (pool.getComponent(entity, ecs.components.Speed)) |speed| {
             std.debug.print("entity{d}: {any},{any},{any} {any}\n", .{ i, position.x, position.y, position.z, speed.speed });
         }
     }
@@ -46,20 +44,20 @@ pub fn main() !void {
         const w = try window.Window.create(800, 600, "sideros");
         defer w.destroy();
 
-        var pool = try entities.Pool.init(allocator);
+        var pool = try ecs.Pool.init(allocator);
         defer pool.deinit(allocator);
 
         //try pool.addSystemGroup(&[_]entities.System{
         //    testSystem,
         //});
-        try pool.addSystemGroup(&[_]entities.System{
+        try pool.addSystemGroup(&[_]ecs.System{
             testSystem2,
         });
 
         for (0..1000) |_| {
             const entity = try pool.createEntity();
-            try pool.addComponent(entity, components.Position{ .x = 1.0, .y = 0.5, .z = 3.0 });
-            try pool.addComponent(entity, components.Speed{ .speed = 5.0 });
+            try pool.addComponent(entity, ecs.components.Position{ .x = 1.0, .y = 0.5, .z = 3.0 });
+            try pool.addComponent(entity, ecs.components.Speed{ .speed = 5.0 });
         }
 
         // TODO(luccie-cmd): Renderer.create shouldn't return an error
