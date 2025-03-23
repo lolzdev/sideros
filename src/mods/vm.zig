@@ -39,39 +39,49 @@ pub fn leb128Result(T: type) type {
 }
 
 pub fn leb128Decode_stream(comptime T: type, stream: anytype) !leb128Result(T) {
-    switch (@typeInfo(T)) {
-        .int => {},
-        else => @compileError("LEB128 integer decoding only support integers, but got " ++ @typeName(T)),
-    }
-    if (@typeInfo(T).int.bits != 32 and @typeInfo(T).int.bits != 64) {
-        @compileError("LEB128 integer decoding only supports 32 or 64 bits integers but got " ++ std.fmt.comptimePrint("{d} bits", .{@typeInfo(T).int.bits}));
-    }
+    //switch (@typeInfo(T)) {
+    //    .int => {},
+    //    else => @compileError("LEB128 integer decoding only support integers, but got " ++ @typeName(T)),
+    //}
 
-    var result: T = 0;
-    // TODO: is the type of shift important. Reading Wikipedia (not very much tho) it seems like we can use u32 and call it a day...
-    var shift: if (@typeInfo(T).int.bits == 32) u5 else u6 = 0;
-    var byte: u8 = undefined;
-    var len: usize = 0;
-    while (stream.readByte()) |b| {
-        len += 1;
-        result |= @as(T, @intCast((b & 0x7f))) << shift;
-        if ((b & (0x1 << 7)) == 0) {
-            byte = b;
-            break;
-        }
-        shift += 7;
-    } else |err| {
-        return err;
-    }
+    //if (@typeInfo(T).int.bits != 32 and @typeInfo(T).int.bits != 64) {
+    //    @compileError("LEB128 integer decoding only supports 32 or 64 bits integers but got " ++ std.fmt.comptimePrint("{d} bits", .{@typeInfo(T).int.bits}));
+    //}
 
-    if (@typeInfo(T).int.signedness == .signed) {
-        const size = @sizeOf(T) * 8;
-        if (shift < size and (byte & 0x40) != 0) {
-            result |= (~@as(T, 0) << shift);
-        }
-    }
+    //var result: T = 0;
+    //// TODO: is the type of shift important. Reading Wikipedia (not very much tho) it seems like we can use u32 and call it a day...
+    //var shift: if (@typeInfo(T).int.bits == 32) u5 else u6 = 0;
+    //var byte: u8 = undefined;
+    //var len: usize = 0;
+    //while (stream.readByte()) |b| {
+    //    len += 1;
+    //    result |= @as(T, @intCast((b & 0x7f))) << shift;
+    //    if ((b & (0x1 << 7)) == 0) {
+    //        byte = b;
+    //        break;
+    //    }
+    //    shift += 7;
+    //} else |err| {
+    //    return err;
+    //}
 
-    return .{ .len = len, .val = result };
+    //if (@typeInfo(T).int.signedness == .signed) {
+    //    const size = @sizeOf(T) * 8;
+    //    if (shift < size and (byte & 0x40) != 0) {
+    //        result |= (~@as(T, 0) << shift);
+    //    }
+    //}
+
+    //return .{ .len = len, .val = result };
+
+    const start = try stream.context.getPos();
+    const value = try switch (@typeInfo(T).int.signedness) {
+        .signed => std.leb.readIleb128(T, stream),
+        else => std.leb.readUleb128(T, stream),
+    };
+    const end = try stream.context.getPos();
+
+    return .{ .len = end - start, .val = value };
 }
 
 fn leb128Decode(comptime T: type, bytes: []const u8) leb128Result(T) {
@@ -275,10 +285,14 @@ pub const Runtime = struct {
                     try self.stack.append(Value{ .i32 = @intCast(@as(u1, @bitCast(self.stack.pop().?.i32 != self.stack.pop().?.i32))) });
                 },
                 0x48 => {
-                    try self.stack.append(Value{ .i32 = @intCast(@as(u1, @bitCast(self.stack.pop().?.i32 < self.stack.pop().?.i32))) });
+                    const a = self.stack.pop().?.i32;
+                    const b = self.stack.pop().?.i32;
+                    try self.stack.append(Value{ .i32 = @intCast(@as(u1, @bitCast(b < a))) });
                 },
                 0x49 => {
-                    try self.stack.append(Value{ .i32 = @intCast(@as(u1, @bitCast(@as(u32, @bitCast(self.stack.pop().?.i32)) < @as(u32, @bitCast(self.stack.pop().?.i32))))) });
+                    const a = self.stack.pop().?.i32;
+                    const b = self.stack.pop().?.i32;
+                    try self.stack.append(Value{ .i32 = @intCast(@as(u1, @bitCast(b < a))) });
                 },
                 0x4a => {
                     try self.stack.append(Value{ .i32 = @intCast(@as(u1, @bitCast(self.stack.pop().?.i32 > self.stack.pop().?.i32))) });
