@@ -1,13 +1,83 @@
 const std = @import("std");
 const wasm = @import("wasm.zig");
-const Parser = @import("parse.zig");
+const Parser = @import("Parser.zig");
 const Allocator = std.mem.Allocator;
 const AllocationError = error{OutOfMemory};
 
-fn leb128Decode(comptime T: type, bytes: []u8) Parser.leb128Result(T) {
+pub const Memory = struct {
+    min: u32,
+    max: ?u32,
+};
+// TODO: Resolve function calls at parse time
+// TODO: Resolve function types at compile time
+pub const Func = union(enum) {
+    internal: u32,
+    external: u32,
+};
+
+pub const Module = struct {
+    memory: Memory,
+    funcs: []Func,
+    exports: std.StringHashMapUnmanaged(u32),
+    imports: []Parser.Import,
+    types: []Parser.Functype,
+    functions: []u32,
+    code: []Parser.Func,
+
+    fn deinit(self: *Module, allocator: Allocator) void {
+        self.exports.deinit(allocator);
+        allocator.free(self.funcs);
+        allocator.free(self.imports);
+        allocator.free(self.types);
+        allocator.free(self.functions);
+        allocator.free(self.code);
+    }
+};
+
+pub fn leb128Result(T: type) type {
+    return struct { len: usize, val: T };
+}
+
+pub fn leb128Decode_stream(comptime T: type, stream: anytype) !leb128Result(T) {
+    switch (@typeInfo(T)) {
+        .int => {},
+        else => @compileError("LEB128 integer decoding only support integers, but got " ++ @typeName(T)),
+    }
+    if (@typeInfo(T).int.bits != 32 and @typeInfo(T).int.bits != 64) {
+        @compileError("LEB128 integer decoding only supports 32 or 64 bits integers but got " ++ std.fmt.comptimePrint("{d} bits", .{@typeInfo(T).int.bits}));
+    }
+
+    var result: T = 0;
+    // TODO: is the type of shift important. Reading Wikipedia (not very much tho) it seems like we can use u32 and call it a day...
+    var shift: if (@typeInfo(T).int.bits == 32) u5 else u6 = 0;
+    var byte: u8 = undefined;
+    var len: usize = 0;
+    while (stream.readByte()) |b| {
+        len += 1;
+        result |= @as(T, @intCast((b & 0x7f))) << shift;
+        if ((b & (0x1 << 7)) == 0) {
+            byte = b;
+            break;
+        }
+        shift += 7;
+    } else |err| {
+        return err;
+    }
+
+    if (@typeInfo(T).int.signedness == .signed) {
+        const size = @sizeOf(T) * 8;
+        if (shift < size and (byte & 0x40) != 0) {
+            result |= (~@as(T, 0) << shift);
+        }
+    }
+
+    return .{ .len = len, .val = result };
+}
+
+fn leb128Decode(comptime T: type, bytes: []const u8) leb128Result(T) {
     var fbs = std.io.fixedBufferStream(bytes);
     // TODO: this catch should be unrecheable
-    return Parser.leb128Decode(T, fbs.reader()) catch .{ .len = 0, .val = 0 };
+    return leb128Decode_stream(T, fbs.reader()) catch .{ .len = 0, .val = 0 };
 }
 
 pub fn decodeLittleEndian(comptime T: type, bytes: []u8) T {
@@ -30,7 +100,7 @@ pub fn encodeLittleEndian(comptime T: type, bytes: *[]u8, value: T) void {
 
 pub const CallFrame = struct {
     program_counter: usize,
-    code: []u8,
+    code: []const u8,
     locals: []Value,
 };
 
@@ -45,15 +115,20 @@ pub const Value = union(ValueType) {
 };
 
 pub const Runtime = struct {
-    module: Parser.Module,
+    module: Module,
     stack: std.ArrayList(Value),
     call_stack: std.ArrayList(CallFrame),
     memory: []u8,
     global_runtime: *wasm.GlobalRuntime,
     labels: std.ArrayList(usize),
 
-    pub fn init(allocator: Allocator, module: Parser.Module, global_runtime: *wasm.GlobalRuntime) !Runtime {
-        const memory = try allocator.alloc(u8, module.memory.max);
+    pub fn init(allocator: Allocator, module: Module, global_runtime: *wasm.GlobalRuntime) !Runtime {
+        // if memory max is not set the memory is allowed to grow but it is not supported at the moment
+        const max = module.memory.max orelse 1_000;
+        if (module.memory.max == null) {
+            std.debug.print("[WARN]: growing memory is not yet supported, usign a default value of 1Kb\n", .{});
+        }
+        const memory = try allocator.alloc(u8, max);
         return Runtime{
             .module = module,
             .stack = try std.ArrayList(Value).initCapacity(allocator, 10),
@@ -492,6 +567,7 @@ pub const Runtime = struct {
         }
     }
 
+    // TODO: Do name resolution
     pub fn callExternal(self: *Runtime, allocator: Allocator, name: []const u8, parameters: []usize) !void {
         if (self.module.exports.get(name)) |function| {
             try self.call(allocator, function, parameters);
@@ -501,7 +577,7 @@ pub const Runtime = struct {
     }
 
     pub fn call(self: *Runtime, allocator: Allocator, function: usize, parameters: []usize) AllocationError!void {
-        const f = self.module.funcs.items[function];
+        const f = self.module.funcs[function];
         switch (f) {
             .internal => {
                 const function_type = self.module.types[self.module.functions[f.internal]];
@@ -512,26 +588,32 @@ pub const Runtime = struct {
                 };
 
                 for (parameters, 0..) |p, i| {
-                    switch (Parser.parseType(function_type.parameters[i])) {
-                        .i32 => {
-                            frame.locals[i] = .{ .i32 = @intCast(p) };
+                    switch (function_type.parameters[i]) {
+                        .val => |v| switch (v) {
+                            .i32 => {
+                                frame.locals[i] = .{ .i32 = @intCast(p) };
+                            },
+                            .i64 => {
+                                frame.locals[i] = .{ .i64 = @intCast(p) };
+                            },
+                            else => unreachable,
                         },
-                        .i64 => {
-                            frame.locals[i] = .{ .i64 = @intCast(p) };
-                        },
-                        else => unreachable,
+                        .ref => unreachable,
                     }
                 }
 
                 for (self.module.code[f.internal].locals, function_type.parameters.len..) |local, i| {
-                    switch (Parser.parseType(local.types[0])) {
-                        .i32 => {
-                            frame.locals[i] = .{ .i32 = 0 };
+                    switch (local) {
+                        .val => |v| switch (v) {
+                            .i32 => {
+                                frame.locals[i] = .{ .i32 = 0 };
+                            },
+                            .i64 => {
+                                frame.locals[i] = .{ .i64 = 0 };
+                            },
+                            else => unreachable,
                         },
-                        .i64 => {
-                            frame.locals[i] = .{ .i64 = 0 };
-                        },
-                        else => unreachable,
+                        .ref => unreachable,
                     }
                 }
 
@@ -540,7 +622,7 @@ pub const Runtime = struct {
                 allocator.free(frame.locals);
             },
             .external => {
-                const name = self.module.imports.items[f.external].name;
+                const name = self.module.imports[f.external].name;
                 if (self.global_runtime.functions.get(name)) |external| {
                     external(&self.stack);
                 }
