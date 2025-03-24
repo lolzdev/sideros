@@ -44,7 +44,7 @@ pub fn create(allocator: Allocator, w: window.Window) !Renderer {
     //    renderer.render(some_other_thing);
     //    ...
     //    renderer.submit()
-    const triangle = try mesh.Mesh.create(device);
+    const triangle = try mesh.Mesh.create(allocator, device);
 
     return Renderer{
         .instance = instance,

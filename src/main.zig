@@ -7,6 +7,7 @@ const Renderer = @import("rendering/renderer_vulkan.zig");
 const math = @import("math.zig");
 const mods = @import("mods");
 const ecs = @import("ecs");
+const gltf = @import("rendering/gltf.zig");
 
 fn testSystem2(pool: *ecs.Pool) void {
     for (pool.getQuery(ecs.components.Position), 0..) |position, i| {
@@ -44,21 +45,21 @@ pub fn main() !void {
         const w = try window.Window.create(800, 600, "sideros");
         defer w.destroy();
 
-        var pool = try ecs.Pool.init(allocator);
-        defer pool.deinit(allocator);
+        //var pool = try ecs.Pool.init(allocator);
+        //defer pool.deinit(allocator);
 
-        //try pool.addSystemGroup(&[_]entities.System{
-        //    testSystem,
+        ////try pool.addSystemGroup(&[_]entities.System{
+        ////    testSystem,
+        ////});
+        //try pool.addSystemGroup(&[_]ecs.System{
+        //    testSystem2,
         //});
-        try pool.addSystemGroup(&[_]ecs.System{
-            testSystem2,
-        });
 
-        for (0..1000) |_| {
-            const entity = try pool.createEntity();
-            try pool.addComponent(entity, ecs.components.Position{ .x = 1.0, .y = 0.5, .z = 3.0 });
-            try pool.addComponent(entity, ecs.components.Speed{ .speed = 5.0 });
-        }
+        //for (0..1000) |_| {
+        //    const entity = try pool.createEntity();
+        //    try pool.addComponent(entity, ecs.components.Position{ .x = 1.0, .y = 0.5, .z = 3.0 });
+        //    try pool.addComponent(entity, ecs.components.Speed{ .speed = 5.0 });
+        //}
 
         // TODO(luccie-cmd): Renderer.create shouldn't return an error
         var r = try Renderer.create(allocator, w);
@@ -67,7 +68,7 @@ pub fn main() !void {
         while (!w.shouldClose()) {
             c.glfwPollEvents();
             try r.tick();
-            pool.tick();
+            //pool.tick();
         }
     }
 

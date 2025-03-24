@@ -1,6 +1,7 @@
 const c = @import("../c.zig");
 const std = @import("std");
 const vk = @import("vulkan.zig");
+const gltf = @import("gltf.zig");
 const Allocator = std.mem.Allocator;
 
 pub const Vertex = struct {
@@ -38,13 +39,10 @@ pub const Mesh = struct {
     vertex_buffer: vk.Buffer,
     index_buffer: vk.Buffer,
 
-    pub fn createVertexBuffer(device: anytype) !vk.Buffer {
-        const vertices = [_]Vertex{
-            Vertex.create(0.5, -0.5, 0.0),
-            Vertex.create(0.5, 0.5, 0.0),
-            Vertex.create(-0.5, 0.5, 0.0),
-            Vertex.create(-0.5, -0.5, 0.0),
-        };
+    pub fn createVertexBuffer(allocator: Allocator, device: anytype) !vk.Buffer {
+        const gltf_data = try gltf.parseFile(allocator, "assets/models/block.glb");
+
+        const vertices = gltf_data.vertices;
 
         var data: [*c]?*anyopaque = null;
 
@@ -62,7 +60,7 @@ pub const Mesh = struct {
         if (data) |ptr| {
             const gpu_vertices: [*]Vertex = @ptrCast(@alignCast(ptr));
 
-            @memcpy(gpu_vertices, vertices[0..]);
+            @memcpy(gpu_vertices, @as([]Vertex, @ptrCast(vertices[0..])));
         }
 
         c.vkUnmapMemory(device.handle, buffer.memory);
@@ -75,8 +73,10 @@ pub const Mesh = struct {
         return vertex_buffer;
     }
 
-    pub fn createIndexBuffer(device: anytype) !vk.Buffer {
-        const indices = [_]u16{ 0, 1, 2, 3, 0, 2 };
+    pub fn createIndexBuffer(allocator: Allocator, device: anytype) !vk.Buffer {
+        const gltf_data = try gltf.parseFile(allocator, "assets/models/block.glb");
+        const indices = gltf_data.indices;
+        //const indices = [_]u16{ 0, 1, 2, 3, 0, 2 };
 
         var data: [*c]?*anyopaque = null;
 
@@ -107,9 +107,9 @@ pub const Mesh = struct {
         return index_buffer;
     }
 
-    pub fn create(device: anytype) !Mesh {
-        const vertex_buffer = try Mesh.createVertexBuffer(device);
-        const index_buffer = try Mesh.createIndexBuffer(device);
+    pub fn create(allocator: Allocator, device: anytype) !Mesh {
+        const vertex_buffer = try Mesh.createVertexBuffer(allocator, device);
+        const index_buffer = try Mesh.createIndexBuffer(allocator, device);
 
         return Mesh{
             .vertex_buffer = vertex_buffer,
