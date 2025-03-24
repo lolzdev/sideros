@@ -157,10 +157,8 @@ pub fn parseFile(allocator: Allocator, name: []const u8) !struct { vertices: [][
     const data = (try std.json.parseFromSlice(Model.JsonChunk, allocator, @constCast(all[Model.Chunk.offset .. Model.Chunk.offset + json_chunk.length]), .{ .ignore_unknown_fields = true })).value;
     const binary = Model.Binary{ .data = all[Model.Chunk.offset + json_chunk.length + 8 ..] };
 
-    const vertices = try binary.readVec3(allocator, data.bufferViews.?[data.meshes.?[0].primitives.?[0].attributes.?.POSITION.?], 24);
-    const indices = try binary.readU16(allocator, data.bufferViews.?[data.meshes.?[0].primitives.?[0].indices.?], 36);
-    std.debug.print("vertices: {any}\n", .{vertices});
-    std.debug.print("indices: {any}\n", .{indices});
+    const vertices = try binary.readVec3(allocator, data.bufferViews.?[data.meshes.?[0].primitives.?[0].attributes.?.POSITION.?], data.accessors.?[data.meshes.?[0].primitives.?[0].attributes.?.POSITION.?].count);
+    const indices = try binary.readU16(allocator, data.bufferViews.?[data.meshes.?[0].primitives.?[0].indices.?], data.accessors.?[data.meshes.?[0].primitives.?[0].indices.?].count);
 
     return .{ .vertices = vertices, .indices = indices };
 }
