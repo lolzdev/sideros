@@ -1,5 +1,6 @@
 const std = @import("std");
 const vm = @import("vm.zig");
+const IR = @import("ir.zig");
 const Allocator = std.mem.Allocator;
 
 bytes: []const u8,
@@ -38,6 +39,7 @@ pub const FunctionScope = enum {
 const Parser = @This();
 
 pub const Error = error{
+    invalid_instruction,
     invalid_magic,
     invalid_version,
     invalid_section,
@@ -78,8 +80,26 @@ pub fn readByte(self: *Parser) !u8 {
     return (try self.read(1))[0];
 }
 
-fn readU32(self: *Parser) !u32 {
+pub fn readU32(self: *Parser) !u32 {
     return std.leb.readUleb128(u32, self);
+}
+
+pub fn readI32(self: *Parser) !i32 {
+    return std.leb.readIleb128(i32, self);
+}
+
+pub fn readI64(self: *Parser) !i64 {
+    return std.leb.readIleb128(i64, self);
+}
+
+pub fn readF32(self: *Parser) !f32 {
+    const bytes = try self.read(@sizeOf(f32));
+    return std.mem.bytesAsValue(f32, bytes).*;
+}
+
+pub fn readF64(self: *Parser) !f64 {
+    const bytes = try self.read(@sizeOf(f64));
+    return std.mem.bytesAsValue(f64, bytes).*;
 }
 
 fn readName(self: *Parser) ![]const u8 {
@@ -441,6 +461,8 @@ fn parseCode(self: *Parser) !Func {
     for (locals) |l| {
         local_count += l.n;
     }
+
+    _ = try IR.parse(self);
 
     const func = Func{
         .locals = try self.allocator.alloc(Valtype, local_count),

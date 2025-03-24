@@ -21,58 +21,54 @@ fn testSystem2(pool: *ecs.Pool) void {
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     const allocator = gpa.allocator();
-    {
-        //var global_runtime = wasm.GlobalRuntime.init(allocator);
-        //defer global_runtime.deinit();
-        //try global_runtime.addFunction("debug", wasm.debug);
+    defer if (gpa.deinit() != .ok) @panic("Leaked memory");
 
-        // const file = try std.fs.cwd().openFile("assets/core.wasm", .{});
-        // const all = try file.readToEndAlloc(allocator, 1_000_000); // 1 MB
-        // var parser = mods.Parser{
-        //     .bytes = all,
-        //     .byte_idx = 0,
-        //     .allocator = allocator,
-        // };
-        // const module = parser.parseModule() catch |err| {
-        //     std.debug.print("[ERROR]: error at byte {x}(0x{x})\n", .{ parser.byte_idx, parser.bytes[parser.byte_idx] });
-        //     return err;
-        // };
-        // var runtime = try vm.Runtime.init(allocator, module, &global_runtime);
-        // defer runtime.deinit(allocator);
+    var global_runtime = mods.GlobalRuntime.init(allocator);
+    defer global_runtime.deinit();
+    try global_runtime.addFunction("debug", mods.Wasm.debug);
 
-        //var parameters = [_]usize{};
-        //try runtime.callExternal(allocator, "preinit", &parameters);
-        const w = try window.Window.create(800, 600, "sideros");
-        defer w.destroy();
+    const file = try std.fs.cwd().openFile("assets/core.wasm", .{});
+    const all = try file.readToEndAlloc(allocator, 1_000_000); // 1 MB
+    var parser = mods.Parser{
+        .bytes = all,
+        .byte_idx = 0,
+        .allocator = allocator,
+    };
+    const module = parser.parseModule() catch |err| {
+        std.debug.print("[ERROR]: error at byte {x}(0x{x})\n", .{ parser.byte_idx, parser.bytes[parser.byte_idx] });
+        return err;
+    };
+    var runtime = try mods.Runtime.init(allocator, module, &global_runtime);
+    defer runtime.deinit(allocator);
 
-        //var pool = try ecs.Pool.init(allocator);
-        //defer pool.deinit(allocator);
+    var parameters = [_]usize{};
+    try runtime.callExternal(allocator, "preinit", &parameters);
+    const w = try window.Window.create(800, 600, "sideros");
+    defer w.destroy();
 
-        ////try pool.addSystemGroup(&[_]entities.System{
-        ////    testSystem,
-        ////});
-        //try pool.addSystemGroup(&[_]ecs.System{
-        //    testSystem2,
-        //});
+    // var pool = try ecs.Pool.init(allocator);
+    // defer pool.deinit(allocator);
 
-        //for (0..1000) |_| {
-        //    const entity = try pool.createEntity();
-        //    try pool.addComponent(entity, ecs.components.Position{ .x = 1.0, .y = 0.5, .z = 3.0 });
-        //    try pool.addComponent(entity, ecs.components.Speed{ .speed = 5.0 });
-        //}
+    //try pool.addSystemGroup(&[_]entities.System{
+    //    testSystem,
+    //});
+    // try pool.addSystemGroup(&[_]ecs.System{
+    // testSystem2,
+    // });
 
-        // TODO(luccie-cmd): Renderer.create shouldn't return an error
-        var r = try Renderer.create(allocator, w);
-        defer r.destroy();
+    // for (0..1000) |_| {
+    //     const entity = try pool.createEntity();
+    //     try pool.addComponent(entity, ecs.components.Position{ .x = 1.0, .y = 0.5, .z = 3.0 });
+    //     try pool.addComponent(entity, ecs.components.Speed{ .speed = 5.0 });
+    // }
 
-        while (!w.shouldClose()) {
-            c.glfwPollEvents();
-            try r.tick();
-            //pool.tick();
-        }
-    }
+    // TODO(luccie-cmd): Renderer.create shouldn't return an error
+    // var r = try Renderer.create(allocator, w);
+    // defer r.destroy();
 
-    if (gpa.detectLeaks()) {
-        return error.leaked_memory;
-    }
+    // while (!w.shouldClose()) {
+    //     c.glfwPollEvents();
+    //     try r.tick();
+    //     pool.tick();
+    // }
 }

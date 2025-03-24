@@ -3,6 +3,8 @@ const Parser = @import("Parser.zig");
 
 const Allocator = std.mem.Allocator;
 
+const IR = @This();
+
 const VectorIndex = packed struct {
     opcode: VectorOpcode,
     laneidx: u8,
@@ -46,7 +48,7 @@ select_valtypes: []Parser.Valtype,
 
 /// Opcodes.
 /// This is a mix of wasm opcodes mixed with a few of our own.
-/// Mainly for `0xFC` opcodes we use `0xD3` to `0xF5`.
+/// Mainly for `0xFC` opcodes we use `0xD3` to `0xE4`.
 pub const Opcode = enum(u8) {
     // CONTROL INSTRUCTIONS
     // The rest of instructions should be implemented in terms of these ones
@@ -97,17 +99,17 @@ pub const Opcode = enum(u8) {
     /// Index: `u32`. Meaning: index into table index
     tableset = 0x26,
     /// Index: `DIndex`. Meaning: TODO
-    tableinit = 0xD3,
+    tableinit = 0xDF,
     /// Index: `u32`. Meaning: TODO
-    elemdrop = 0xD4,
+    elemdrop = 0xE0,
     /// Index: `DIndex`. Meaning: `DIndex.x` is destination `DIndex.y` is source
-    tablecopy = 0xD5,
+    tablecopy = 0xE1,
     /// Index: `u32`. Meaning: tableidx
-    tablegrow = 0xD6,
+    tablegrow = 0xE2,
     /// Index: `u32`. Meaning: tableidx
-    tablesize = 0xD7,
+    tablesize = 0xE3,
     /// Index: `u32`. Meaning: tableidx
-    tablefill = 0xD8,
+    tablefill = 0xE4,
 
     // MEMORY INSTRUCTIONS
     /// Index: `Memarg`. Meaning: memarg
@@ -159,11 +161,11 @@ pub const Opcode = enum(u8) {
     memorysize = 0x3F,
     memorygrow = 0x40,
     /// Index: `u32`. Meaning: dataidx
-    memoryinit = 0xD9,
+    memoryinit = 0xDB,
     /// Index: `u32`. Meaning: dataidx
-    datadrop = 0xDA,
-    memorycopy = 0xDB,
-    memoryfill = 0xDC,
+    datadrop = 0xDC,
+    memorycopy = 0xDD,
+    memoryfill = 0xDE,
 
     // NUMERIC INSTRUCTION
     /// Index: `i32`. Meaning: constant
@@ -313,14 +315,14 @@ pub const Opcode = enum(u8) {
     i64_extend16_s = 0xC3,
     i64_extend32_s = 0xC4,
 
-    i32_trunc_sat_f32_s = 0xDD,
-    i32_trunc_sat_f32_u = 0xDF,
-    i32_trunc_sat_f64_s = 0xF0,
-    i32_trunc_sat_f64_u = 0xF1,
-    i64_trunc_sat_f32_s = 0xF2,
-    i64_trunc_sat_f32_u = 0xF3,
-    i64_trunc_sat_f64_s = 0xF4,
-    i64_trunc_sat_f64_u = 0xF5,
+    i32_trunc_sat_f32_s = 0xD3,
+    i32_trunc_sat_f32_u = 0xD4,
+    i32_trunc_sat_f64_s = 0xD5,
+    i32_trunc_sat_f64_u = 0xD6,
+    i64_trunc_sat_f32_s = 0xD7,
+    i64_trunc_sat_f32_u = 0xD8,
+    i64_trunc_sat_f64_s = 0xD9,
+    i64_trunc_sat_f64_u = 0xDA,
 
     // VECTOR INSTRUCTIONS
     /// Index: `VectorIndex`. Meaning: See `VectorOpcode`
@@ -584,3 +586,110 @@ const VectorOpcode = enum(u8) {
     f32x4_demote_f64x2_zero = 94,
     f64x2_promote_low_f32x4 = 95,
 };
+
+const IRParserState = struct {
+    parser: *Parser,
+    allocator: Allocator,
+
+    opcodes: std.ArrayListUnmanaged(Opcode),
+    indices: std.ArrayListUnmanaged(Index),
+
+    fn parseExpression(self: *IRParserState) !void {
+        const b = try self.parser.readByte();
+        try switch (b) {
+            0x00...0x01 => {}, // TODO
+            0x02...0x04 => {}, // TODO
+            0x0C...0x11 => {}, // TODO
+            0xD0...0xD2 => {}, // TODO
+            0x1A...0x1C => {}, // TODO
+            0x20...0x24 => self.push(@enumFromInt(b), .{ .u32 = try self.parser.readU32() }),
+            0x25...0x26 => self.push(@enumFromInt(b), .{ .u32 = try self.parser.readU32() }),
+            0x28...0x3E => self.push(@enumFromInt(b), .{ .memarg = try self.parseMemarg() }),
+            0x3F...0x40 => self.parseMemsizeorgrow(b),
+            0x41...0x44 => self.parseConst(b),
+            0x45...0xC4 => self.push(@enumFromInt(b), .{ .u64 = 0 }),
+            0xFD => self.parseVector(),
+            0xFC => self.parseMisc(),
+            else => {
+                std.log.err("Invalid instruction {x} at position {d}\n", .{ b, self.parser.byte_idx });
+                return Parser.Error.invalid_instruction;
+            },
+        };
+    }
+
+    fn push(self: *IRParserState, opcode: Opcode, index: Index) !void {
+        try self.opcodes.append(self.allocator, opcode);
+        try self.indices.append(self.allocator, index);
+    }
+
+    fn parseMemarg(self: *IRParserState) !Memarg {
+        return .{
+            // TODO: assert this intCast does not fail
+            .alignment = @intCast(try self.parser.readU32()),
+            .offset = try self.parser.readU32(),
+        };
+    }
+
+    fn parseMemsizeorgrow(self: *IRParserState, b: u8) !void {
+        if (try self.parser.readByte() != 0x00) return Parser.Error.invalid_instruction;
+        try self.push(@enumFromInt(b), .{ .u64 = 0 });
+    }
+
+    fn parseConst(self: *IRParserState, b: u8) !void {
+        try switch (b) {
+            0x41 => self.push(.i32_const, .{ .i32 = try self.parser.readI32() }),
+            0x42 => self.push(.i64_const, .{ .i64 = try self.parser.readI64() }),
+            0x43 => self.push(.f32_const, .{ .f32 = try self.parser.readF32() }),
+            0x44 => self.push(.f64_const, .{ .f64 = try self.parser.readF64() }),
+            else => unreachable,
+        };
+    }
+
+    fn parseMisc(self: *IRParserState) !void {
+        const n = try self.parser.readU32();
+        try switch (n) {
+            0...7 => self.push(@enumFromInt(0xD3 + @as(u8, @intCast(n))), .{ .u64 = 0 }),
+            8...11 => {}, // TODO
+            12...17 => {}, // TODO
+            else => {
+                std.log.err("Invalid misc instruction {d} at position {d}\n", .{ n, self.parser.byte_idx });
+                return Parser.Error.invalid_instruction;
+            },
+        };
+    }
+
+    fn parseVector(self: *IRParserState) !void {
+        const n = try self.parser.readU32();
+        try switch (n) {
+            0...10, 92...93, 11 => self.push(.vecinst, .{ .vector = .{ .opcode = @enumFromInt(n), .memarg = try self.parseMemarg(), .laneidx = 0 } }),
+            84...91 => self.push(.vecinst, .{ .vector = .{ .opcode = @enumFromInt(n), .memarg = try self.parseMemarg(), .laneidx = try self.parser.readByte() } }),
+            12 => {},
+            13 => {},
+            21...34 => self.push(.vecinst, .{ .vector = .{ .opcode = @enumFromInt(n), .memarg = .{ .alignment = 0, .offset = 0 }, .laneidx = try self.parser.readByte() } }),
+            // Yes, there are this random gaps in wasm vector instructions don't ask me how I know...
+            14...20, 35...83, 94...153, 155...161, 163...164, 167...174, 177, 181...186, 188...193, 195...196, 199...206, 209, 213...225, 227...237, 239...255 => {
+                try self.push(.vecinst, .{ .vector = .{ .opcode = @enumFromInt(n), .memarg = .{ .alignment = 0, .offset = 0 }, .laneidx = 0 } });
+            },
+            else => {
+                std.log.err("Invalid vector instruction {d} at position {d}\n", .{ n, self.parser.byte_idx });
+                return Parser.Error.invalid_instruction;
+            },
+        };
+    }
+};
+
+pub fn parse(parser: *Parser) !IR {
+    var state = IRParserState{
+        .opcodes = .{},
+        .indices = .{},
+        .parser = parser,
+        .allocator = parser.allocator,
+    };
+    std.debug.print("Parsing\n", .{});
+    try state.parseExpression();
+    return .{
+        .opcodes = try state.opcodes.toOwnedSlice(state.allocator),
+        .indices = try state.indices.toOwnedSlice(state.allocator),
+        .select_valtypes = &.{},
+    };
+}
