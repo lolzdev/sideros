@@ -140,7 +140,7 @@ fn parseVector(self: *Parser, parse_fn: anytype) ![]VectorFnResult(parse_fn) {
 fn parseNumtype(self: *Parser) !std.wasm.Valtype {
     return switch (try self.readByte()) {
         0x7F => .i32,
-        0x7E => .i32,
+        0x7E => .i64,
         0x7D => .f32,
         0x7C => .f64,
         else => Error.invalid_numtype,
@@ -462,7 +462,7 @@ fn parseCode(self: *Parser) !Func {
         local_count += l.n;
     }
 
-    _ = try IR.parse(self);
+    // _ = try IR.parse(self);
 
     const func = Func{
         .locals = try self.allocator.alloc(Valtype, local_count),
