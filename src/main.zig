@@ -41,8 +41,11 @@ pub fn main() !void {
     var runtime = try mods.Runtime.init(allocator, module, &global_runtime);
     defer runtime.deinit(allocator);
 
-    var parameters = [_]usize{};
+    var parameters = [_]usize{17};
     try runtime.callExternal(allocator, "preinit", &parameters);
+    const result = runtime.stack.pop().?;
+    std.debug.print("Result of preinit: {any}\n", .{result});
+
     const w = try window.Window.create(800, 600, "sideros");
     defer w.destroy();
 
@@ -62,7 +65,6 @@ pub fn main() !void {
     //     try pool.addComponent(entity, ecs.components.Speed{ .speed = 5.0 });
     // }
 
-    // TODO(luccie-cmd): Renderer.create shouldn't return an error
     // var r = try Renderer.create(allocator, w);
     // defer r.destroy();
 
