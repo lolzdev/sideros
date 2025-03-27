@@ -46,6 +46,16 @@ indices: []Index,
 // TODO: this could be a byte array and v128.const and i8x16.shuffle could live here too
 select_valtypes: []Parser.Valtype,
 
+pub fn print(self: IR, writer: anytype) !void {
+    for (self.opcodes, 0..) |op, i| {
+        try writer.print("{x:3} {s}", .{ i, @tagName(op) });
+        if (op == .br or op == .br_if) {
+            try writer.print(" {x:3}", .{self.indices[i].u32});
+        }
+        _ = try writer.write("\n");
+    }
+}
+
 /// Opcodes.
 /// This is a mix of wasm opcodes mixed with a few of our own.
 /// Mainly for `0xFC` opcodes we use `0xD3` to `0xE4`.
@@ -591,17 +601,39 @@ const IRParserState = struct {
     parser: *Parser,
     allocator: Allocator,
 
+    branches: std.AutoHashMapUnmanaged(u32, u32),
+
     opcodes: std.ArrayListUnmanaged(Opcode),
     indices: std.ArrayListUnmanaged(Index),
 
-    fn parseExpression(self: *IRParserState) !void {
+    fn parseFunction(self: *IRParserState) !void {
+        while (true) {
+            const op = self.parser.peek() orelse return Parser.Error.unterminated_wasm;
+            if (op == 0x0B) {
+                _ = try self.parser.readByte();
+                break;
+            } else {
+                try self.parseExpression();
+            }
+        }
+    }
+
+    fn parseExpression(self: *IRParserState) Parser.Error!void {
         const b = try self.parser.readByte();
         try switch (b) {
-            0x00...0x01 => {}, // TODO
-            0x02...0x04 => {}, // TODO
-            0x0C...0x11 => {}, // TODO
-            0xD0...0xD2 => {}, // TODO
-            0x1A...0x1C => {}, // TODO
+            0x00 => {}, // TODO
+            0x01 => {},
+            0x02...0x03 => self.parseBlock(b),
+            0x04 => self.parseIf(),
+            0x0C...0x0D => self.parseBranch(b),
+            0x0E => @panic("UNIMPLEMENTED"),
+            0x0F => self.push(@enumFromInt(b), .{ .u64 = 0 }),
+            0x10 => self.push(@enumFromInt(b), .{ .u32 = try self.parser.readU32() }),
+            0x11 => @panic("UNIMPLEMENTED"),
+            0xD0 => self.push(@enumFromInt(b), .{ .reftype = try self.parser.parseReftype() }),
+            0xD1 => self.push(@enumFromInt(b), .{ .u64 = 0 }),
+            0xD2 => self.push(@enumFromInt(b), .{ .u32 = try self.parser.readU32() }),
+            0x1A...0x1C => @panic("UNIMPLEMENTED"),
             0x20...0x24 => self.push(@enumFromInt(b), .{ .u32 = try self.parser.readU32() }),
             0x25...0x26 => self.push(@enumFromInt(b), .{ .u32 = try self.parser.readU32() }),
             0x28...0x3E => self.push(@enumFromInt(b), .{ .memarg = try self.parseMemarg() }),
@@ -649,13 +681,108 @@ const IRParserState = struct {
         const n = try self.parser.readU32();
         try switch (n) {
             0...7 => self.push(@enumFromInt(0xD3 + @as(u8, @intCast(n))), .{ .u64 = 0 }),
-            8...11 => {}, // TODO
-            12...17 => {}, // TODO
+            8...11 => @panic("UNIMPLEMENTED"),
+            12...17 => @panic("UNIMPLEMENTED"),
             else => {
                 std.log.err("Invalid misc instruction {d} at position {d}\n", .{ n, self.parser.byte_idx });
                 return Parser.Error.invalid_instruction;
             },
         };
+    }
+
+    fn parseBlockType(self: *IRParserState) !void {
+        const b = self.parser.peek() orelse return Parser.Error.unterminated_wasm;
+        switch (b) {
+            0x40 => _ = try self.parser.readByte(),
+            0x6F...0x70, 0x7B...0x7F => _ = try self.parser.readByte(),
+            else => _ = try self.parser.readI33(),
+        }
+    }
+
+    fn parseBlock(self: *IRParserState, b: u8) !void {
+        // TODO: Should we do something with this?
+        _ = try self.parseBlockType();
+        const start: u32 = @intCast(self.opcodes.items.len);
+        while (true) {
+            const op = self.parser.peek() orelse return Parser.Error.unterminated_wasm;
+            if (op == 0x0B) {
+                _ = try self.parser.readByte();
+                break;
+            } else {
+                try self.parseExpression();
+            }
+        }
+        const end: u32 = @intCast(self.opcodes.items.len);
+        const jump_addr: u32 = switch (b) {
+            0x02 => end,
+            0x03 => start,
+            else => unreachable,
+        };
+        try self.fix_branches_for_block(start, end, jump_addr);
+    }
+
+    fn parseIf(self: *IRParserState) !void {
+        // TODO: Should we do something with this?
+        _ = try self.parseBlockType();
+
+        try self.push(.br_if, .{ .u32 = @intCast(self.opcodes.items.len + 2) });
+        const start: u32 = @intCast(self.opcodes.items.len);
+        try self.push(.br, .{ .u32 = 0 });
+
+        var else_addr: u32 = 0;
+        while (true) {
+            const op = self.parser.peek() orelse return Parser.Error.unterminated_wasm;
+
+            if (op == 0x05) {
+                if (else_addr != 0) return Parser.Error.double_else;
+                _ = try self.parser.readByte();
+                else_addr = @intCast(self.opcodes.items.len);
+                try self.push(.br, .{ .u32 = 0 });
+            } else if (op == 0x0B) {
+                _ = try self.parser.readByte();
+                break;
+            } else {
+                try self.parseExpression();
+            }
+        }
+        const end: u32 = @intCast(self.opcodes.items.len);
+
+        if (else_addr > 0) {
+            self.indices.items[start].u32 = else_addr + 1;
+            self.indices.items[else_addr].u32 = end;
+        } else {
+            self.indices.items[start].u32 = end;
+        }
+
+        try self.fix_branches_for_block(start, end, end);
+    }
+
+    fn fix_branches_for_block(self: *IRParserState, start: u32, end: u32, jump_addr: u32) !void {
+        var todel: std.ArrayListUnmanaged(u32) = .{};
+        defer todel.deinit(self.allocator);
+
+        var it = self.branches.iterator();
+        while (it.next()) |branch| {
+            if (start < branch.key_ptr.* and branch.key_ptr.* < end) {
+                if (branch.value_ptr.* == 0) {
+                    self.indices.items[branch.key_ptr.*].u32 = jump_addr;
+                    try todel.append(self.allocator, branch.key_ptr.*);
+                } else {
+                    branch.value_ptr.* -= 1;
+                }
+            }
+        }
+
+        for (todel.items) |d| {
+            // TODO: Do we need to assert this is true?
+            _ = self.branches.remove(d);
+        }
+    }
+
+    fn parseBranch(self: *IRParserState, b: u8) !void {
+        const idx = try self.parser.readU32();
+        try self.branches.put(self.allocator, @intCast(self.opcodes.items.len), idx);
+        try self.push(@enumFromInt(b), .{ .u64 = 0 });
     }
 
     fn parseVector(self: *IRParserState) !void {
@@ -682,11 +809,12 @@ pub fn parse(parser: *Parser) !IR {
     var state = IRParserState{
         .opcodes = .{},
         .indices = .{},
+        .branches = .{},
         .parser = parser,
         .allocator = parser.allocator,
     };
-    std.debug.print("Parsing\n", .{});
-    try state.parseExpression();
+    try state.parseFunction();
+    if (state.branches.count() != 0) return Parser.Error.unresolved_branch;
     return .{
         .opcodes = try state.opcodes.toOwnedSlice(state.allocator),
         .indices = try state.indices.toOwnedSlice(state.allocator),

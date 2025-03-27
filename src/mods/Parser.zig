@@ -39,6 +39,8 @@ pub const FunctionScope = enum {
 const Parser = @This();
 
 pub const Error = error{
+    OutOfMemory,
+    Overflow,
     invalid_instruction,
     invalid_magic,
     invalid_version,
@@ -53,6 +55,8 @@ pub const Error = error{
     invalid_globaltype,
     invalid_importdesc,
     invalid_exportdesc,
+    double_else,
+    unresolved_branch,
     unterminated_wasm,
 };
 
@@ -61,8 +65,8 @@ fn warn(self: Parser, s: []const u8) void {
     std.debug.print("[WARN]: Parsing of {s} unimplemented at byte index {d}\n", .{ s, self.byte_idx });
 }
 
-// TODO: remove peek
-fn peek(self: Parser) ?u8 {
+// TODO: remove peek?
+pub fn peek(self: Parser) ?u8 {
     return if (self.byte_idx < self.bytes.len) self.bytes[self.byte_idx] else null;
 }
 
@@ -90,6 +94,10 @@ pub fn readI32(self: *Parser) !i32 {
 
 pub fn readI64(self: *Parser) !i64 {
     return std.leb.readIleb128(i64, self);
+}
+
+pub fn readI33(self: *Parser) !i33 {
+    return std.leb.readIleb128(i33, self);
 }
 
 pub fn readF32(self: *Parser) !f32 {
@@ -154,7 +162,7 @@ fn parseVectype(self: *Parser) !std.wasm.Valtype {
     };
 }
 
-fn parseReftype(self: *Parser) !std.wasm.RefType {
+pub fn parseReftype(self: *Parser) !std.wasm.RefType {
     return switch (try self.readByte()) {
         0x70 => .funcref,
         0x6F => .externref,
@@ -462,11 +470,13 @@ fn parseCode(self: *Parser) !Func {
         local_count += l.n;
     }
 
-    // _ = try IR.parse(self);
+    const ir = try IR.parse(self);
+    const stdout = std.io.getStdOut().writer();
+    try ir.print(stdout);
 
     const func = Func{
         .locals = try self.allocator.alloc(Valtype, local_count),
-        .code = try self.read(end_idx - self.byte_idx),
+        .code = &.{},
     };
 
     var li: usize = 0;
