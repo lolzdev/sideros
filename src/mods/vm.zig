@@ -182,23 +182,23 @@ pub const Runtime = struct {
                     frame.program_counter += 1;
                 },
                 0x03 => {
-                    try self.labels.append(frame.program_counter-1);
+                    try self.labels.append(frame.program_counter - 1);
                     frame.program_counter += 1;
                     for_loop = true;
                 },
                 0x0c => {
                     const label = leb128Decode(u32, frame.code[frame.program_counter..]);
                     var address = @as(usize, 0);
-                    for (0..(label.val+(if(label.val == 0) @as(u32, 1) else @as(u32, 0)))) |_| {
+                    for (0..(label.val + (if (label.val == 0) @as(u32, 1) else @as(u32, 0)))) |_| {
                         address = self.labels.pop().?;
                     }
                     frame.program_counter = address;
                 },
                 0x0d => {
-                    if (self.stack.pop().?.i32 != 0){
+                    if (self.stack.pop().?.i32 != 0) {
                         const label = leb128Decode(u32, frame.code[frame.program_counter..]);
                         var address = @as(usize, 0);
-                        for (0..(label.val+(if(label.val == 0) @as(u32, 1) else @as(u32, 0)))) |_| {
+                        for (0..(label.val + (if (label.val == 0) @as(u32, 1) else @as(u32, 0)))) |_| {
                             address = self.labels.pop().?;
                         }
                         frame.program_counter = address;
