@@ -162,7 +162,7 @@ pub const Runtime = struct {
         loop: while (true) {
             const byte: u8 = frame.code[frame.program_counter];
             frame.program_counter += 1;
-            std.debug.print("b: {x}\n", .{byte});
+            // std.debug.print("b: 0x{x} pc: 0x{x}\n", .{ byte, frame.program_counter-1 });
             switch (byte) {
                 0x02 => {
                     var depth: usize = 1;
@@ -170,8 +170,9 @@ pub const Runtime = struct {
                     while (depth > 0) {
                         const opcode = frame.code[pc];
                         const operand = frame.code[pc + 1];
-                        if (opcode == 0x02 and operand == 0x40) {
+                        if ((opcode == 0x02 and operand == 0x40) or (opcode == 0x03 and operand == 0x40) or (opcode == 0x04 and operand == 0x40)) {
                             depth += 1;
+                            pc += 1;
                         } else if (opcode == 0x0B) {
                             depth -= 1;
                         }
@@ -181,21 +182,28 @@ pub const Runtime = struct {
                     frame.program_counter += 1;
                 },
                 0x03 => {
-                    try self.labels.append(frame.program_counter);
+                    try self.labels.append(frame.program_counter - 1);
                     frame.program_counter += 1;
-                    //const a = frame.code[frame.program_counter];
                     for_loop = true;
                 },
-                0x0d => {
+                0x0c => {
                     const label = leb128Decode(u32, frame.code[frame.program_counter..]);
-                    frame.program_counter += label.len;
                     var address = @as(usize, 0);
-                    for (0..(label.val)) |_| {
+                    for (0..(label.val + (if (label.val == 0) @as(u32, 1) else @as(u32, 0)))) |_| {
                         address = self.labels.pop().?;
                     }
-
+                    frame.program_counter = address;
+                },
+                0x0d => {
                     if (self.stack.pop().?.i32 != 0) {
+                        const label = leb128Decode(u32, frame.code[frame.program_counter..]);
+                        var address = @as(usize, 0);
+                        for (0..(label.val + (if (label.val == 0) @as(u32, 1) else @as(u32, 0)))) |_| {
+                            address = self.labels.pop().?;
+                        }
                         frame.program_counter = address;
+                    } else {
+                        frame.program_counter += 1;
                     }
                 },
 
@@ -215,8 +223,9 @@ pub const Runtime = struct {
                     const integer = leb128Decode(u32, frame.code[frame.program_counter..]);
 
                     frame.program_counter += integer.len;
-                    frame.locals[integer.val] = self.stack.pop().?;
-                    try self.stack.append(Value{ .i32 = @intCast(integer.val) });
+                    const a = self.stack.pop().?;
+                    frame.locals[integer.val] = a;
+                    try self.stack.append(a);
                 },
                 0x28 => {
                     const address = leb128Decode(u32, frame.code[frame.program_counter..]);
@@ -284,33 +293,45 @@ pub const Runtime = struct {
                 0x47 => {
                     try self.stack.append(Value{ .i32 = @intCast(@as(u1, @bitCast(self.stack.pop().?.i32 != self.stack.pop().?.i32))) });
                 },
-                0x48 => {
-                    const a = self.stack.pop().?.i32;
-                    const b = self.stack.pop().?.i32;
-                    try self.stack.append(Value{ .i32 = @intCast(@as(u1, @bitCast(b < a))) });
-                },
+                // 0x48 => {
+                //     const a = self.stack.pop().?.i32;
+                //     const b = self.stack.pop().?.i32;
+                //     try self.stack.append(Value{ .i32 = @intCast(@as(u1, @bitCast(b < a))) });
+                // },
                 0x49 => {
                     const a = self.stack.pop().?.i32;
                     const b = self.stack.pop().?.i32;
                     try self.stack.append(Value{ .i32 = @intCast(@as(u1, @bitCast(b < a))) });
                 },
-                0x4a => {
-                    try self.stack.append(Value{ .i32 = @intCast(@as(u1, @bitCast(self.stack.pop().?.i32 > self.stack.pop().?.i32))) });
-                },
-                0x4b => {
-                    try self.stack.append(Value{ .i32 = @intCast(@as(u1, @bitCast(@as(u32, @bitCast(self.stack.pop().?.i32)) > @as(u32, @bitCast(self.stack.pop().?.i32))))) });
-                },
-                0x4c => {
-                    try self.stack.append(Value{ .i32 = @intCast(@as(u1, @bitCast(self.stack.pop().?.i32 <= self.stack.pop().?.i32))) });
-                },
-                0x4d => {
-                    try self.stack.append(Value{ .i32 = @intCast(@as(u1, @bitCast(@as(u32, @bitCast(self.stack.pop().?.i32)) <= @as(u32, @bitCast(self.stack.pop().?.i32))))) });
-                },
-                0x4e => {
-                    try self.stack.append(Value{ .i32 = @intCast(@as(u1, @bitCast(self.stack.pop().?.i32 >= self.stack.pop().?.i32))) });
-                },
+                // 0x4b => {
+                //     const b = self.stack.pop().?.i32;
+                //     const a = self.stack.pop().?.i32;
+                //     try self.stack.append(Value{ .i32 = @intCast(@as(u1, @bitCast(a > b))) });
+                // },
+                // 0x4d => {
+                //     const b = self.stack.pop().?.i32;
+                //     const a = self.stack.pop().?.i32;
+                //     try self.stack.append(Value{ .i32 = @intCast(@as(u1, @bitCast(b <= a))) });
+                // },
+                // 0x4a => {
+                //     try self.stack.append(Value{ .i32 = @intCast(@as(u1, @bitCast(self.stack.pop().?.i32 > self.stack.pop().?.i32))) });
+                // },
+                // 0x4b => {
+                //     try self.stack.append(Value{ .i32 = @intCast(@as(u1, @bitCast(@as(u32, @bitCast(self.stack.pop().?.i32)) > @as(u32, @bitCast(self.stack.pop().?.i32))))) });
+                // },
+                // 0x4c => {
+                //     try self.stack.append(Value{ .i32 = @intCast(@as(u1, @bitCast(self.stack.pop().?.i32 <= self.stack.pop().?.i32))) });
+                // },
+                // 0x4d => {
+                //     try self.stack.append(Value{ .i32 = @intCast(@as(u1, @bitCast(@as(u32, @bitCast(self.stack.pop().?.i32)) <= @as(u32, @bitCast(self.stack.pop().?.i32))))) });
+                // },
+                // 0x4e => {
+                //     try self.stack.append(Value{ .i32 = @intCast(@as(u1, @bitCast(self.stack.pop().?.i32 >= self.stack.pop().?.i32))) });
+                // },
                 0x4f => {
-                    try self.stack.append(Value{ .i32 = @intCast(@as(u1, @bitCast(@as(u32, @bitCast(self.stack.pop().?.i32)) >= @as(u32, @bitCast(self.stack.pop().?.i32))))) });
+                    const a = self.stack.pop().?.i32;
+                    const b = self.stack.pop().?.i32;
+                    try self.stack.append(Value{ .i32 = @intCast(@as(u1, @bitCast(a >= b))) });
                 },
 
                 0x50 => {
@@ -322,247 +343,254 @@ pub const Runtime = struct {
                 0x52 => {
                     try self.stack.append(Value{ .i64 = @intCast(@as(u1, @bitCast(self.stack.pop().?.i64 != self.stack.pop().?.i64))) });
                 },
-                0x53 => {
-                    try self.stack.append(Value{ .i64 = @intCast(@as(u1, @bitCast(self.stack.pop().?.i64 < self.stack.pop().?.i64))) });
-                },
-                0x54 => {
-                    try self.stack.append(Value{ .i64 = @intCast(@as(u1, @bitCast(@as(u64, @bitCast(self.stack.pop().?.i64)) < @as(u64, @bitCast(self.stack.pop().?.i64))))) });
-                },
-                0x55 => {
-                    try self.stack.append(Value{ .i64 = @intCast(@as(u1, @bitCast(self.stack.pop().?.i64 > self.stack.pop().?.i64))) });
-                },
-                0x56 => {
-                    try self.stack.append(Value{ .i64 = @intCast(@as(u1, @bitCast(@as(u64, @bitCast(self.stack.pop().?.i64)) > @as(u64, @bitCast(self.stack.pop().?.i64))))) });
-                },
-                0x57 => {
-                    try self.stack.append(Value{ .i64 = @intCast(@as(u1, @bitCast(self.stack.pop().?.i64 <= self.stack.pop().?.i64))) });
-                },
-                0x58 => {
-                    try self.stack.append(Value{ .i64 = @intCast(@as(u1, @bitCast(@as(u64, @bitCast(self.stack.pop().?.i64)) <= @as(u64, @bitCast(self.stack.pop().?.i64))))) });
-                },
-                0x59 => {
-                    try self.stack.append(Value{ .i32 = @intCast(@as(u1, @bitCast(self.stack.pop().?.i64 >= self.stack.pop().?.i64))) });
-                },
-                0x5a => {
-                    try self.stack.append(Value{ .i32 = @intCast(@as(u1, @bitCast(@as(u64, @bitCast(self.stack.pop().?.i64)) >= @as(u64, @bitCast(self.stack.pop().?.i64))))) });
-                },
+                // 0x53 => {
+                //     try self.stack.append(Value{ .i64 = @intCast(@as(u1, @bitCast(self.stack.pop().?.i64 < self.stack.pop().?.i64))) });
+                // },
+                // 0x54 => {
+                //     try self.stack.append(Value{ .i64 = @intCast(@as(u1, @bitCast(@as(u64, @bitCast(self.stack.pop().?.i64)) < @as(u64, @bitCast(self.stack.pop().?.i64))))) });
+                // },
+                // 0x55 => {
+                //     try self.stack.append(Value{ .i64 = @intCast(@as(u1, @bitCast(self.stack.pop().?.i64 > self.stack.pop().?.i64))) });
+                // },
+                // 0x56 => {
+                //     try self.stack.append(Value{ .i64 = @intCast(@as(u1, @bitCast(@as(u64, @bitCast(self.stack.pop().?.i64)) > @as(u64, @bitCast(self.stack.pop().?.i64))))) });
+                // },
+                // 0x57 => {
+                //     try self.stack.append(Value{ .i64 = @intCast(@as(u1, @bitCast(self.stack.pop().?.i64 <= self.stack.pop().?.i64))) });
+                // },
+                // 0x58 => {
+                //     try self.stack.append(Value{ .i64 = @intCast(@as(u1, @bitCast(@as(u64, @bitCast(self.stack.pop().?.i64)) <= @as(u64, @bitCast(self.stack.pop().?.i64))))) });
+                // },
+                // 0x59 => {
+                //     try self.stack.append(Value{ .i32 = @intCast(@as(u1, @bitCast(self.stack.pop().?.i64 >= self.stack.pop().?.i64))) });
+                // },
+                // 0x5a => {
+                //     try self.stack.append(Value{ .i32 = @intCast(@as(u1, @bitCast(@as(u64, @bitCast(self.stack.pop().?.i64)) >= @as(u64, @bitCast(self.stack.pop().?.i64))))) });
+                // },
 
-                0x67 => {
-                    var i = @as(i32, 0);
-                    const number = self.stack.pop().?.i32;
-                    for (0..@sizeOf(i32)) |b| {
-                        if (number & (@as(i32, 0x1) << @intCast((@sizeOf(i32) - b - 1))) == 1) {
-                            break;
-                        }
-                        i += 1;
-                    }
-                    try self.stack.append(Value{ .i32 = i });
-                },
-                0x68 => {
-                    var i = @as(i32, 0);
-                    const number = self.stack.pop().?.i32;
-                    for (0..@sizeOf(i32)) |b| {
-                        if (number & (@as(i32, 0x1) << @intCast(b)) == 1) {
-                            break;
-                        }
-                        i += 1;
-                    }
-                    try self.stack.append(Value{ .i32 = i });
-                },
-                0x69 => {
-                    var i = @as(i32, 0);
-                    const number = self.stack.pop().?.i32;
-                    for (0..@sizeOf(i32)) |b| {
-                        if (number & (@as(i32, 0x1) << @intCast(b)) == 1) {
-                            i += 1;
-                        }
-                    }
-                    try self.stack.append(Value{ .i32 = i });
-                },
+                // 0x67 => {
+                //     var i = @as(i32, 0);
+                //     const number = self.stack.pop().?.i32;
+                //     for (0..@sizeOf(i32)) |b| {
+                //         if (number & (@as(i32, 0x1) << @intCast((@sizeOf(i32) - b - 1))) == 1) {
+                //             break;
+                //         }
+                //         i += 1;
+                //     }
+                //     try self.stack.append(Value{ .i32 = i });
+                // },
+                // 0x68 => {
+                //     var i = @as(i32, 0);
+                //     const number = self.stack.pop().?.i32;
+                //     for (0..@sizeOf(i32)) |b| {
+                //         if (number & (@as(i32, 0x1) << @intCast(b)) == 1) {
+                //             break;
+                //         }
+                //         i += 1;
+                //     }
+                //     try self.stack.append(Value{ .i32 = i });
+                // },
+                // 0x69 => {
+                //     var i = @as(i32, 0);
+                //     const number = self.stack.pop().?.i32;
+                //     for (0..@sizeOf(i32)) |b| {
+                //         if (number & (@as(i32, 0x1) << @intCast(b)) == 1) {
+                //             i += 1;
+                //         }
+                //     }
+                //     try self.stack.append(Value{ .i32 = i });
+                // },
                 0x6a => {
                     const a = self.stack.pop().?;
                     const b = self.stack.pop().?;
                     try self.stack.append(.{ .i32 = a.i32 + b.i32 });
                 },
-                0x6b => {
-                    const a = self.stack.pop().?;
-                    const b = self.stack.pop().?;
-                    try self.stack.append(.{ .i32 = a.i32 - b.i32 });
-                },
-                0x6c => {
-                    const a = self.stack.pop().?;
-                    const b = self.stack.pop().?;
-                    try self.stack.append(.{ .i32 = a.i32 * b.i32 });
-                },
-                0x6d => {
-                    const a = self.stack.pop().?;
-                    const b = self.stack.pop().?;
-                    try self.stack.append(.{ .i32 = @divTrunc(a.i32, b.i32) });
-                },
-                0x6e => {
-                    const a = self.stack.pop().?;
-                    const b = self.stack.pop().?;
-                    try self.stack.append(.{ .i32 = @as(i32, @bitCast(@as(u32, @bitCast(a.i32)) / @as(u32, @bitCast(b.i32)))) });
-                },
-                0x6f => {
-                    const a = self.stack.pop().?;
-                    const b = self.stack.pop().?;
-                    try self.stack.append(.{ .i32 = @rem(a.i32, b.i32) });
-                },
-                0x70 => {
-                    const a = self.stack.pop().?;
-                    const b = self.stack.pop().?;
-                    try self.stack.append(.{ .i32 = @as(i32, @bitCast(@as(u32, @bitCast(a.i32)) % @as(u32, @bitCast(b.i32)))) });
-                },
+                // 0x6b => {
+                //     const b = self.stack.pop().?;
+                //     const a = self.stack.pop().?;
+                //     try self.stack.append(.{ .i32 = a.i32 - b.i32 });
+                // },
+                // 0x6c => {
+                //     const a = self.stack.pop().?;
+                //     const b = self.stack.pop().?;
+                //     try self.stack.append(.{ .i32 = a.i32 * b.i32 });
+                // },
+                // 0x6d => {
+                //     const b = self.stack.pop().?;
+                //     const a = self.stack.pop().?;
+                //     try self.stack.append(.{ .i32 = @divTrunc(a.i32, b.i32) });
+                // },
+                // 0x6e => {
+                //     const b = self.stack.pop().?;
+                //     const a = self.stack.pop().?;
+                //     try self.stack.append(.{ .i32 = @as(i32, @bitCast(@as(u32, @bitCast(a.i32)) / @as(u32, @bitCast(b.i32)))) });
+                // },
+                // 0x6f => {
+                //     const b = self.stack.pop().?;
+                //     const a = self.stack.pop().?;
+                //     try self.stack.append(.{ .i32 = @rem(a.i32, b.i32) });
+                // },
+                // 0x70 => {
+                //     const b = self.stack.pop().?;
+                //     const a = self.stack.pop().?;
+                //     try self.stack.append(.{ .i32 = @as(i32, @bitCast(@as(u32, @bitCast(a.i32)) % @as(u32, @bitCast(b.i32)))) });
+                // },
                 0x71 => {
                     const a = self.stack.pop().?;
                     const b = self.stack.pop().?;
                     try self.stack.append(.{ .i32 = a.i32 & b.i32 });
                 },
-                0x72 => {
-                    const a = self.stack.pop().?;
-                    const b = self.stack.pop().?;
-                    try self.stack.append(.{ .i32 = a.i32 | b.i32 });
-                },
-                0x73 => {
-                    const a = self.stack.pop().?;
-                    const b = self.stack.pop().?;
-                    try self.stack.append(.{ .i32 = a.i32 ^ b.i32 });
-                },
-                0x74 => {
-                    const a = self.stack.pop().?;
-                    const b = self.stack.pop().?;
-                    try self.stack.append(.{ .i32 = a.i32 << @intCast(b.i32) });
-                },
-                0x75 => {
-                    const a = self.stack.pop().?;
-                    const b = self.stack.pop().?;
-                    try self.stack.append(.{ .i32 = a.i32 >> @intCast(b.i32) });
-                },
-                0x76 => {
-                    const a = self.stack.pop().?;
-                    const b = self.stack.pop().?;
-                    try self.stack.append(.{ .i32 = @as(i32, @bitCast(@as(u32, @bitCast(a.i32)) >> @intCast(@as(u32, @bitCast(b.i32))))) });
-                },
-                0x77 => {
-                    const a = self.stack.pop().?;
-                    const b = self.stack.pop().?;
-                    try self.stack.append(.{ .i32 = (a.i32 << @intCast(@as(u32, @bitCast(b.i32)))) | (a.i32 >> @intCast((@sizeOf(u32) * 8 - b.i32))) });
-                },
-                0x78 => {
-                    const a = self.stack.pop().?;
-                    const b = self.stack.pop().?;
-                    try self.stack.append(.{ .i32 = (a.i32 >> @intCast(@as(u32, @bitCast(b.i32)))) | (a.i32 << @intCast((@sizeOf(u32) * 8 - b.i32))) });
-                },
+                // 0x72 => {
+                //     const a = self.stack.pop().?;
+                //     const b = self.stack.pop().?;
+                //     try self.stack.append(.{ .i32 = a.i32 | b.i32 });
+                // },
+                // 0x73 => {
+                //     const a = self.stack.pop().?;
+                //     const b = self.stack.pop().?;
+                //     try self.stack.append(.{ .i32 = a.i32 ^ b.i32 });
+                // },
+                // 0x74 => {
+                //     const a = self.stack.pop().?;
+                //     const b = self.stack.pop().?;
+                //     try self.stack.append(.{ .i32 = a.i32 << @intCast(b.i32) });
+                // },
+                // 0x75 => {
+                //     const a = self.stack.pop().?;
+                //     const b = self.stack.pop().?;
+                //     try self.stack.append(.{ .i32 = a.i32 >> @intCast(b.i32) });
+                // },
+                // 0x76 => {
+                //     const a = self.stack.pop().?;
+                //     const b = self.stack.pop().?;
+                //     try self.stack.append(.{ .i32 = @as(i32, @bitCast(@as(u32, @bitCast(a.i32)) >> @intCast(@as(u32, @bitCast(b.i32))))) });
+                // },
+                // 0x77 => {
+                //     const a = self.stack.pop().?;
+                //     const b = self.stack.pop().?;
+                //     try self.stack.append(.{ .i32 = (a.i32 << @intCast(@as(u32, @bitCast(b.i32)))) | (a.i32 >> @intCast((@sizeOf(u32) * 8 - b.i32))) });
+                // },
+                // 0x78 => {
+                //     const a = self.stack.pop().?;
+                //     const b = self.stack.pop().?;
+                //     try self.stack.append(.{ .i32 = (a.i32 >> @intCast(@as(u32, @bitCast(b.i32)))) | (a.i32 << @intCast((@sizeOf(u32) * 8 - b.i32))) });
+                // },
 
-                0x79 => {
-                    var i = @as(i64, 0);
-                    const number = self.stack.pop().?.i64;
-                    for (0..@sizeOf(i64)) |b| {
-                        if (number & (@as(i64, 0x1) << @intCast((@sizeOf(i64) - b - 1))) == 1) {
-                            break;
-                        }
-                        i += 1;
-                    }
-                    try self.stack.append(Value{ .i64 = i });
-                },
-                0x7a => {
-                    var i = @as(i64, 0);
-                    const number = self.stack.pop().?.i64;
-                    for (0..@sizeOf(i64)) |b| {
-                        if (number & (@as(i64, 0x1) << @intCast(b)) == 1) {
-                            break;
-                        }
-                        i += 1;
-                    }
-                    try self.stack.append(Value{ .i64 = i });
-                },
-                0x7b => {
-                    var i = @as(i64, 0);
-                    const number = self.stack.pop().?.i64;
-                    for (0..@sizeOf(i64)) |b| {
-                        if (number & (@as(i64, 0x1) << @intCast(b)) == 1) {
-                            i += 1;
-                        }
-                    }
-                    try self.stack.append(Value{ .i64 = i });
-                },
+                // 0x79 => {
+                //     var i = @as(i64, 0);
+                //     const number = self.stack.pop().?.i64;
+                //     for (0..@sizeOf(i64)) |b| {
+                //         if (number & (@as(i64, 0x1) << @intCast((@sizeOf(i64) - b - 1))) == 1) {
+                //             break;
+                //         }
+                //         i += 1;
+                //     }
+                //     try self.stack.append(Value{ .i64 = i });
+                // },
+                // 0x7a => {
+                //     var i = @as(i64, 0);
+                //     const number = self.stack.pop().?.i64;
+                //     for (0..@sizeOf(i64)) |b| {
+                //         if (number & (@as(i64, 0x1) << @intCast(b)) == 1) {
+                //             break;
+                //         }
+                //         i += 1;
+                //     }
+                //     try self.stack.append(Value{ .i64 = i });
+                // },
+                // 0x7b => {
+                //     var i = @as(i64, 0);
+                //     const number = self.stack.pop().?.i64;
+                //     for (0..@sizeOf(i64)) |b| {
+                //         if (number & (@as(i64, 0x1) << @intCast(b)) == 1) {
+                //             i += 1;
+                //         }
+                //     }
+                //     try self.stack.append(Value{ .i64 = i });
+                // },
                 0x7c => {
                     const a = self.stack.pop().?;
                     const b = self.stack.pop().?;
                     try self.stack.append(.{ .i64 = a.i64 + b.i64 });
                 },
-                0x7d => {
-                    const a = self.stack.pop().?;
-                    const b = self.stack.pop().?;
-                    try self.stack.append(.{ .i64 = a.i64 - b.i64 });
-                },
-                0x7e => {
-                    const a = self.stack.pop().?;
-                    const b = self.stack.pop().?;
-                    try self.stack.append(.{ .i64 = a.i64 * b.i64 });
-                },
-                0x7f => {
-                    const a = self.stack.pop().?;
-                    const b = self.stack.pop().?;
-                    try self.stack.append(.{ .i64 = @divTrunc(a.i64, b.i64) });
-                },
-                0x80 => {
-                    const a = self.stack.pop().?;
-                    const b = self.stack.pop().?;
-                    try self.stack.append(.{ .i64 = @as(i64, @bitCast(@as(u64, @bitCast(a.i64)) / @as(u64, @bitCast(b.i64)))) });
-                },
-                0x81 => {
-                    const a = self.stack.pop().?;
-                    const b = self.stack.pop().?;
-                    try self.stack.append(.{ .i64 = @rem(a.i64, b.i64) });
-                },
-                0x82 => {
-                    const a = self.stack.pop().?;
-                    const b = self.stack.pop().?;
-                    try self.stack.append(.{ .i64 = @as(i64, @bitCast(@as(u64, @bitCast(a.i64)) % @as(u64, @bitCast(b.i64)))) });
-                },
-                0x83 => {
-                    const a = self.stack.pop().?;
-                    const b = self.stack.pop().?;
-                    try self.stack.append(.{ .i64 = a.i64 & b.i64 });
-                },
-                0x84 => {
-                    const a = self.stack.pop().?;
-                    const b = self.stack.pop().?;
-                    try self.stack.append(.{ .i64 = a.i64 | b.i64 });
-                },
-                0x85 => {
-                    const a = self.stack.pop().?;
-                    const b = self.stack.pop().?;
-                    try self.stack.append(.{ .i64 = a.i64 ^ b.i64 });
-                },
-                0x86 => {
-                    const a = self.stack.pop().?;
-                    const b = self.stack.pop().?;
-                    try self.stack.append(.{ .i64 = a.i64 << @intCast(b.i64) });
-                },
-                0x87 => {
-                    const a = self.stack.pop().?;
-                    const b = self.stack.pop().?;
-                    try self.stack.append(.{ .i64 = a.i64 >> @intCast(b.i64) });
-                },
-                0x88 => {
-                    const a = self.stack.pop().?;
-                    const b = self.stack.pop().?;
-                    try self.stack.append(.{ .i64 = @as(i64, @bitCast(@as(u64, @bitCast(a.i64)) >> @intCast(@as(u64, @bitCast(b.i64))))) });
-                },
-                0x89 => {
-                    const a = self.stack.pop().?;
-                    const b = self.stack.pop().?;
-                    try self.stack.append(.{ .i64 = (a.i64 << @intCast(@as(u64, @bitCast(b.i64)))) | (a.i64 >> @intCast((@sizeOf(u64) * 8 - b.i64))) });
-                },
-                0x8a => {
-                    const a = self.stack.pop().?;
-                    const b = self.stack.pop().?;
-                    try self.stack.append(.{ .i64 = (a.i64 >> @intCast(@as(u64, @bitCast(b.i64)))) | (a.i64 << @intCast((@sizeOf(u64) * 8 - b.i64))) });
+                // 0x7d => {
+                //     const b = self.stack.pop().?;
+                //     const a = self.stack.pop().?;
+                //     try self.stack.append(.{ .i64 = a.i64 - b.i64 });
+                // },
+                // 0x7e => {
+                //     const a = self.stack.pop().?;
+                //     const b = self.stack.pop().?;
+                //     try self.stack.append(.{ .i64 = a.i64 * b.i64 });
+                // },
+                // 0x7f => {
+                //     const b = self.stack.pop().?;
+                //     const a = self.stack.pop().?;
+                //     try self.stack.append(.{ .i64 = @divTrunc(a.i64, b.i64) });
+                // },
+                // 0x80 => {
+                //     const b = self.stack.pop().?;
+                //     const a = self.stack.pop().?;
+                //     try self.stack.append(.{ .i64 = @as(i64, @bitCast(@as(u64, @bitCast(a.i64)) / @as(u64, @bitCast(b.i64)))) });
+                // },
+                // 0x81 => {
+                //     const b = self.stack.pop().?;
+                //     const a = self.stack.pop().?;
+                //     try self.stack.append(.{ .i64 = @rem(a.i64, b.i64) });
+                // },
+                // 0x82 => {
+                //     const b = self.stack.pop().?;
+                //     const a = self.stack.pop().?;
+                //     try self.stack.append(.{ .i64 = @as(i64, @bitCast(@as(u64, @bitCast(a.i64)) % @as(u64, @bitCast(b.i64)))) });
+                // },
+                // 0x83 => {
+                //     const a = self.stack.pop().?;
+                //     const b = self.stack.pop().?;
+                //     try self.stack.append(.{ .i64 = a.i64 & b.i64 });
+                // },
+                // 0x84 => {
+                //     const a = self.stack.pop().?;
+                //     const b = self.stack.pop().?;
+                //     try self.stack.append(.{ .i64 = a.i64 | b.i64 });
+                // },
+                // 0x85 => {
+                //     const a = self.stack.pop().?;
+                //     const b = self.stack.pop().?;
+                //     try self.stack.append(.{ .i64 = a.i64 ^ b.i64 });
+                // },
+                // 0x86 => {
+                //     const a = self.stack.pop().?;
+                //     const b = self.stack.pop().?;
+                //     try self.stack.append(.{ .i64 = a.i64 << @intCast(b.i64) });
+                // },
+                // 0x87 => {
+                //     const a = self.stack.pop().?;
+                //     const b = self.stack.pop().?;
+                //     try self.stack.append(.{ .i64 = a.i64 >> @intCast(b.i64) });
+                // },
+                // 0x88 => {
+                //     const a = self.stack.pop().?;
+                //     const b = self.stack.pop().?;
+                //     try self.stack.append(.{ .i64 = @as(i64, @bitCast(@as(u64, @bitCast(a.i64)) >> @intCast(@as(u64, @bitCast(b.i64))))) });
+                // },
+                // 0x89 => {
+                //     const a = self.stack.pop().?;
+                //     const b = self.stack.pop().?;
+                //     try self.stack.append(.{ .i64 = (a.i64 << @intCast(@as(u64, @bitCast(b.i64)))) | (a.i64 >> @intCast((@sizeOf(u64) * 8 - b.i64))) });
+                // },
+                // 0x8a => {
+                //     const a = self.stack.pop().?;
+                //     const b = self.stack.pop().?;
+                //     try self.stack.append(.{ .i64 = (a.i64 >> @intCast(@as(u64, @bitCast(b.i64)))) | (a.i64 << @intCast((@sizeOf(u64) * 8 - b.i64))) });
+                // },
+
+                0xad => {
+                    try self.stack.append(.{ .i64 = self.stack.pop().?.i32 });
                 },
 
+                0x0f => {
+                    break :loop;
+                },
                 0x10 => {
                     const integer = leb128Decode(u32, frame.code[frame.program_counter..]);
                     frame.program_counter += integer.len;
@@ -570,13 +598,15 @@ pub const Runtime = struct {
                     self.call(allocator, integer.val, &[_]usize{}) catch {};
                 },
                 0xb => {
+                    _ = self.labels.pop();
                     if (for_loop) {
-                        frame.program_counter += 1;
-                    } else {
-                        break :loop;
+                        for_loop = false;
                     }
                 },
-                else => std.debug.print("instruction {} not implemented\n", .{byte}),
+                else => std.log.err("instruction {} not implemented\n", .{byte}),
+            }
+            if (frame.program_counter >= frame.code.len) {
+                break :loop;
             }
         }
     }
@@ -605,9 +635,11 @@ pub const Runtime = struct {
                     switch (function_type.parameters[i]) {
                         .val => |v| switch (v) {
                             .i32 => {
+                                std.debug.print("Local with type i32\n", .{});
                                 frame.locals[i] = .{ .i32 = @intCast(p) };
                             },
                             .i64 => {
+                                std.debug.print("Local with type i64\n", .{});
                                 frame.locals[i] = .{ .i64 = @intCast(p) };
                             },
                             else => unreachable,
@@ -620,9 +652,11 @@ pub const Runtime = struct {
                     switch (local) {
                         .val => |v| switch (v) {
                             .i32 => {
+                                std.debug.print("Local with type i32\n", .{});
                                 frame.locals[i] = .{ .i32 = 0 };
                             },
                             .i64 => {
+                                std.debug.print("Local with type i64\n", .{});
                                 frame.locals[i] = .{ .i64 = 0 };
                             },
                             else => unreachable,
