@@ -2,15 +2,21 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 const components = @import("components.zig");
 const sparse = @import("sparse.zig");
+const Renderer = @import("renderer");
 
 pub const System = *const fn (*Pool) void;
 pub const SystemGroup = []const System;
+
+pub const Resources = struct {
+    window: Renderer.Window,
+    renderer: Renderer,
+};
 
 pub const Pool = struct {
     // Components
     position: sparse.SparseSet(components.Position),
     speed: sparse.SparseSet(components.Speed),
-
+    resources: Resources,
     system_groups: std.ArrayList(SystemGroup),
     thread_pool: *std.Thread.Pool,
     wait_group: std.Thread.WaitGroup,
@@ -20,11 +26,11 @@ pub const Pool = struct {
 
     component_flags: std.AutoHashMap(usize, usize),
 
-    pub fn init(allocator: Allocator) !@This() {
+    pub fn init(allocator: Allocator, resources: Resources) !@This() {
         var pool = @This(){
             .position = sparse.SparseSet(components.Position).init(allocator),
             .speed = sparse.SparseSet(components.Speed).init(allocator),
-
+            .resources = resources,
             .system_groups = std.ArrayList(SystemGroup).init(allocator),
             .thread_pool = try allocator.create(std.Thread.Pool),
             .wait_group = .{},

@@ -1,5 +1,5 @@
 const std = @import("std");
-const mesh = @import("mesh.zig");
+const Mesh = @import("Mesh.zig");
 const Allocator = std.mem.Allocator;
 
 pub const Model = struct {
@@ -106,7 +106,7 @@ pub const Model = struct {
         scenes: ?[]Scene = null,
         nodes: ?[]Node = null,
         materials: ?[]Material = null,
-        meshes: ?[]Mesh = null,
+        meshes: ?[]Model.Mesh = null,
         accessors: ?[]Accessor = null,
         bufferViews: ?[]BufferView = null,
         buffers: ?[]Buffer = null,

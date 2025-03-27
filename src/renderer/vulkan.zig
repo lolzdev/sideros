@@ -1,8 +1,9 @@
 const std = @import("std");
-const c = @import("../c.zig");
-const window = @import("./window.zig");
-const mesh = @import("./mesh.zig");
-const math = @import("../math.zig");
+const c = @import("c.zig");
+const Window = @import("Window.zig");
+const Mesh = @import("Mesh.zig");
+const sideros = @import("sideros");
+const math = sideros.math;
 const Allocator = std.mem.Allocator;
 
 const builtin = @import("builtin");
@@ -71,7 +72,7 @@ pub const Instance = struct {
     handle: c.VkInstance,
 
     pub fn create(allocator: Allocator) !Instance {
-        const extensions = window.getExtensions();
+        const extensions = Window.getExtensions();
 
         // Querry avaliable extensions size
         var avaliableExtensionsCount: u32 = 0;
@@ -323,8 +324,8 @@ pub fn GraphicsPipeline(comptime n: usize) type {
             // TODO: shouldn't this be closer to usage?
             const shader_stage_infos: []const c.VkPipelineShaderStageCreateInfo = &.{ vertex_shader_stage_info, fragment_shader_stage_info };
 
-            const vertex_attributes: []const c.VkVertexInputAttributeDescription = &.{mesh.Vertex.attributeDescription()};
-            const vertex_bindings: []const c.VkVertexInputBindingDescription = &.{mesh.Vertex.bindingDescription()};
+            const vertex_attributes: []const c.VkVertexInputAttributeDescription = &.{Mesh.Vertex.attributeDescription()};
+            const vertex_bindings: []const c.VkVertexInputBindingDescription = &.{Mesh.Vertex.bindingDescription()};
 
             const vertex_input_info: c.VkPipelineVertexInputStateCreateInfo = .{
                 .sType = c.VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
@@ -613,7 +614,7 @@ pub fn Swapchain(comptime n: usize) type {
         }
 
         // TODO: Allow to recreate so Window can be resized
-        pub fn create(allocator: Allocator, surface: Surface, device: Device(n), physical_device: PhysicalDevice, w: window.Window, render_pass: RenderPass(n)) !Self {
+        pub fn create(allocator: Allocator, surface: Surface, device: Device(n), physical_device: PhysicalDevice, w: Window, render_pass: RenderPass(n)) !Self {
             const present_modes = try surface.presentModes(allocator, physical_device);
             defer allocator.free(present_modes);
             const capabilities = try surface.capabilities(physical_device);
@@ -765,7 +766,7 @@ pub fn Swapchain(comptime n: usize) type {
 pub const Surface = struct {
     handle: c.VkSurfaceKHR,
 
-    pub fn create(instance: Instance, w: window.Window) !Surface {
+    pub fn create(instance: Instance, w: Window) !Surface {
         var handle: c.VkSurfaceKHR = undefined;
         try mapError(c.glfwCreateWindowSurface(instance.handle, w.raw, null, &handle));
         return Surface{

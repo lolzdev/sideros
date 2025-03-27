@@ -1,8 +1,8 @@
-const c = @import("../c.zig");
+const c = @import("c.zig");
 const std = @import("std");
 const vk = @import("vulkan.zig");
-const window = @import("window.zig");
-const mesh = @import("mesh.zig");
+pub const Window = @import("Window.zig");
+pub const Mesh = @import("Mesh.zig");
 const Allocator = std.mem.Allocator;
 
 const Renderer = @This();
@@ -18,7 +18,7 @@ current_frame: u32,
 vertex_buffer: vk.Buffer,
 index_buffer: vk.Buffer,
 
-pub fn create(allocator: Allocator, w: window.Window) !Renderer {
+pub fn create(allocator: Allocator, w: Window) !Renderer {
     const instance = try vk.Instance.create(allocator);
 
     const surface = try vk.Surface.create(instance, w);
@@ -44,7 +44,7 @@ pub fn create(allocator: Allocator, w: window.Window) !Renderer {
     //    renderer.render(some_other_thing);
     //    ...
     //    renderer.submit()
-    const triangle = try mesh.Mesh.create(allocator, device);
+    const triangle = try Mesh.create(allocator, device);
 
     return Renderer{
         .instance = instance,

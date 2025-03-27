@@ -55,17 +55,28 @@ pub fn build(b: *std.Build) void {
     }, .flags = &[_][]const u8{ "-D_GLFW_X11", "-Wall", "-Wextra" } });
     glfw.linkLibC();
 
+    const sideros = b.addModule("sideros", .{
+        .root_source_file = b.path("src/sideros.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+
     const mods = b.addModule("mods", .{
         .root_source_file = b.path("src/mods/mods.zig"),
         .target = target,
         .optimize = optimize,
     });
+    mods.addImport("sideros", sideros);
 
-    const ecs = b.addModule("ecs", .{
-        .root_source_file = b.path("src/ecs/ecs.zig"),
+    const renderer = b.addModule("renderer", .{
+        .root_source_file = b.path("src/renderer/Renderer.zig"),
         .target = target,
         .optimize = optimize,
     });
+    renderer.addImport("sideros", sideros);
+
+    renderer.addIncludePath(b.path("ext/glfw/include"));
+    compileAllShaders(b, renderer);
 
     const exe = b.addExecutable(.{
         .root_source_file = b.path("src/main.zig"),
@@ -74,11 +85,10 @@ pub fn build(b: *std.Build) void {
         .name = "sideros",
     });
     exe.root_module.addImport("mods", mods);
-    exe.root_module.addImport("ecs", ecs);
-    exe.addIncludePath(b.path("ext/glfw/include"));
+    exe.root_module.addImport("sideros", sideros);
+    exe.root_module.addImport("renderer", renderer);
 
     exe.linkSystemLibrary("vulkan");
-    compileAllShaders(b, exe);
     exe.linkLibrary(glfw);
     exe.linkLibC();
 
@@ -127,7 +137,7 @@ pub fn build(b: *std.Build) void {
     test_step.dependOn(&run_exe_unit_tests.step);
 }
 
-fn compileAllShaders(b: *std.Build, exe: *std.Build.Step.Compile) void {
+fn compileAllShaders(b: *std.Build, module: *std.Build.Module) void {
     const shaders_dir = if (@hasDecl(@TypeOf(b.build_root.handle), "openIterableDir"))
         b.build_root.handle.openIterableDir("assets/shaders", .{}) catch @panic("Failed to open shaders directory")
     else
@@ -140,15 +150,15 @@ fn compileAllShaders(b: *std.Build, exe: *std.Build.Step.Compile) void {
             const basename = std.fs.path.basename(entry.name);
             const name = basename[0 .. basename.len - ext.len];
             if (std.mem.eql(u8, ext, ".vert")) {
-                addShader(b, exe, name, .vertex);
+                addShader(b, module, name, .vertex);
             } else if (std.mem.eql(u8, ext, ".frag")) {
-                addShader(b, exe, name, .fragment);
+                addShader(b, module, name, .fragment);
             }
         }
     }
 }
 
-fn addShader(b: *std.Build, exe: *std.Build.Step.Compile, name: []const u8, stage: ShaderStage) void {
+fn addShader(b: *std.Build, module: *std.Build.Module, name: []const u8, stage: ShaderStage) void {
     const mod_name = std.fmt.allocPrint(b.allocator, "{s}_{s}", .{ name, if (stage == .vertex) "vert" else "frag" }) catch @panic("");
     const source = std.fmt.allocPrint(b.allocator, "assets/shaders/{s}.{s}", .{ name, if (stage == .vertex) "vert" else "frag" }) catch @panic("");
     const outpath = std.fmt.allocPrint(b.allocator, "assets/shaders/{s}_{s}.spv", .{ name, if (stage == .vertex) "vert" else "frag" }) catch @panic("");
@@ -158,5 +168,5 @@ fn addShader(b: *std.Build, exe: *std.Build.Step.Compile, name: []const u8, stag
     const output = shader_compilation.addOutputFileArg(outpath);
     shader_compilation.addFileArg(b.path(source));
 
-    exe.root_module.addAnonymousImport(mod_name, .{ .root_source_file = output });
+    module.addAnonymousImport(mod_name, .{ .root_source_file = output });
 }
