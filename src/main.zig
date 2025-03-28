@@ -1,5 +1,4 @@
 const std = @import("std");
-
 const config = @import("config");
 const math = @import("sideros").math;
 const mods = @import("mods");
@@ -7,11 +6,10 @@ const ecs = @import("ecs/ecs.zig");
 pub const Renderer = @import("renderer");
 
 fn testSystem2(pool: *ecs.Pool) void {
-    for (pool.getQuery(ecs.components.Position), 0..) |position, i| {
-        const entity = pool.getEntity(i, ecs.components.Position);
-        if (pool.getComponent(entity, ecs.components.Speed)) |speed| {
-            std.debug.print("entity{d}: {any},{any},{any} {any}\n", .{ i, position.x, position.y, position.z, speed.speed });
-        }
+    const slice = pool.humans.slice();
+
+    for (slice.items(.position), slice.items(.speed)) |position, speed| {
+        std.debug.print("entity: {any} {any} {any}: {any}\n", .{ position.x, position.y, position.z, speed.speed });
     }
 }
 
@@ -53,7 +51,12 @@ pub fn main() !void {
     };
 
     var pool = try ecs.Pool.init(allocator, resources);
-    defer pool.deinit(allocator);
+    defer pool.deinit();
+
+    _ = try pool.createEntity(ecs.entities.Human{
+        .position = .{ .x = 0.0, .y = 1.0, .z = 0.0 },
+        .speed = .{ .speed = 5.0 },
+    });
 
     try pool.addSystemGroup(&[_]ecs.System{
         testSystem2,

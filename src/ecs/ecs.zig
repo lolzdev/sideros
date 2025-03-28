@@ -1,5 +1,5 @@
 pub const components = @import("components.zig");
-const entities = @import("entities.zig");
+pub const entities = @import("entities.zig");
 
 pub const Pool = entities.Pool;
 pub const Resources = entities.Resources;
