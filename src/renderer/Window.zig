@@ -45,6 +45,10 @@ pub fn create(width: usize, height: usize, title: []const u8) !Window {
     };
 }
 
+pub fn pollEvents() void {
+    c.glfwPollEvents();
+}
+
 pub fn shouldClose(self: Window) bool {
     return c.glfwWindowShouldClose(self.raw) == c.GLFW_TRUE;
 }

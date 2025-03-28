@@ -63,6 +63,7 @@ pub fn main() !void {
     });
 
     while (!w.shouldClose()) {
+        Renderer.Window.pollEvents();
         try r.tick();
         pool.tick();
     }
