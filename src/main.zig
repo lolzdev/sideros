@@ -15,26 +15,28 @@ pub fn main() !void {
     const allocator = gpa.allocator();
     defer if (gpa.deinit() != .ok) @panic("Leaked memory");
 
-    //var global_runtime = mods.GlobalRuntime.init(allocator);
-    //defer global_runtime.deinit();
-    //try global_runtime.addFunction("debug", mods.Wasm.debug);
+    var global_runtime = mods.GlobalRuntime.init(allocator);
+    defer global_runtime.deinit();
+    try global_runtime.addFunction("debug", mods.Wasm.debug);
 
-    //const file = try std.fs.cwd().openFile("assets/core.wasm", .{});
-    //const all = try file.readToEndAlloc(allocator, 1_000_000); // 1 MB
-    //var parser = mods.Parser{
-    //    .bytes = all,
-    //    .byte_idx = 0,
-    //    .allocator = allocator,
-    //};
-    //const module = parser.parseModule() catch |err| {
-    //    std.debug.print("[ERROR]: error at byte {x}(0x{x})\n", .{ parser.byte_idx, parser.bytes[parser.byte_idx] });
-    //    return err;
-    //};
-    //var runtime = try mods.Runtime.init(allocator, module, &global_runtime);
-    //defer runtime.deinit(allocator);
+    const file = try std.fs.cwd().openFile("assets/core.wasm", .{});
+    const all = try file.readToEndAlloc(allocator, 1_000_000); // 1 MB
+    var parser = mods.Parser{
+      .bytes = all,
+      .byte_idx = 0,
+      .allocator = allocator,
+    };
+    const module = parser.parseModule() catch |err| {
+      std.debug.print("[ERROR]: error at byte {x}(0x{x})\n", .{ parser.byte_idx, parser.bytes[parser.byte_idx] });
+      return err;
+    };
+    var runtime = try mods.Runtime.init(allocator, module, &global_runtime);
+    defer runtime.deinit(allocator);
 
-    //var parameters = [_]usize{17};
-    //try runtime.callExternal(allocator, "preinit", &parameters);
+    var parameters = [_]usize{17};
+    try runtime.callExternal(allocator, "preinit", &parameters);
+    const result = runtime.stack.pop().?;
+    std.debug.print("Result of preinit: {any}\n", .{result});
     var w = try Renderer.Window.create(800, 600, "sideros");
     defer w.destroy();
 
