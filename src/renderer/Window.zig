@@ -76,7 +76,6 @@ pub fn destroy(self: Window) void {
 pub fn keyCallback(window: ?*c.GLFWwindow, key: c_int, scancode: c_int, action: c_int, mods: c_int) callconv(.c) void {
     _ = scancode;
     _ = mods;
-    std.debug.print("test {d}\n", .{key});
     if (c.glfwGetWindowUserPointer(window)) |r| {
         const resources: *ecs.Resources = @alignCast(@ptrCast(r));
         if (action == c.GLFW_PRESS) {
