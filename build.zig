@@ -125,6 +125,17 @@ pub fn build(b: *std.Build) void {
     });
     docs_step.dependOn(&mods_docs.step);
 
+    const ecs_lib = b.addStaticLibrary(.{
+        .root_module = ecs,
+        .name = "ecs",
+    });
+    const ecs_docs = b.addInstallDirectory(.{
+        .source_dir = ecs_lib.getEmittedDocs(),
+        .install_dir = .prefix,
+        .install_subdir = "docs/ecs",
+    });
+    docs_step.dependOn(&ecs_docs.step);
+
     const run_cmd = b.addRunArtifact(exe);
     run_cmd.step.dependOn(b.getInstallStep());
 
