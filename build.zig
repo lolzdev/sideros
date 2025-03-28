@@ -68,12 +68,21 @@ pub fn build(b: *std.Build) void {
     });
     mods.addImport("sideros", sideros);
 
+    const ecs = b.addModule("ecs", .{
+        .root_source_file = b.path("src/ecs/ecs.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    ecs.addImport("sideros", sideros);
+
     const renderer = b.addModule("renderer", .{
         .root_source_file = b.path("src/renderer/Renderer.zig"),
         .target = target,
         .optimize = optimize,
     });
     renderer.addImport("sideros", sideros);
+    renderer.addImport("ecs", ecs);
+    ecs.addImport("renderer", renderer);
 
     renderer.addIncludePath(b.path("ext/glfw/include"));
     compileAllShaders(b, renderer);
@@ -87,6 +96,7 @@ pub fn build(b: *std.Build) void {
     exe.root_module.addImport("mods", mods);
     exe.root_module.addImport("sideros", sideros);
     exe.root_module.addImport("renderer", renderer);
+    exe.root_module.addImport("ecs", ecs);
 
     exe.linkSystemLibrary("vulkan");
     exe.linkLibrary(glfw);

@@ -3,6 +3,7 @@ const Allocator = std.mem.Allocator;
 const components = @import("components.zig");
 const sparse = @import("sparse.zig");
 const Renderer = @import("renderer");
+const Input = @import("sideros").Input;
 
 pub const System = *const fn (*Pool) void;
 pub const SystemGroup = []const System;
@@ -10,6 +11,7 @@ pub const SystemGroup = []const System;
 pub const Resources = struct {
     window: Renderer.Window,
     renderer: Renderer,
+    input: Input,
 };
 
 pub const Human = struct {

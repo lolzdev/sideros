@@ -1,16 +1,13 @@
 const std = @import("std");
 const config = @import("config");
 const math = @import("sideros").math;
+const Input = @import("sideros").Input;
 const mods = @import("mods");
-const ecs = @import("ecs/ecs.zig");
+const ecs = @import("ecs");
 pub const Renderer = @import("renderer");
 
 fn testSystem2(pool: *ecs.Pool) void {
-    const slice = pool.humans.slice();
-
-    for (slice.items(.position), slice.items(.speed)) |position, speed| {
-        std.debug.print("entity: {any} {any} {any}: {any}\n", .{ position.x, position.y, position.z, speed.speed });
-    }
+    std.debug.print("{any}\n", .{pool.resources.input.isKeyDown(.a)});
 }
 
 pub fn main() !void {
@@ -38,7 +35,7 @@ pub fn main() !void {
 
     //var parameters = [_]usize{};
     //try runtime.callExternal(allocator, "preinit", &parameters);
-    const w = try Renderer.Window.create(800, 600, "sideros");
+    var w = try Renderer.Window.create(800, 600, "sideros");
     defer w.destroy();
 
     // TODO(luccie-cmd): Renderer.create shouldn't return an error
@@ -48,10 +45,12 @@ pub fn main() !void {
     const resources = ecs.Resources{
         .window = w,
         .renderer = r,
+        .input = .{ .key_pressed = .{false} ** @intFromEnum(Input.KeyCode.menu) },
     };
 
     var pool = try ecs.Pool.init(allocator, resources);
     defer pool.deinit();
+    w.setResources(&pool.resources);
 
     _ = try pool.createEntity(ecs.entities.Human{
         .position = .{ .x = 0.0, .y = 1.0, .z = 0.0 },
