@@ -1,21 +1,26 @@
 const std = @import("std");
+const c = @import("c.zig");
+const window = @import("rendering/window.zig");
+
 const config = @import("config");
-const math = @import("sideros").math;
+const Renderer = @import("rendering/renderer_vulkan.zig");
+const math = @import("math.zig");
 const mods = @import("mods");
-const ecs = @import("ecs/ecs.zig");
-pub const Renderer = @import("renderer");
+const ecs = @import("ecs");
+const gltf = @import("rendering/gltf.zig");
 
 fn testSystem2(pool: *ecs.Pool) void {
-    const slice = pool.humans.slice();
-
-    for (slice.items(.position), slice.items(.speed)) |position, speed| {
-        std.debug.print("entity: {any} {any} {any}: {any}\n", .{ position.x, position.y, position.z, speed.speed });
+    for (pool.getQuery(ecs.components.Position), 0..) |position, i| {
+        const entity = pool.getEntity(i, ecs.components.Position);
+        if (pool.getComponent(entity, ecs.components.Speed)) |speed| {
+            std.debug.print("entity{d}: {any},{any},{any} {any}\n", .{ i, position.x, position.y, position.z, speed.speed });
+        }
     }
 }
 
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    const allocator = gpa.allocator();
+    //const allocator = gpa.allocator();
     defer if (gpa.deinit() != .ok) @panic("Leaked memory");
 
     //var global_runtime = mods.GlobalRuntime.init(allocator);
@@ -36,35 +41,36 @@ pub fn main() !void {
     //var runtime = try mods.Runtime.init(allocator, module, &global_runtime);
     //defer runtime.deinit(allocator);
 
-    //var parameters = [_]usize{};
+    //var parameters = [_]usize{17};
     //try runtime.callExternal(allocator, "preinit", &parameters);
-    const w = try Renderer.Window.create(800, 600, "sideros");
+    //const result = runtime.stack.pop().?;
+    //std.debug.print("Result of preinit: {any}\n", .{result});
+
+    const w = try window.Window.create(800, 600, "sideros");
     defer w.destroy();
 
-    // TODO(luccie-cmd): Renderer.create shouldn't return an error
-    var r = try Renderer.create(allocator, w);
-    defer r.destroy();
+    //var pool = try ecs.Pool.init(allocator);
+    //defer pool.deinit(allocator);
 
-    const resources = ecs.Resources{
-        .window = w,
-        .renderer = r,
-    };
+    //try pool.addSystemGroup(&[_]entities.System{
+    //    testSystem,
+    //});
+    // try pool.addSystemGroup(&[_]ecs.System{
+    // testSystem2,
+    // });
 
-    var pool = try ecs.Pool.init(allocator, resources);
-    defer pool.deinit();
+    // for (0..1000) |_| {
+    //     const entity = try pool.createEntity();
+    //     try pool.addComponent(entity, ecs.components.Position{ .x = 1.0, .y = 0.5, .z = 3.0 });
+    //     try pool.addComponent(entity, ecs.components.Speed{ .speed = 5.0 });
+    // }
 
-    _ = try pool.createEntity(ecs.entities.Human{
-        .position = .{ .x = 0.0, .y = 1.0, .z = 0.0 },
-        .speed = .{ .speed = 5.0 },
-    });
+    // var r = try Renderer.create(allocator, w);
+    // defer r.destroy();
 
-    try pool.addSystemGroup(&[_]ecs.System{
-        testSystem2,
-    });
-
-    while (!w.shouldClose()) {
-        Renderer.Window.pollEvents();
-        try r.tick();
-        pool.tick();
-    }
+    // while (!w.shouldClose()) {
+    //     c.glfwPollEvents();
+    //     try r.tick();
+    //     pool.tick();
+    // }
 }
