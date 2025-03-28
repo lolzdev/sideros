@@ -448,6 +448,7 @@ fn parseElemsec(self: *Parser) !void {
 pub const Func = struct {
     locals: []Valtype,
     code: []const u8,
+    ir: IR,
 };
 const Local = struct {
     n: u32,
@@ -477,6 +478,7 @@ fn parseCode(self: *Parser) !Func {
     const func = Func{
         .locals = try self.allocator.alloc(Valtype, local_count),
         .code = &.{},
+        .ir = ir,
     };
 
     var li: usize = 0;
