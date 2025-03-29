@@ -62,14 +62,11 @@ pub const CallFrame = struct {
     locals: []Value,
 };
 
-const ValueType = enum {
-    i32,
-    i64,
-};
-
-pub const Value = union(ValueType) {
+pub const Value = union(enum) {
     i32: i32,
     i64: i64,
+    f32: f32,
+    f64: f64,
 };
 
 pub const Runtime = struct {
@@ -148,12 +145,46 @@ pub const Runtime = struct {
                 .tablesize => @panic("UNIMPLEMENTED"),
                 .tablefill => @panic("UNIMPLEMENTED"),
 
+                // TODO(ernesto): This code is repeated...
                 .i32_load => {
                     const start = index.memarg.alignment + index.memarg.offset;
                     const end = start + @sizeOf(i32);
                     try self.stack.append(.{ .i32 = std.mem.littleToNative(i32, std.mem.bytesAsValue(i32, self.memory[start..end]).*) });
                 },
-                //         0x28 => {
+                .i64_load => {
+                    const start = index.memarg.alignment + index.memarg.offset;
+                    const end = start + @sizeOf(i64);
+                    try self.stack.append(.{ .i64 = std.mem.littleToNative(i64, std.mem.bytesAsValue(i64, self.memory[start..end]).*) });
+                },
+                .f32_load => {
+                    const start = index.memarg.alignment + index.memarg.offset;
+                    const end = start + @sizeOf(f32);
+                    try self.stack.append(.{ .f32 = std.mem.littleToNative(f32, std.mem.bytesAsValue(f32, self.memory[start..end]).*) });
+                },
+                .f64_load => {
+                    const start = index.memarg.alignment + index.memarg.offset;
+                    const end = start + @sizeOf(f64);
+                    try self.stack.append(.{ .f64 = std.mem.littleToNative(f64, std.mem.bytesAsValue(f64, self.memory[start..end]).*) });
+                },
+                .i32_load8_s => @panic("UNIMPLEMENTED"),
+                .i32_load8_u => @panic("UNIMPLEMENTED"),
+                .i32_load16_s => @panic("UNIMPLEMENTED"),
+                .i32_load16_u => @panic("UNIMPLEMENTED"),
+                .i64_load8_s => @panic("UNIMPLEMENTED"),
+                .i64_load8_u => @panic("UNIMPLEMENTED"),
+                .i64_load16_s => @panic("UNIMPLEMENTED"),
+                .i64_load16_u => @panic("UNIMPLEMENTED"),
+                .i64_load32_s => @panic("UNIMPLEMENTED"),
+                .i64_load32_u => @panic("UNIMPLEMENTED"),
+                .i32_store => {
+                    // TODO(ernesto): I'm pretty sure this is wrong
+                    const start = index.memarg.offset + index.memarg.alignment;
+                    const end = start + @sizeOf(u32);
+                    const val = std.mem.nativeToLittle(i32, self.stack.pop().?.i32);
+                    @memcpy(self.memory[start..end], std.mem.asBytes(&val));
+                },
+
+                //         0x36 => {
                 //             const address = leb128Decode(u32, frame.code[frame.program_counter..]);
                 //             frame.program_counter += address.len;
                 //             const offset = leb128Decode(u32, frame.code[frame.program_counter..]);
@@ -162,14 +193,24 @@ pub const Runtime = struct {
                 //             const end = start + @sizeOf(u32);
                 //             try self.stack.append(Value{ .i32 = decodeLittleEndian(i32, self.memory[start..end]) });
                 //         },
-                //         0x29 => {
+                //         0x37 => {
+                //             const address = leb128Decode(u32, frame.code[frame.program_counter..]);
+                //             frame.program_counter += address.len;
+                //             const offset = leb128Decode(u32, frame.code[frame.program_counter..]);
+                //             frame.program_counter += offset.len;
+                //             const start = (address.val + offset.val);
+                //             const end = start + @sizeOf(u32);
+                //             encodeLittleEndian(i32, @constCast(&self.memory[start..end]), self.stack.pop().?.i32);
+                //         },
+                //         0x38 => {
                 //             const address = leb128Decode(u32, frame.code[frame.program_counter..]);
                 //             frame.program_counter += address.len;
                 //             const offset = leb128Decode(u32, frame.code[frame.program_counter..]);
                 //             frame.program_counter += offset.len;
                 //             const start = (address.val + offset.val);
                 //             const end = start + @sizeOf(u64);
-                //             try self.stack.append(Value{ .i64 = decodeLittleEndian(i64, self.memory[start..end]) });
+                //             encodeLittleEndian(i64, @constCast(&self.memory[start..end]), self.stack.pop().?.i64);
+                //         },
 
                 .i32_const => {
                     try self.stack.append(Value{ .i32 = frame.code.indices[frame.program_counter].i32 });
