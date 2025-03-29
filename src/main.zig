@@ -33,7 +33,7 @@ pub fn main() !void {
     var runtime = try mods.Runtime.init(allocator, module, &global_runtime);
     defer runtime.deinit(allocator);
 
-    var parameters = [_]usize{17};
+    var parameters = [_]mods.VM.Value{.{ .i32 = 17 }};
     try runtime.callExternal(allocator, "preinit", &parameters);
     const result = runtime.stack.pop().?;
     std.debug.print("Result of preinit: {any}\n", .{result});

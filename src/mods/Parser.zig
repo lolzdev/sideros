@@ -7,34 +7,10 @@ bytes: []const u8,
 byte_idx: usize,
 allocator: Allocator,
 
-// TODO: We don't really need ArrayLists
-types: std.ArrayListUnmanaged(Functype) = .{},
-imports: std.ArrayListUnmanaged(Import) = .{},
-exports: std.StringHashMapUnmanaged(u32) = .{},
-functions: std.ArrayListUnmanaged(u32) = .{},
+types: ?[]vm.Functype = null,
+functions: ?[]vm.Function = null,
 memory: ?Memtype = null,
-code: std.ArrayListUnmanaged(Func) = .{},
-funcs: std.ArrayListUnmanaged(vm.Func) = .{},
-
-pub const FunctionType = struct {
-    parameters: []u8,
-    results: []u8,
-
-    pub fn deinit(self: FunctionType, allocator: Allocator) void {
-        allocator.free(self.parameters);
-        allocator.free(self.results);
-    }
-};
-
-pub const FunctionBody = struct {
-    locals: []Local,
-    code: []u8,
-};
-
-pub const FunctionScope = enum {
-    external,
-    internal,
-};
+exports: std.StringHashMapUnmanaged(u32) = .{},
 
 const Parser = @This();
 
@@ -56,6 +32,7 @@ pub const Error = error{
     invalid_importdesc,
     invalid_exportdesc,
     double_else,
+    duplicated_funcsec,
     unresolved_branch,
     unterminated_wasm,
 };
@@ -172,11 +149,7 @@ pub fn parseReftype(self: *Parser) !std.wasm.RefType {
 
 // NOTE: Parsing of Valtype can be improved but it makes it less close to spec so...
 // TODO: Do we really need Valtype?
-pub const Valtype = union(enum) {
-    val: std.wasm.Valtype,
-    ref: std.wasm.RefType,
-};
-fn parseValtype(self: *Parser) !Valtype {
+fn parseValtype(self: *Parser) !vm.Valtype {
     const pb = self.peek() orelse return Error.unterminated_wasm;
     return switch (pb) {
         0x7F, 0x7E, 0x7D, 0x7C => .{ .val = try self.parseNumtype() },
@@ -186,24 +159,15 @@ fn parseValtype(self: *Parser) !Valtype {
     };
 }
 
-fn parseResultType(self: *Parser) ![]Valtype {
+fn parseResultType(self: *Parser) ![]vm.Valtype {
     return try self.parseVector(Parser.parseValtype);
 }
 
-pub const Functype = struct {
-    parameters: []Valtype,
-    rt2: []Valtype,
-
-    pub fn deinit(self: Functype, allocator: Allocator) void {
-        allocator.free(self.parameters);
-        allocator.free(self.rt2);
-    }
-};
-fn parseFunctype(self: *Parser) !Functype {
+fn parseFunctype(self: *Parser) !vm.Functype {
     if (try self.readByte() != 0x60) return Error.invalid_functype;
     return .{
         .parameters = try self.parseResultType(),
-        .rt2 = try self.parseResultType(),
+        .returns = try self.parseResultType(),
     };
 }
 
@@ -245,7 +209,7 @@ fn parseTabletype(self: *Parser) !Tabletype {
 }
 
 const Globaltype = struct {
-    t: Valtype,
+    t: vm.Valtype,
     m: enum {
         @"const",
         @"var",
@@ -296,11 +260,7 @@ pub fn parseModule(self: *Parser) !vm.Module {
             .max = self.memory.?.lim.max,
         },
         .exports = self.exports,
-        .funcs = try self.funcs.toOwnedSlice(self.allocator),
-        .types = try self.types.toOwnedSlice(self.allocator),
-        .functions = try self.functions.toOwnedSlice(self.allocator),
-        .imports = try self.imports.toOwnedSlice(self.allocator),
-        .code = try self.code.toOwnedSlice(self.allocator),
+        .functions = self.functions.?,
     };
 }
 
@@ -315,10 +275,9 @@ fn parseTypesec(self: *Parser) !void {
     const end_idx = self.byte_idx + size;
 
     const ft = try self.parseVector(Parser.parseFunctype);
-    // TODO: Maybe the interface should be better?
-    try self.types.appendSlice(self.allocator, ft);
+    self.types = ft;
 
-    // TODO: run this check not only on debug
+    // TODO(ernesto): run this check not only on debug
     std.debug.assert(self.byte_idx == end_idx);
 }
 
@@ -349,8 +308,9 @@ fn parseImportsec(self: *Parser) !void {
     const size = try self.readU32();
     const end_idx = self.byte_idx + size;
 
+    // TODO(ernesto): this should be used to do name resolution.
     const imports = try self.parseVector(Parser.parseImport);
-    try self.imports.appendSlice(self.allocator, imports);
+    _ = imports;
 
     // TODO: run this check not only on debug
     std.debug.assert(self.byte_idx == end_idx);
@@ -361,7 +321,16 @@ fn parseFuncsec(self: *Parser) !void {
     const end_idx = self.byte_idx + size;
 
     const types = try self.parseVector(Parser.readU32);
-    try self.functions.appendSlice(self.allocator, types);
+
+    if (self.functions != null) return Error.duplicated_funcsec;
+    self.functions = try self.allocator.alloc(vm.Function, types.len);
+
+    for (types, 0..) |t, i| {
+        self.functions.?[i].func_type = self.types.?[t];
+    }
+
+    // TODO(ernesto): run this check not only in debug
+    std.debug.assert(types.len == self.functions.?.len);
 
     // TODO: run this check not only on debug
     std.debug.assert(self.byte_idx == end_idx);
@@ -446,13 +415,12 @@ fn parseElemsec(self: *Parser) !void {
 }
 
 pub const Func = struct {
-    locals: []Valtype,
-    code: []const u8,
+    locals: []vm.Valtype,
     ir: IR,
 };
 const Local = struct {
     n: u32,
-    t: Valtype,
+    t: vm.Valtype,
 };
 fn parseLocal(self: *Parser) !Local {
     return .{
@@ -476,8 +444,7 @@ fn parseCode(self: *Parser) !Func {
     try ir.print(stdout);
 
     const func = Func{
-        .locals = try self.allocator.alloc(Valtype, local_count),
-        .code = &.{},
+        .locals = try self.allocator.alloc(vm.Valtype, local_count),
         .ir = ir,
     };
 
@@ -498,10 +465,15 @@ fn parseCodesec(self: *Parser) !void {
     const end_idx = self.byte_idx + size;
 
     const codes = try self.parseVector(Parser.parseCode);
-    for (codes, 0..) |_, i| {
-        try self.funcs.append(self.allocator, .{ .internal = @intCast(i) });
+    // TODO: run this check not only on debug
+    std.debug.assert(codes.len == self.functions.?.len);
+
+    for (codes, self.functions.?) |code, *f| {
+        f.typ = .{ .internal = .{
+            .locals = code.locals,
+            .ir = code.ir,
+        } };
     }
-    try self.code.appendSlice(self.allocator, codes);
 
     // TODO: run this check not only on debug
     std.debug.assert(self.byte_idx == end_idx);

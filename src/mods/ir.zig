@@ -1,5 +1,6 @@
 const std = @import("std");
 const Parser = @import("Parser.zig");
+const vm = @import("vm.zig");
 
 const Allocator = std.mem.Allocator;
 
@@ -44,7 +45,7 @@ opcodes: []Opcode,
 indices: []Index,
 
 // TODO: this could be a byte array and v128.const and i8x16.shuffle could live here too
-select_valtypes: []Parser.Valtype,
+select_valtypes: []vm.Valtype,
 
 pub fn print(self: IR, writer: anytype) !void {
     for (self.opcodes, 0..) |op, i| {
@@ -621,8 +622,8 @@ const IRParserState = struct {
     fn parseExpression(self: *IRParserState) Parser.Error!void {
         const b = try self.parser.readByte();
         try switch (b) {
-            0x00 => {}, // TODO
-            0x01 => {},
+            0x00 => self.push(@enumFromInt(b), .{ .u64 = 0 }),
+            0x01 => self.push(@enumFromInt(b), .{ .u64 = 0 }),
             0x02...0x03 => self.parseBlock(b),
             0x04 => self.parseIf(),
             0x0C...0x0D => self.parseBranch(b),
