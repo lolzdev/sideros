@@ -3,6 +3,7 @@ const c = @import("c.zig");
 const Window = @import("Window.zig");
 const Mesh = @import("Mesh.zig");
 const sideros = @import("sideros");
+const Camera = @import("Camera.zig");
 const math = sideros.math;
 const Allocator = std.mem.Allocator;
 
@@ -302,7 +303,7 @@ pub fn GraphicsPipeline(comptime n: usize) type {
         descriptor_pool: c.VkDescriptorPool,
         descriptor_set: c.VkDescriptorSet,
         descriptor_set_layout: c.VkDescriptorSetLayout,
-        uniform_buffer: Buffer,
+        projection_buffer: Buffer,
 
         const Self = @This();
 
@@ -486,36 +487,25 @@ pub fn GraphicsPipeline(comptime n: usize) type {
 
             try mapError(c.vkAllocateDescriptorSets(device.handle, &descriptor_allocate_info, &descriptor_set));
 
-            const proj = math.Matrix.perspective(math.rad(45.0), (@as(f32, @floatFromInt(swapchain.extent.width)) / @as(f32, @floatFromInt(swapchain.extent.height))), 0.1, 10.0);
-
-            const view = math.Matrix.lookAt(@Vector(3, f32){ 0.0, 0.0, 10.0 }, @Vector(3, f32){ 0.0, 0.0, 0.0 }, @Vector(3, f32){ 0.0, 1.0, 0.0 });
-            const model = math.Matrix.identity();
-
-            const uniform = Uniform{
-                .proj = proj,
-                .view = view,
-                .model = model,
-            };
-
-            const uniform_buffer = try device.createBuffer(BufferUsage{ .uniform_buffer = true, .transfer_dst = true }, BufferFlags{ .device_local = true }, @sizeOf(Uniform));
+            const projection_buffer = try device.createBuffer(BufferUsage{ .uniform_buffer = true, .transfer_dst = true }, BufferFlags{ .device_local = true }, @sizeOf(math.Matrix));
 
             var data: [*c]u8 = undefined;
 
             try mapError(c.vkMapMemory(
                 device.handle,
-                uniform_buffer.memory,
+                projection_buffer.memory,
                 0,
-                uniform_buffer.size,
+                projection_buffer.size,
                 0,
                 @ptrCast(&data),
             ));
 
-            @memcpy(data[0..(@sizeOf(math.Matrix) * 3)], std.mem.asBytes(&uniform));
+            @memcpy(data[0..@sizeOf(math.Matrix)], std.mem.asBytes(&Camera.getProjection(swapchain.extent.width, swapchain.extent.height)));
 
             const descriptor_buffer_info = c.VkDescriptorBufferInfo{
-                .buffer = uniform_buffer.handle,
+                .buffer = projection_buffer.handle,
                 .offset = 0,
-                .range = uniform_buffer.size,
+                .range = projection_buffer.size,
             };
 
             const write_descriptor_set = c.VkWriteDescriptorSet{
@@ -536,7 +526,7 @@ pub fn GraphicsPipeline(comptime n: usize) type {
                 .descriptor_pool = descriptor_pool,
                 .descriptor_set = descriptor_set,
                 .descriptor_set_layout = descriptor_set_layout,
-                .uniform_buffer = uniform_buffer,
+                .projection_buffer = projection_buffer,
             };
         }
 
@@ -546,7 +536,7 @@ pub fn GraphicsPipeline(comptime n: usize) type {
         }
 
         pub fn destroy(self: Self, device: Device(n)) void {
-            self.uniform_buffer.destroy(device.handle);
+            self.projection_buffer.destroy(device.handle);
             c.vkDestroyDescriptorSetLayout(device.handle, self.descriptor_set_layout, null);
             c.vkDestroyDescriptorPool(device.handle, self.descriptor_pool, null);
             c.vkDestroyPipeline(device.handle, self.handle, null);
@@ -869,6 +859,10 @@ pub fn Device(comptime n: usize) type {
 
         pub fn bindDescriptorSets(self: Self, pipeline: GraphicsPipeline(n), frame: usize) void {
             c.vkCmdBindDescriptorSets(self.command_buffers[frame], c.VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.layout, 0, 1, &pipeline.descriptor_set, 0, null);
+        }
+
+        pub fn updateBuffer(self: Self, comptime T: type, buffer: Buffer, data: [*]T, frame: usize) void {
+            c.vkCmdUpdateBuffer(self.command_buffers[frame], buffer.handle, 0, @sizeOf(T), @ptrCast(@alignCast(data)));
         }
 
         pub fn pick_memory_type(self: Self, type_bits: u32, flags: u32) u32 {

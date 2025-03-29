@@ -118,6 +118,7 @@ pub fn build(b: *std.Build) void {
         .root_module = mods,
         .name = "mods",
     });
+
     const mods_docs = b.addInstallDirectory(.{
         .source_dir = mods_lib.getEmittedDocs(),
         .install_dir = .prefix,

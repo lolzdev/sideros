@@ -4,14 +4,17 @@ const components = @import("components.zig");
 const sparse = @import("sparse.zig");
 const Renderer = @import("renderer");
 const Input = @import("sideros").Input;
+const ecs = @import("ecs.zig");
 
-pub const System = *const fn (*Pool) void;
+pub const System = ecs.System;
 pub const SystemGroup = []const System;
+pub const SyncGroup = []const System;
 
 pub const Resources = struct {
     window: Renderer.Window,
     renderer: Renderer,
     input: Input,
+    delta_time: f64 = 0.0,
 };
 
 pub const Human = struct {
@@ -24,6 +27,7 @@ pub const Pool = struct {
     resources: Resources,
     allocator: Allocator,
     system_groups: std.ArrayList(SystemGroup),
+    sync_groups: std.ArrayList(SyncGroup),
     thread_pool: *std.Thread.Pool,
     wait_group: std.Thread.WaitGroup,
     mutex: std.Thread.Mutex,
@@ -33,6 +37,7 @@ pub const Pool = struct {
             .humans = .{},
             .resources = resources,
             .system_groups = std.ArrayList(SystemGroup).init(allocator),
+            .sync_groups = std.ArrayList(SystemGroup).init(allocator),
             .thread_pool = try allocator.create(std.Thread.Pool),
             .wait_group = .{},
             .mutex = .{},
@@ -47,8 +52,12 @@ pub const Pool = struct {
         return pool;
     }
 
-    pub fn addSystemGroup(self: *@This(), group: SystemGroup) !void {
-        try self.system_groups.append(group);
+    pub fn addSystemGroup(self: *@This(), group: SystemGroup, sync: bool) !void {
+        if (sync) {
+            try self.sync_groups.append(group);
+        } else {
+            try self.system_groups.append(group);
+        }
     }
 
     pub fn deinit(self: *@This()) void {
@@ -65,10 +74,17 @@ pub const Pool = struct {
                 fn run(pool: *Pool, index: usize) void {
                     const group = pool.system_groups.items[index];
                     for (group) |system| {
-                        system(pool);
+                        // TODO: system errors should be correctly handled
+                        system(pool) catch unreachable;
                     }
                 }
             }.run, .{ self, i });
+        }
+        for (0..self.sync_groups.items.len) |i| {
+            const group = self.sync_groups.items[i];
+            for (group) |system| {
+                system(self) catch unreachable;
+            }
         }
     }
 

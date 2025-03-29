@@ -22,13 +22,13 @@ pub fn main() !void {
     const file = try std.fs.cwd().openFile("assets/core.wasm", .{});
     const all = try file.readToEndAlloc(allocator, 1_000_000); // 1 MB
     var parser = mods.Parser{
-      .bytes = all,
-      .byte_idx = 0,
-      .allocator = allocator,
+        .bytes = all,
+        .byte_idx = 0,
+        .allocator = allocator,
     };
     const module = parser.parseModule() catch |err| {
-      std.debug.print("[ERROR]: error at byte {x}(0x{x})\n", .{ parser.byte_idx, parser.bytes[parser.byte_idx] });
-      return err;
+        std.debug.print("[ERROR]: error at byte {x}(0x{x})\n", .{ parser.byte_idx, parser.bytes[parser.byte_idx] });
+        return err;
     };
     var runtime = try mods.Runtime.init(allocator, module, &global_runtime);
     defer runtime.deinit(allocator);
@@ -40,8 +40,8 @@ pub fn main() !void {
     var w = try Renderer.Window.create(800, 600, "sideros");
     defer w.destroy();
 
-    var r = try Renderer.create(allocator, w);
-    defer r.destroy();
+    var r = try Renderer.init(allocator, w);
+    defer r.deinit();
 
     const resources = ecs.Resources{
         .window = w,
@@ -52,9 +52,9 @@ pub fn main() !void {
     var pool = try ecs.Pool.init(allocator, resources);
     defer pool.deinit();
     w.setResources(&pool.resources);
-    //try pool.addSystemGroup(&[_]entities.System{
-    //    testSystem,
-    //});
+    try pool.addSystemGroup(&[_]ecs.System{
+        Renderer.render,
+    }, true);
     // try pool.addSystemGroup(&[_]ecs.System{
     // testSystem2,
     // });
@@ -64,10 +64,12 @@ pub fn main() !void {
     //     try pool.addComponent(entity, ecs.components.Position{ .x = 1.0, .y = 0.5, .z = 3.0 });
     //     try pool.addComponent(entity, ecs.components.Speed{ .speed = 5.0 });
     // }
-
+    var last_time: f64 = 0.0;
     while (!w.shouldClose()) {
+        const current_time = Renderer.Window.getTime();
+        pool.resources.delta_time = current_time - last_time;
+        last_time = current_time;
         Renderer.Window.pollEvents();
-        try r.tick();
         pool.tick();
     }
 }

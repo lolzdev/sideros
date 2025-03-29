@@ -1,4 +1,5 @@
 const c = @import("c.zig");
+const ecs = @import("ecs");
 const std = @import("std");
 const vk = @import("vulkan.zig");
 pub const Window = @import("Window.zig");
@@ -18,7 +19,7 @@ current_frame: u32,
 vertex_buffer: vk.Buffer,
 index_buffer: vk.Buffer,
 
-pub fn create(allocator: Allocator, w: Window) !Renderer {
+pub fn init(allocator: Allocator, w: Window) !Renderer {
     const instance = try vk.Instance.create(allocator);
 
     const surface = try vk.Surface.create(instance, w);
@@ -61,7 +62,7 @@ pub fn create(allocator: Allocator, w: Window) !Renderer {
     };
 }
 
-pub fn destroy(self: Renderer) void {
+pub fn deinit(self: Renderer) void {
     self.device.waitIdle();
     self.index_buffer.destroy(self.device.handle);
     self.vertex_buffer.destroy(self.device.handle);
@@ -73,22 +74,24 @@ pub fn destroy(self: Renderer) void {
     self.instance.destroy();
 }
 
-// TODO: tick is maybe a bad name? something like present() or submit() is better?
-pub fn tick(self: *Renderer) !void {
-    try self.device.waitFence(self.current_frame);
-    const image = try self.swapchain.nextImage(self.device, self.current_frame);
-    try self.device.resetCommand(self.current_frame);
-    try self.device.beginCommand(self.current_frame);
-    self.render_pass.begin(self.swapchain, self.device, image, self.current_frame);
-    self.graphics_pipeline.bind(self.device, self.current_frame);
-    self.device.bindVertexBuffer(self.vertex_buffer, self.current_frame);
-    self.device.bindIndexBuffer(self.index_buffer, self.current_frame);
-    self.device.bindDescriptorSets(self.graphics_pipeline, self.current_frame);
-    self.device.draw(@intCast(self.index_buffer.size / @sizeOf(u16)), self.current_frame);
-    self.render_pass.end(self.device, self.current_frame);
-    try self.device.endCommand(self.current_frame);
+// TODO: render is maybe a bad name? something like present() or submit() is better?
+pub fn render(pool: *ecs.Pool) anyerror!void {
+    var renderer = pool.resources.renderer;
 
-    try self.device.submit(self.swapchain, image, self.current_frame);
+    try renderer.device.waitFence(renderer.current_frame);
+    const image = try renderer.swapchain.nextImage(renderer.device, renderer.current_frame);
+    try renderer.device.resetCommand(renderer.current_frame);
+    try renderer.device.beginCommand(renderer.current_frame);
+    renderer.render_pass.begin(renderer.swapchain, renderer.device, image, renderer.current_frame);
+    renderer.graphics_pipeline.bind(renderer.device, renderer.current_frame);
+    renderer.device.bindVertexBuffer(renderer.vertex_buffer, renderer.current_frame);
+    renderer.device.bindIndexBuffer(renderer.index_buffer, renderer.current_frame);
+    renderer.device.bindDescriptorSets(renderer.graphics_pipeline, renderer.current_frame);
+    renderer.device.draw(@intCast(renderer.index_buffer.size / @sizeOf(u16)), renderer.current_frame);
+    renderer.render_pass.end(renderer.device, renderer.current_frame);
+    try renderer.device.endCommand(renderer.current_frame);
 
-    self.current_frame = (self.current_frame + 1) % 2;
+    try renderer.device.submit(renderer.swapchain, image, renderer.current_frame);
+
+    renderer.current_frame = (renderer.current_frame + 1) % 2;
 }

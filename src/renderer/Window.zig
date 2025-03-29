@@ -74,7 +74,7 @@ pub fn destroy(self: Window) void {
     c.glfwTerminate();
 }
 
-pub fn getTime() f32 {
+pub fn getTime() f64 {
     return c.glfwGetTime();
 }
 
