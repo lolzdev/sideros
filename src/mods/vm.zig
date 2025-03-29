@@ -9,29 +9,50 @@ pub const Memory = struct {
     min: u32,
     max: ?u32,
 };
-// TODO: Resolve function calls at parse time
-// TODO: Resolve function types at compile time
-pub const Func = union(enum) {
-    internal: u32,
-    external: u32,
+
+pub const Valtype = union(enum) {
+    val: std.wasm.Valtype,
+    ref: std.wasm.RefType,
 };
+
+pub const Functype = struct {
+    parameters: []Valtype,
+    returns: []Valtype,
+
+    pub fn deinit(self: Functype, allocator: Allocator) void {
+        allocator.free(self.parameters);
+        allocator.free(self.returns);
+    }
+};
+pub const Function = struct { func_type: Functype, typ: union(enum) {
+    internal: struct {
+        locals: []Valtype,
+        ir: IR,
+    },
+    external: void,
+} };
 
 pub const Module = struct {
     memory: Memory,
-    funcs: []Func,
+    functions: []Function,
     exports: std.StringHashMapUnmanaged(u32),
-    imports: []Parser.Import,
-    types: []Parser.Functype,
-    functions: []u32,
-    code: []Parser.Func,
 
     fn deinit(self: *Module, allocator: Allocator) void {
         self.exports.deinit(allocator);
-        allocator.free(self.funcs);
-        allocator.free(self.imports);
-        allocator.free(self.types);
+        for (self.functions) |f| {
+            allocator.free(f.func_type.parameters);
+            allocator.free(f.func_type.returns);
+            switch (f.typ) {
+                .internal => {
+                    allocator.free(f.typ.internal.ir.opcodes);
+                    allocator.free(f.typ.internal.ir.indices);
+                    allocator.free(f.typ.internal.ir.select_valtypes);
+                    allocator.free(f.typ.internal.locals);
+                },
+                .external => {},
+            }
+        }
         allocator.free(self.functions);
-        allocator.free(self.code);
     }
 };
 
@@ -61,7 +82,7 @@ pub const Runtime = struct {
         // if memory max is not set the memory is allowed to grow but it is not supported at the moment
         const max = module.memory.max orelse 1_000;
         if (module.memory.max == null) {
-            std.debug.print("[WARN]: growing memory is not yet supported, usign a default value of 1Kb\n", .{});
+            std.log.warn("Growing memory is not yet supported, usign a default value of 1Kb\n", .{});
         }
         const memory = try allocator.alloc(u8, max);
         return Runtime{
@@ -78,32 +99,78 @@ pub const Runtime = struct {
         allocator.free(self.memory);
     }
 
-    pub fn executeFrame(self: *Runtime, _: Allocator, frame: *CallFrame) !void {
-        loop: while (true) {
+    pub fn executeFrame(self: *Runtime, allocator: Allocator, frame: *CallFrame) !void {
+        loop: while (frame.program_counter < frame.code.opcodes.len) {
             const opcode: IR.Opcode = frame.code.opcodes[frame.program_counter];
+            const index = frame.code.indices[frame.program_counter];
             switch (opcode) {
+                // TODO(ernesto): How should we handle unreachable?
+                .@"unreachable" => {},
+                .nop => {},
                 .br => {
-                    // TODO(luccie-cmd): Branching like this is dangerous, we should do safety things or smth.
-                    frame.program_counter = frame.code.indices[frame.program_counter].u32 - 1;
+                    frame.program_counter = index.u32;
+                    continue;
                 },
                 .br_if => {
                     if (self.stack.pop().?.i32 != 0) {
-                        // TODO(luccie-cmd): Branching like this is dangerous, we should do safety things or smth.
-                        frame.program_counter = frame.code.indices[frame.program_counter].u32 - 1;
+                        frame.program_counter = index.u32;
+                        continue;
                     }
                 },
-                .localget => {
-                    try self.stack.append(frame.locals[frame.code.indices[frame.program_counter].u32]);
+                .br_table => @panic("UNIMPLEMENTED"),
+                .@"return" => break :loop,
+                .call => {
+                    // TODO: figure out how many parameters to push
+                    try self.call(allocator, index.u32, &[_]Value{});
                 },
-                .localset => {
-                    const a = self.stack.pop().?;
-                    frame.locals[frame.code.indices[frame.program_counter].u32] = a;
+                .call_indirect => @panic("UNIMPLEMENTED"),
+
+                .refnull => @panic("UNIMPLEMENTED"),
+                .refisnull => @panic("UNIMPLEMENTED"),
+                .reffunc => @panic("UNIMPLEMENTED"),
+
+                .drop => @panic("UNIMPLEMENTED"),
+                .select => @panic("UNIMPLEMENTED"),
+                .select_with_values => @panic("UNIMPLEMENTED"),
+
+                .localget => try self.stack.append(frame.locals[index.u32]),
+                .localset => frame.locals[index.u32] = self.stack.pop().?,
+                .localtee => frame.locals[index.u32] = self.stack.items[self.stack.items.len - 1],
+                .globalget => @panic("UNIMPLEMENTED"),
+                .globalset => @panic("UNIMPLEMENTED"),
+
+                .tableget => @panic("UNIMPLEMENTED"),
+                .tableset => @panic("UNIMPLEMENTED"),
+                .tableinit => @panic("UNIMPLEMENTED"),
+                .elemdrop => @panic("UNIMPLEMENTED"),
+                .tablecopy => @panic("UNIMPLEMENTED"),
+                .tablegrow => @panic("UNIMPLEMENTED"),
+                .tablesize => @panic("UNIMPLEMENTED"),
+                .tablefill => @panic("UNIMPLEMENTED"),
+
+                .i32_load => {
+                    const start = index.memarg.alignment + index.memarg.offset;
+                    const end = start + @sizeOf(i32);
+                    try self.stack.append(.{ .i32 = std.mem.littleToNative(i32, std.mem.bytesAsValue(i32, self.memory[start..end]).*) });
                 },
-                .localtee => {
-                    const a = self.stack.pop().?;
-                    try self.stack.append(a);
-                    frame.locals[frame.code.indices[frame.program_counter].u32] = a;
-                },
+                //         0x28 => {
+                //             const address = leb128Decode(u32, frame.code[frame.program_counter..]);
+                //             frame.program_counter += address.len;
+                //             const offset = leb128Decode(u32, frame.code[frame.program_counter..]);
+                //             frame.program_counter += offset.len;
+                //             const start = (address.val + offset.val);
+                //             const end = start + @sizeOf(u32);
+                //             try self.stack.append(Value{ .i32 = decodeLittleEndian(i32, self.memory[start..end]) });
+                //         },
+                //         0x29 => {
+                //             const address = leb128Decode(u32, frame.code[frame.program_counter..]);
+                //             frame.program_counter += address.len;
+                //             const offset = leb128Decode(u32, frame.code[frame.program_counter..]);
+                //             frame.program_counter += offset.len;
+                //             const start = (address.val + offset.val);
+                //             const end = start + @sizeOf(u64);
+                //             try self.stack.append(Value{ .i64 = decodeLittleEndian(i64, self.memory[start..end]) });
+
                 .i32_const => {
                     try self.stack.append(Value{ .i32 = frame.code.indices[frame.program_counter].i32 });
                 },
@@ -140,9 +207,6 @@ pub const Runtime = struct {
                 },
                 .i64_extend_i32_u => {
                     try self.stack.append(.{ .i64 = self.stack.pop().?.i32 });
-                },
-                .@"return" => {
-                    break :loop;
                 },
                 else => {
                     std.log.err("instruction {any} not implemented\n", .{opcode});
@@ -592,14 +656,11 @@ pub const Runtime = struct {
             //         else => std.log.err("instruction {} not implemented\n", .{byte}),
             //     }
             frame.program_counter += 1;
-            if (frame.program_counter >= frame.code.opcodes.len) {
-                break :loop;
-            }
         }
     }
 
-    // TODO: Do name resolution
-    pub fn callExternal(self: *Runtime, allocator: Allocator, name: []const u8, parameters: []usize) !void {
+    // TODO: Do name resolution at parseTime
+    pub fn callExternal(self: *Runtime, allocator: Allocator, name: []const u8, parameters: []Value) !void {
         if (self.module.exports.get(name)) |function| {
             try self.call(allocator, function, parameters);
         } else {
@@ -607,36 +668,21 @@ pub const Runtime = struct {
         }
     }
 
-    pub fn call(self: *Runtime, allocator: Allocator, function: usize, parameters: []usize) AllocationError!void {
-        const f = self.module.funcs[function];
-        switch (f) {
+    pub fn call(self: *Runtime, allocator: Allocator, function: usize, parameters: []Value) AllocationError!void {
+        const f = self.module.functions[function];
+        switch (f.typ) {
             .internal => {
-                const ir: IR = self.module.code[f.internal].ir;
-                const function_type = self.module.types[self.module.functions[f.internal]];
+                const ir: IR = f.typ.internal.ir;
+                const function_type = f.func_type;
                 var frame = CallFrame{
                     .code = ir,
                     .program_counter = 0x0,
-                    .locals = try allocator.alloc(Value, self.module.code[f.internal].locals.len + function_type.parameters.len),
+                    .locals = try allocator.alloc(Value, f.typ.internal.locals.len + function_type.parameters.len),
                 };
 
-                for (parameters, 0..) |p, i| {
-                    switch (function_type.parameters[i]) {
-                        .val => |v| switch (v) {
-                            .i32 => {
-                                std.debug.print("Local with type i32\n", .{});
-                                frame.locals[i] = .{ .i32 = @intCast(p) };
-                            },
-                            .i64 => {
-                                std.debug.print("Local with type i64\n", .{});
-                                frame.locals[i] = .{ .i64 = @intCast(p) };
-                            },
-                            else => unreachable,
-                        },
-                        .ref => unreachable,
-                    }
-                }
+                @memcpy(frame.locals[0..parameters.len], parameters);
 
-                for (self.module.code[f.internal].locals, function_type.parameters.len..) |local, i| {
+                for (f.typ.internal.locals, function_type.parameters.len..) |local, i| {
                     switch (local) {
                         .val => |v| switch (v) {
                             .i32 => {
@@ -658,10 +704,11 @@ pub const Runtime = struct {
                 allocator.free(frame.locals);
             },
             .external => {
-                const name = self.module.imports[f.external].name;
-                if (self.global_runtime.functions.get(name)) |external| {
-                    external(&self.stack);
-                }
+                // TODO(ernesto): handle external functions
+                // const name = self.module.imports[f.external].name;
+                // if (self.global_runtime.functions.get(name)) |external| {
+                //     external(&self.stack);
+                // }
             },
         }
     }
