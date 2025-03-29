@@ -49,7 +49,7 @@ pub const Module = struct {
                     allocator.free(f.typ.internal.ir.select_valtypes);
                     allocator.free(f.typ.internal.locals);
                 },
-                .external => {},
+                .external => @panic("UNIMPLEMENTED"),
             }
         }
         allocator.free(self.functions);
@@ -102,8 +102,12 @@ pub const Runtime = struct {
             const index = frame.code.indices[frame.program_counter];
             switch (opcode) {
                 // TODO(ernesto): How should we handle unreachable?
-                .@"unreachable" => {},
-                .nop => {},
+                // Like this
+                .@"unreachable" => {
+                    std.log.err("Reached unreachable statement at IR counter {any}\n", .{frame.program_counter});
+                    frame.code.print(std.io.getStdOut().writer()) catch {};
+                },
+                .nop => @panic("UNIMPLEMENTED"),
                 .br => {
                     frame.program_counter = index.u32;
                     continue;
@@ -183,7 +187,21 @@ pub const Runtime = struct {
                     const val = std.mem.nativeToLittle(i32, self.stack.pop().?.i32);
                     @memcpy(self.memory[start..end], std.mem.asBytes(&val));
                 },
+                .i64_store => @panic("UNIMPLEMENTED"),
+                .f32_store => @panic("UNIMPLEMENTED"),
+                .f64_store => @panic("UNIMPLEMENTED"),
+                .i32_store8 => @panic("UNIMPLEMENTED"),
+                .i32_store16 => @panic("UNIMPLEMENTED"),
+                .i64_store8 => @panic("UNIMPLEMENTED"),
+                .i64_store16 => @panic("UNIMPLEMENTED"),
+                .i64_store32 => @panic("UNIMPLEMENTED"),
 
+                .memorysize => @panic("UNIMPLEMENTED"),
+                .memorygrow => @panic("UNIMPLEMENTED"),
+                .memoryinit => @panic("UNIMPLEMENTED"),
+                .datadrop => @panic("UNIMPLEMENTED"),
+                .memorycopy => @panic("UNIMPLEMENTED"),
+                .memoryfill => @panic("UNIMPLEMENTED"),
                 //         0x36 => {
                 //             const address = leb128Decode(u32, frame.code[frame.program_counter..]);
                 //             frame.program_counter += address.len;
@@ -215,44 +233,191 @@ pub const Runtime = struct {
                 .i32_const => {
                     try self.stack.append(Value{ .i32 = frame.code.indices[frame.program_counter].i32 });
                 },
+                .i64_const => {
+                    try self.stack.append(Value{ .i64 = frame.code.indices[frame.program_counter].i64 });
+                },
+
+                .f32_const => @panic("UNIMPLEMENTED"),
+                .f64_const => @panic("UNIMPLEMENTED"),
+
+                .i32_eqz => {
+                    try self.stack.append(Value{ .i32 = @intCast(@as(u1, @bitCast(self.stack.pop().?.i32 == 0))) });
+                },
+                .i32_eq => @panic("UNIMPLEMENTED"),
+                .i32_ne => @panic("UNIMPLEMENTED"),
+                .i32_lt_s => @panic("UNIMPLEMENTED"),
                 .i32_lt_u => {
                     const b = self.stack.pop().?.i32;
                     const a = self.stack.pop().?.i32;
                     try self.stack.append(Value{ .i32 = @intCast(@as(u1, @bitCast(a < b))) });
                 },
+                .i32_gt_s => @panic("UNIMPLEMENTED"),
+                .i32_gt_u => @panic("UNIMPLEMENTED"),
+                .i32_le_s => @panic("UNIMPLEMENTED"),
+                .i32_le_u => @panic("UNIMPLEMENTED"),
+                .i32_ge_s => @panic("UNIMPLEMENTED"),
                 .i32_ge_u => {
                     const b = self.stack.pop().?.i32;
                     const a = self.stack.pop().?.i32;
                     try self.stack.append(Value{ .i32 = @intCast(@as(u1, @bitCast(a >= b))) });
                 },
-                .i32_eqz => {
+
+                .i64_eqz => {
                     try self.stack.append(Value{ .i32 = @intCast(@as(u1, @bitCast(self.stack.pop().?.i32 == 0))) });
                 },
+                .i64_eq => @panic("UNIMPLEMENTED"),
+                .i64_ne => @panic("UNIMPLEMENTED"),
+                .i64_lt_s => @panic("UNIMPLEMENTED"),
+                .i64_lt_u => {
+                    const b = self.stack.pop().?.i32;
+                    const a = self.stack.pop().?.i32;
+                    try self.stack.append(Value{ .i32 = @intCast(@as(u1, @bitCast(a < b))) });
+                },
+                .i64_gt_s => @panic("UNIMPLEMENTED"),
+                .i64_gt_u => @panic("UNIMPLEMENTED"),
+                .i64_le_s => @panic("UNIMPLEMENTED"),
+                .i64_le_u => @panic("UNIMPLEMENTED"),
+                .i64_ge_s => @panic("UNIMPLEMENTED"),
+                .i64_ge_u => @panic("UNIMPLEMENTED"),
+
+                .f32_eq => @panic("UNIMPLEMENTED"),
+                .f32_ne => @panic("UNIMPLEMENTED"),
+                .f32_lt => @panic("UNIMPLEMENTED"),
+                .f32_gt => @panic("UNIMPLEMENTED"),
+                .f32_le => @panic("UNIMPLEMENTED"),
+                .f32_ge => @panic("UNIMPLEMENTED"),
+
+                .f64_eq => @panic("UNIMPLEMENTED"),
+                .f64_ne => @panic("UNIMPLEMENTED"),
+                .f64_lt => @panic("UNIMPLEMENTED"),
+                .f64_gt => @panic("UNIMPLEMENTED"),
+                .f64_le => @panic("UNIMPLEMENTED"),
+                .f64_ge => @panic("UNIMPLEMENTED"),
+
+                .i32_clz => @panic("UNIMPLEMENTED"),
+                .i32_ctz => @panic("UNIMPLEMENTED"),
+                .i32_popcnt => @panic("UNIMPLEMENTED"),
                 .i32_add => {
                     const a = self.stack.pop().?.i32;
                     const b = self.stack.pop().?.i32;
                     try self.stack.append(Value{ .i32 = a + b });
                 },
+                .i32_sub => @panic("UNIMPLEMENTED"),
                 .i32_and => {
                     const a = self.stack.pop().?.i32;
                     const b = self.stack.pop().?.i32;
                     try self.stack.append(Value{ .i32 = a & b });
                 },
-                .i64_const => {
-                    try self.stack.append(Value{ .i64 = frame.code.indices[frame.program_counter].i64 });
-                },
+                .i32_mul => @panic("UNIMPLEMENTED"),
+                .i32_div_s => @panic("UNIMPLEMENTED"),
+                .i32_div_u => @panic("UNIMPLEMENTED"),
+                .i32_rem_s => @panic("UNIMPLEMENTED"),
+                .i32_rem_u => @panic("UNIMPLEMENTED"),
+                .i32_or => @panic("UNIMPLEMENTED"),
+                .i32_xor => @panic("UNIMPLEMENTED"),
+                .i32_shl => @panic("UNIMPLEMENTED"),
+                .i32_shr_s => @panic("UNIMPLEMENTED"),
+                .i32_shr_u => @panic("UNIMPLEMENTED"),
+                .i32_rotl => @panic("UNIMPLEMENTED"),
+                .i32_rotr => @panic("UNIMPLEMENTED"),
+
+                .i64_clz => @panic("UNIMPLEMENTED"),
+                .i64_ctz => @panic("UNIMPLEMENTED"),
+                .i64_popcnt => @panic("UNIMPLEMENTED"),
                 .i64_add => {
                     const a = self.stack.pop().?.i64;
                     const b = self.stack.pop().?.i64;
                     try self.stack.append(Value{ .i64 = a + b });
                 },
+                .i64_sub => @panic("UNIMPLEMENTED"),
+                .i64_mul => @panic("UNIMPLEMENTED"),
+                .i64_div_s => @panic("UNIMPLEMENTED"),
+                .i64_div_u => @panic("UNIMPLEMENTED"),
+                .i64_rem_s => @panic("UNIMPLEMENTED"),
+                .i64_rem_u => @panic("UNIMPLEMENTED"),
+                .i64_and => @panic("UNIMPLEMENTED"),
+                .i64_or => @panic("UNIMPLEMENTED"),
+                .i64_xor => @panic("UNIMPLEMENTED"),
+                .i64_shl => @panic("UNIMPLEMENTED"),
+                .i64_shr_s => @panic("UNIMPLEMENTED"),
+                .i64_shr_u => @panic("UNIMPLEMENTED"),
+                .i64_rotl => @panic("UNIMPLEMENTED"),
+                .i64_rotr => @panic("UNIMPLEMENTED"),
+
+                .f32_abs => @panic("UNIMPLEMENTED"),
+                .f32_neg => @panic("UNIMPLEMENTED"),
+                .f32_ceil => @panic("UNIMPLEMENTED"),
+                .f32_floor => @panic("UNIMPLEMENTED"),
+                .f32_trunc => @panic("UNIMPLEMENTED"),
+                .f32_nearest => @panic("UNIMPLEMENTED"),
+                .f32_sqrt => @panic("UNIMPLEMENTED"),
+                .f32_add => @panic("UNIMPLEMENTED"),
+                .f32_sub => @panic("UNIMPLEMENTED"),
+                .f32_mul => @panic("UNIMPLEMENTED"),
+                .f32_div => @panic("UNIMPLEMENTED"),
+                .f32_min => @panic("UNIMPLEMENTED"),
+                .f32_max => @panic("UNIMPLEMENTED"),
+                .f32_copysign => @panic("UNIMPLEMENTED"),
+
+                .f64_abs => @panic("UNIMPLEMENTED"),
+                .f64_neg => @panic("UNIMPLEMENTED"),
+                .f64_ceil => @panic("UNIMPLEMENTED"),
+                .f64_floor => @panic("UNIMPLEMENTED"),
+                .f64_trunc => @panic("UNIMPLEMENTED"),
+                .f64_nearest => @panic("UNIMPLEMENTED"),
+                .f64_sqrt => @panic("UNIMPLEMENTED"),
+                .f64_add => @panic("UNIMPLEMENTED"),
+                .f64_sub => @panic("UNIMPLEMENTED"),
+                .f64_mul => @panic("UNIMPLEMENTED"),
+                .f64_div => @panic("UNIMPLEMENTED"),
+                .f64_min => @panic("UNIMPLEMENTED"),
+                .f64_max => @panic("UNIMPLEMENTED"),
+                .f64_copysign => @panic("UNIMPLEMENTED"),
+
+                .i32_wrap_i64 => @panic("UNIMPLEMENTED"),
+                .i32_trunc_f32_s => @panic("UNIMPLEMENTED"),
+                .i32_trunc_f32_u => @panic("UNIMPLEMENTED"),
+                .i32_trunc_f64_s => @panic("UNIMPLEMENTED"),
+                .i32_trunc_f64_u => @panic("UNIMPLEMENTED"),
+                .i64_extend_i32_s => @panic("UNIMPLEMENTED"),
                 .i64_extend_i32_u => {
                     try self.stack.append(.{ .i64 = self.stack.pop().?.i32 });
                 },
-                else => {
-                    std.log.err("instruction {any} not implemented\n", .{opcode});
-                    std.process.exit(1);
-                },
+                .i64_trunc_f32_s => @panic("UNIMPLEMENTED"),
+                .i64_trunc_f32_u => @panic("UNIMPLEMENTED"),
+                .i64_trunc_f64_s => @panic("UNIMPLEMENTED"),
+                .i64_trunc_f64_u => @panic("UNIMPLEMENTED"),
+                .f32_convert_i32_s => @panic("UNIMPLEMENTED"),
+                .f32_convert_i32_u => @panic("UNIMPLEMENTED"),
+                .f32_convert_i64_s => @panic("UNIMPLEMENTED"),
+                .f32_convert_i64_u => @panic("UNIMPLEMENTED"),
+                .f32_demote_f64 => @panic("UNIMPLEMENTED"),
+                .f64_convert_i32_s => @panic("UNIMPLEMENTED"),
+                .f64_convert_i32_u => @panic("UNIMPLEMENTED"),
+                .f64_convert_i64_s => @panic("UNIMPLEMENTED"),
+                .f64_convert_i64_u => @panic("UNIMPLEMENTED"),
+                .f64_promote_f32 => @panic("UNIMPLEMENTED"),
+                .i32_reinterpret_f32 => @panic("UNIMPLEMENTED"),
+                .i64_reinterpret_f64 => @panic("UNIMPLEMENTED"),
+                .f32_reinterpret_i32 => @panic("UNIMPLEMENTED"),
+                .f64_reinterpret_i64 => @panic("UNIMPLEMENTED"),
+
+                .i32_extend8_s => @panic("UNIMPLEMENTED"),
+                .i32_extend16_s => @panic("UNIMPLEMENTED"),
+                .i64_extend8_s => @panic("UNIMPLEMENTED"),
+                .i64_extend16_s => @panic("UNIMPLEMENTED"),
+                .i64_extend32_s => @panic("UNIMPLEMENTED"),
+
+                .i32_trunc_sat_f32_s => @panic("UNIMPLEMENTED"),
+                .i32_trunc_sat_f32_u => @panic("UNIMPLEMENTED"),
+                .i32_trunc_sat_f64_s => @panic("UNIMPLEMENTED"),
+                .i32_trunc_sat_f64_u => @panic("UNIMPLEMENTED"),
+                .i64_trunc_sat_f32_s => @panic("UNIMPLEMENTED"),
+                .i64_trunc_sat_f32_u => @panic("UNIMPLEMENTED"),
+                .i64_trunc_sat_f64_s => @panic("UNIMPLEMENTED"),
+                .i64_trunc_sat_f64_u => @panic("UNIMPLEMENTED"),
+
+                .vecinst => @panic("UNIMPLEMENTED"),
             }
             //     switch (byte) {
             //         0x02 => {
@@ -686,7 +851,7 @@ pub const Runtime = struct {
             //             const integer = leb128Decode(u32, frame.code[frame.program_counter..]);
             //             frame.program_counter += integer.len;
 
-            //             self.call(allocator, integer.val, &[_]usize{}) catch {};
+            //             self.call(allocator, integer.val, &[_]usize@panic("UNIMPLEMENTED"),) catch @panic("UNIMPLEMENTED"),;
             //         },
             //         0xb => {
             //             _ = self.labels.pop();
@@ -694,7 +859,7 @@ pub const Runtime = struct {
             //                 for_loop = false;
             //             }
             //         },
-            //         else => std.log.err("instruction {} not implemented\n", .{byte}),
+            //         else => std.log.err("instruction @panic("UNIMPLEMENTED"), not implemented\n", .{byte}),
             //     }
             frame.program_counter += 1;
         }
@@ -727,11 +892,9 @@ pub const Runtime = struct {
                     switch (local) {
                         .val => |v| switch (v) {
                             .i32 => {
-                                std.debug.print("Local with type i32\n", .{});
                                 frame.locals[i] = .{ .i32 = 0 };
                             },
                             .i64 => {
-                                std.debug.print("Local with type i64\n", .{});
                                 frame.locals[i] = .{ .i64 = 0 };
                             },
                             else => unreachable,
