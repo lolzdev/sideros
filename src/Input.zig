@@ -126,7 +126,21 @@ pub const KeyCode = enum(u32) {
     menu = 348,
 };
 
-key_pressed: [@intFromEnum(KeyCode.menu)]bool,
+key_pressed: [@intFromEnum(KeyCode.menu)]bool = .{false} ** @intFromEnum(Input.KeyCode.menu),
+mouse_delta_x: f64 = 0.0,
+mouse_delta_y: f64 = 0.0,
+mouse_x: f64 = 0.0,
+mouse_y: f64 = 0.0,
+mouse_first: bool = true,
+sensitivity: f64 = 0.1,
+
+pub fn getCursorDelta(self: Input) @Vector(2, f64) {
+    return @Vector(2, f64){ self.mouse_delta_x, self.mouse_delta_y };
+}
+
+pub fn getCursorPosition(self: Input) @Vector(2, f64) {
+    return @Vector(2, f64){ self.mouse_x, self.mouse_y };
+}
 
 pub fn isKeyDown(self: Input, key: KeyCode) bool {
     return self.key_pressed[@intFromEnum(key)];

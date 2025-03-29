@@ -38,6 +38,7 @@ pub fn create(width: usize, height: usize, title: []const u8) !Window {
     const raw = c.glfwCreateWindow(@intCast(width), @intCast(height), title.ptr, null, null);
     c.glfwShowWindow(raw);
     _ = c.glfwSetKeyCallback(raw, keyCallback);
+    _ = c.glfwSetCursorPosCallback(raw, cursorCallback);
 
     return Window{
         .title = title,
@@ -73,6 +74,10 @@ pub fn destroy(self: Window) void {
     c.glfwTerminate();
 }
 
+pub fn getTime() f32 {
+    return c.glfwGetTime();
+}
+
 pub fn keyCallback(window: ?*c.GLFWwindow, key: c_int, scancode: c_int, action: c_int, mods: c_int) callconv(.c) void {
     _ = scancode;
     _ = mods;
@@ -83,5 +88,23 @@ pub fn keyCallback(window: ?*c.GLFWwindow, key: c_int, scancode: c_int, action: 
         } else if (action == c.GLFW_RELEASE) {
             resources.input.key_pressed[@intCast(key)] = false;
         }
+    }
+}
+
+pub fn cursorCallback(window: ?*c.GLFWwindow, x: f64, y: f64) callconv(.c) void {
+    if (c.glfwGetWindowUserPointer(window)) |r| {
+        const resources: *ecs.Resources = @alignCast(@ptrCast(r));
+        var input = resources.input;
+
+        if (input.mouse_first) {
+            input.mouse_x = x;
+            input.mouse_y = y;
+            input.mouse_first = false;
+        }
+
+        input.mouse_delta_x = (x - input.mouse_x);
+        input.mouse_delta_y = (y - input.mouse_y);
+        input.mouse_x = x;
+        input.mouse_y = y;
     }
 }
