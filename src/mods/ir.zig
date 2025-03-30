@@ -764,7 +764,7 @@ const IRParserState = struct {
 
         var it = self.branches.iterator();
         while (it.next()) |branch| {
-            if (start < branch.key_ptr.* and branch.key_ptr.* < end) {
+            if (start <= branch.key_ptr.* and branch.key_ptr.* <= end) {
                 if (branch.value_ptr.* == 0) {
                     self.indices.items[branch.key_ptr.*].u32 = jump_addr;
                     try todel.append(self.allocator, branch.key_ptr.*);
