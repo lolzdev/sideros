@@ -35,6 +35,7 @@ const Index = packed union {
     f64: f64,
     indirect: DIndex,
     reftype: std.wasm.RefType,
+    valtype: std.wasm.Valtype,
     memarg: Memarg,
     vector: VectorIndex,
 };
@@ -634,7 +635,7 @@ const IRParserState = struct {
             0xD0 => self.push(@enumFromInt(b), .{ .reftype = try self.parser.parseReftype() }),
             0xD1 => self.push(@enumFromInt(b), .{ .u64 = 0 }),
             0xD2 => self.push(@enumFromInt(b), .{ .u32 = try self.parser.readU32() }),
-            0x1A...0x1C => @panic("UNIMPLEMENTED"),
+            0x1A...0x1C => self.parseParametric(b),
             0x20...0x24 => self.push(@enumFromInt(b), .{ .u32 = try self.parser.readU32() }),
             0x25...0x26 => self.push(@enumFromInt(b), .{ .u32 = try self.parser.readU32() }),
             0x28...0x3E => self.push(@enumFromInt(b), .{ .memarg = try self.parseMemarg() }),
@@ -758,13 +759,21 @@ const IRParserState = struct {
         try self.fix_branches_for_block(start, end, end);
     }
 
+    fn parseParametric(self: *IRParserState, b: u8) !void {
+        try switch (b) {
+            0x1A...0x1B => self.push(@enumFromInt(b), .{ .u64 = 0 }),
+            0x1C => @panic("UNIMPLEMENTED"),
+            else => return Parser.Error.invalid_instruction,
+        };
+    }
+
     fn fix_branches_for_block(self: *IRParserState, start: u32, end: u32, jump_addr: u32) !void {
         var todel: std.ArrayListUnmanaged(u32) = .{};
         defer todel.deinit(self.allocator);
 
         var it = self.branches.iterator();
         while (it.next()) |branch| {
-            if (start <= branch.key_ptr.* and branch.key_ptr.* <= end) {
+            if (start <= branch.key_ptr.* and branch.key_ptr.* < end) {
                 if (branch.value_ptr.* == 0) {
                     self.indices.items[branch.key_ptr.*].u32 = jump_addr;
                     try todel.append(self.allocator, branch.key_ptr.*);
