@@ -12,10 +12,12 @@ pub const Type = enum(u8) {
 
 pub const GlobalRuntime = struct {
     functions: std.StringHashMap(*const fn (stack: *std.ArrayList(vm.Value)) void),
+    // globals: [_]vm.Value,
 
     pub fn init(allocator: Allocator) GlobalRuntime {
         return GlobalRuntime{
             .functions = std.StringHashMap(*const fn (stack: *std.ArrayList(vm.Value)) void).init(allocator),
+            // .globals = .{}
         };
     }
 

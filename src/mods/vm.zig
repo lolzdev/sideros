@@ -107,7 +107,7 @@ pub const Runtime = struct {
                     std.log.err("Reached unreachable statement at IR counter {any}\n", .{frame.program_counter});
                     frame.code.print(std.io.getStdOut().writer()) catch {};
                 },
-                .nop => @panic("UNIMPLEMENTED"),
+                .nop => {},
                 .br => {
                     frame.program_counter = index.u32;
                     continue;
@@ -130,8 +130,19 @@ pub const Runtime = struct {
                 .refisnull => @panic("UNIMPLEMENTED"),
                 .reffunc => @panic("UNIMPLEMENTED"),
 
-                .drop => @panic("UNIMPLEMENTED"),
-                .select => @panic("UNIMPLEMENTED"),
+                .drop => {
+                    _ = self.stack.pop();
+                },
+                .select => {
+                    const c = self.stack.pop().?.i32;
+                    const val2 = self.stack.pop().?;
+                    const val1 = self.stack.pop().?;
+                    if (c != 0) {
+                        try self.stack.append(val1);
+                    } else {
+                        try self.stack.append(val2);
+                    }
+                },
                 .select_with_values => @panic("UNIMPLEMENTED"),
 
                 .localget => try self.stack.append(frame.locals[index.u32]),
