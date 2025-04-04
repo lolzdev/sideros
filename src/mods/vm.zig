@@ -24,22 +24,37 @@ pub const Functype = struct {
         allocator.free(self.returns);
     }
 };
-pub const Function = struct { func_type: Functype, typ: union(enum) {
-    internal: struct {
-        locals: []Valtype,
-        ir: IR,
-    },
-    external: void,
-} };
+pub const Function = struct {
+	func_type: Functype,
+	typ: union(enum) {
+	    internal: struct {
+	        locals: []Valtype,
+	        ir: IR,
+	    },
+	    external: void,
+	}
+};
+
+pub const ExportFunction = enum {
+	preinit,
+};
+pub const Exports = struct {
+	preinit: ?u32 = null,
+};
+comptime {
+	std.debug.assert(@typeInfo(ExportFunction).@"enum".fields.len == @typeInfo(Exports).@"struct".fields.len );
+}
+
 
 pub const Module = struct {
     memory: Memory,
     functions: []Function,
-    exports: std.StringHashMapUnmanaged(u32),
+    exports: Exports,
 
-    fn deinit(self: *Module, allocator: Allocator) void {
-        self.exports.deinit(allocator);
+    pub fn deinit(self: Module, allocator: Allocator) void {
+        // self.exports.deinit(allocator);
         for (self.functions) |f| {
+	        std.debug.print("Freeing function parameters at {*}\n", .{f.func_type.parameters.ptr});
             allocator.free(f.func_type.parameters);
             allocator.free(f.func_type.returns);
             switch (f.typ) {
@@ -877,12 +892,16 @@ pub const Runtime = struct {
     }
 
     // TODO: Do name resolution at parseTime
-    pub fn callExternal(self: *Runtime, allocator: Allocator, name: []const u8, parameters: []Value) !void {
-        if (self.module.exports.get(name)) |function| {
-            try self.call(allocator, function, parameters);
-        } else {
-            std.debug.panic("Function `{s}` not avaliable", .{name});
-        }
+    pub fn callExternal(self: *Runtime, allocator: Allocator, name: ExportFunction, parameters: []Value) !void {
+	    switch (name) {
+		    .preinit => {
+			    if (self.module.exports.preinit) |func| {
+				    try self.call(allocator, func, parameters);
+			    } else {
+				    std.debug.panic("Function preinit unavailable\n", .{});
+			    }
+		    },
+	    }
     }
 
     pub fn call(self: *Runtime, allocator: Allocator, function: usize, parameters: []Value) AllocationError!void {

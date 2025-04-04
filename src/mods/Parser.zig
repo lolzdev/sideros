@@ -7,10 +7,10 @@ bytes: []const u8,
 byte_idx: usize,
 allocator: Allocator,
 
-types: ?[]vm.Functype = null,
-functions: ?[]vm.Function = null,
-memory: ?Memtype = null,
-exports: std.StringHashMapUnmanaged(u32) = .{},
+types: []vm.Functype,
+functions: []vm.Function,
+memory: Memtype,
+exports: vm.Exports,
 
 const Parser = @This();
 
@@ -33,9 +33,48 @@ pub const Error = error{
     invalid_exportdesc,
     double_else,
     duplicated_funcsec,
+    duplicated_typesec,
     unresolved_branch,
     unterminated_wasm,
 };
+
+pub fn init(allocator: Allocator, bytes: []const u8) !Parser {
+	return .{
+		.bytes = bytes,
+		.byte_idx = 0,
+		.allocator = allocator,
+		.types = &.{},
+		.functions = &.{},
+		.memory = .{
+			.lim = .{
+				.min = 0,
+				.max = 0,
+			},
+		},
+		.exports = .{},
+	};
+}
+
+pub fn deinit(self: Parser) void {
+	for (self.types) |t| {
+		self.allocator.free(t.parameters);
+		self.allocator.free(t.returns);
+	}
+	self.allocator.free(self.types);
+	self.allocator.free(self.functions);
+}
+
+pub fn module(self: *Parser) vm.Module {
+	defer self.functions = &.{};
+	return .{
+		.memory = .{
+			.min = self.memory.lim.min,
+			.max = self.memory.lim.max,
+		},
+		.functions = self.functions,
+		.exports = self.exports,
+	};
+}
 
 // TODO: This function should not exists
 fn warn(self: Parser, s: []const u8) void {
@@ -231,7 +270,7 @@ fn parseGlobaltype(self: *Parser) !Globaltype {
 // ===========
 // NOTE: This should not return anything but modify IR
 
-pub fn parseModule(self: *Parser) !vm.Module {
+pub fn parseModule(self: *Parser) !void {
     if (!std.mem.eql(u8, try self.read(4), &.{ 0x00, 0x61, 0x73, 0x6d })) return Error.invalid_magic;
     if (!std.mem.eql(u8, try self.read(4), &.{ 0x01, 0x00, 0x00, 0x00 })) return Error.invalid_version;
     // TODO: Ensure only one section of each type (except for custom section), some code depends on it
@@ -253,15 +292,6 @@ pub fn parseModule(self: *Parser) !vm.Module {
             else => return Error.invalid_section,
         };
     }
-
-    return .{
-        .memory = .{
-            .min = self.memory.?.lim.min,
-            .max = self.memory.?.lim.max,
-        },
-        .exports = self.exports,
-        .functions = self.functions.?,
-    };
 }
 
 fn parseCustomsec(self: *Parser) !void {
@@ -275,6 +305,8 @@ fn parseTypesec(self: *Parser) !void {
     const end_idx = self.byte_idx + size;
 
     const ft = try self.parseVector(Parser.parseFunctype);
+
+    if (self.types.len != 0) return Error.duplicated_typesec;
     self.types = ft;
 
     // TODO(ernesto): run this check not only on debug
@@ -310,7 +342,7 @@ fn parseImportsec(self: *Parser) !void {
 
     // TODO(ernesto): this should be used to do name resolution.
     const imports = try self.parseVector(Parser.parseImport);
-    _ = imports;
+    defer self.allocator.free(imports);
 
     // TODO: run this check not only on debug
     std.debug.assert(self.byte_idx == end_idx);
@@ -321,16 +353,22 @@ fn parseFuncsec(self: *Parser) !void {
     const end_idx = self.byte_idx + size;
 
     const types = try self.parseVector(Parser.readU32);
+    defer self.allocator.free(types);
 
-    if (self.functions != null) return Error.duplicated_funcsec;
+    if (self.functions.len != 0) return Error.duplicated_funcsec;
     self.functions = try self.allocator.alloc(vm.Function, types.len);
 
     for (types, 0..) |t, i| {
-        self.functions.?[i].func_type = self.types.?[t];
+        self.functions[i].func_type = .{
+	        .parameters = try self.allocator.alloc(vm.Valtype, self.types[t].parameters.len),
+	        .returns = try self.allocator.alloc(vm.Valtype, self.types[t].returns.len),
+        };
+        @memcpy(self.functions[i].func_type.parameters, self.types[t].parameters);
+        @memcpy(self.functions[i].func_type.returns, self.types[t].returns);
     }
 
     // TODO(ernesto): run this check not only in debug
-    std.debug.assert(types.len == self.functions.?.len);
+    std.debug.assert(types.len == self.functions.len);
 
     // TODO: run this check not only on debug
     std.debug.assert(self.byte_idx == end_idx);
@@ -347,6 +385,7 @@ fn parseMemsec(self: *Parser) !void {
     const end_idx = self.byte_idx + size;
 
     const mems = try self.parseVector(Parser.parseMemtype);
+    defer self.allocator.free(mems);
     if (mems.len == 0) {
         // WTF?
     } else if (mems.len == 1) {
@@ -391,9 +430,19 @@ fn parseExportsec(self: *Parser) !void {
     const end_idx = self.byte_idx + size;
 
     const exports = try self.parseVector(Parser.parseExport);
+    defer {
+	    for (exports) |e| self.allocator.free(e.name);
+	    self.allocator.free(exports);
+    }
     for (exports) |e| {
         switch (e.exportdesc) {
-            .func => try self.exports.put(self.allocator, e.name, e.exportdesc.func),
+            .func => {
+	            if (std.mem.eql(u8, e.name, "preinit")) {
+		            self.exports.preinit = e.exportdesc.func;
+	            } else {
+		            std.log.warn("exported function {s} not supported\n", .{e.name});
+	            }
+            },
             else => std.debug.print("[WARN]: export ignored\n", .{}),
         }
     }
@@ -434,6 +483,7 @@ fn parseCode(self: *Parser) !Func {
     const end_idx = self.byte_idx + size;
 
     const locals = try self.parseVector(Parser.parseLocal);
+    defer self.allocator.free(locals);
     var local_count: usize = 0;
     for (locals) |l| {
         local_count += l.n;
@@ -465,10 +515,11 @@ fn parseCodesec(self: *Parser) !void {
     const end_idx = self.byte_idx + size;
 
     const codes = try self.parseVector(Parser.parseCode);
+    defer self.allocator.free(codes);
     // TODO: run this check not only on debug
-    std.debug.assert(codes.len == self.functions.?.len);
+    std.debug.assert(codes.len == self.functions.len);
 
-    for (codes, self.functions.?) |code, *f| {
+    for (codes, self.functions) |code, *f| {
         f.typ = .{ .internal = .{
             .locals = code.locals,
             .ir = code.ir,
