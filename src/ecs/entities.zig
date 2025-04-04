@@ -22,6 +22,7 @@ pub const Human = struct {
     speed: components.Speed,
 };
 
+// TODO(ernesto): Move pool to its own file
 pub const Pool = struct {
     humans: std.MultiArrayList(Human),
     resources: Resources,
@@ -64,6 +65,7 @@ pub const Pool = struct {
         self.humans.deinit(self.allocator);
 
         self.system_groups.deinit();
+        self.sync_groups.deinit();
         self.thread_pool.deinit();
         self.allocator.destroy(self.thread_pool);
     }
