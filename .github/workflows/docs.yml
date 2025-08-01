@@ -26,7 +26,7 @@ jobs:
         with:
           version: master
       - name: install dependencies
-        run: sudo apt install -y libwayland-dev libxkbcommon-dev xorg-dev glslc
+        run: sudo apt install -y libwayland-dev libxkbcommon-dev xorg-dev glslc libvulkan1
       - name: build docs
         run: zig build docs
       - name: archive docs
