@@ -1,5 +1,5 @@
 const std = @import("std");
-const c = @import("c.zig");
+const c = @import("c.zig").c;
 const Window = @import("Window.zig");
 const Mesh = @import("Mesh.zig");
 const sideros = @import("sideros");

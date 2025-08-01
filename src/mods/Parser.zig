@@ -490,8 +490,8 @@ fn parseCode(self: *Parser) !Func {
     }
 
     const ir = try IR.parse(self);
-    const stdout = std.io.getStdOut().writer();
-    try ir.print(stdout);
+    // const stdout = std.fs.File.stdout().writer();
+    // try ir.print(stdout);
 
     const func = Func{
         .locals = try self.allocator.alloc(vm.Valtype, local_count),

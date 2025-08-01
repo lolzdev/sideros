@@ -6,12 +6,16 @@ pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
-    const glfw = b.addStaticLibrary(.{
-        .name = "glfw",
+    const glfw_module = b.createModule(.{
         .target = target,
         .optimize = optimize,
+        .link_libc = true,
     });
-    glfw.addCSourceFiles(.{ .files = &[_][]const u8{
+    const glfw = b.addLibrary(.{
+        .name = "glfw",
+        .root_module = glfw_module,
+    });
+    glfw_module.addCSourceFiles(.{ .files = &[_][]const u8{
         "ext/glfw/src/cocoa_init.m",
         "ext/glfw/src/cocoa_joystick.m",
         "ext/glfw/src/cocoa_monitor.m",
@@ -53,29 +57,28 @@ pub fn build(b: *std.Build) void {
         "ext/glfw/src/x11_window.c",
         "ext/glfw/src/xkb_unicode.c",
     }, .flags = &[_][]const u8{ "-D_GLFW_X11", "-Wall", "-Wextra" } });
-    glfw.linkLibC();
 
-    const sideros = b.addModule("sideros", .{
+    const sideros = b.createModule(.{
         .root_source_file = b.path("src/sideros.zig"),
         .target = target,
         .optimize = optimize,
     });
 
-    const mods = b.addModule("mods", .{
+    const mods = b.createModule(.{
         .root_source_file = b.path("src/mods/mods.zig"),
         .target = target,
         .optimize = optimize,
     });
     mods.addImport("sideros", sideros);
 
-    const ecs = b.addModule("ecs", .{
+    const ecs = b.createModule(.{
         .root_source_file = b.path("src/ecs/ecs.zig"),
         .target = target,
         .optimize = optimize,
     });
     ecs.addImport("sideros", sideros);
 
-    const renderer = b.addModule("renderer", .{
+    const renderer = b.createModule(.{
         .root_source_file = b.path("src/renderer/Renderer.zig"),
         .target = target,
         .optimize = optimize,
@@ -88,10 +91,12 @@ pub fn build(b: *std.Build) void {
     compileAllShaders(b, renderer);
 
     const exe = b.addExecutable(.{
-        .root_source_file = b.path("src/main.zig"),
-        .target = target,
-        .optimize = optimize,
         .name = "sideros",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/main.zig"),
+            .target = target,
+            .optimize = optimize,
+        }),
     });
     exe.root_module.addImport("mods", mods);
     exe.root_module.addImport("sideros", sideros);
@@ -114,7 +119,7 @@ pub fn build(b: *std.Build) void {
     docs_step.dependOn(&install_docs.step);
 
     // NOTE: This is a hack to generate documentation
-    const mods_lib = b.addStaticLibrary(.{
+    const mods_lib = b.addLibrary(.{
         .root_module = mods,
         .name = "mods",
     });
@@ -126,7 +131,7 @@ pub fn build(b: *std.Build) void {
     });
     docs_step.dependOn(&mods_docs.step);
 
-    const ecs_lib = b.addStaticLibrary(.{
+    const ecs_lib = b.addLibrary(.{
         .root_module = ecs,
         .name = "ecs",
     });
@@ -148,9 +153,11 @@ pub fn build(b: *std.Build) void {
     run_step.dependOn(&run_cmd.step);
 
     const exe_unit_tests = b.addTest(.{
-        .root_source_file = b.path("src/main.zig"),
-        .target = target,
-        .optimize = optimize,
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/main.zig"),
+            .target = target,
+            .optimize = optimize,
+        }),
     });
 
     const run_exe_unit_tests = b.addRunArtifact(exe_unit_tests);

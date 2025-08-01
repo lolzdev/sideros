@@ -120,7 +120,7 @@ pub const Runtime = struct {
                 // Like this
                 .@"unreachable" => {
                     std.log.err("Reached unreachable statement at IR counter {any}\n", .{frame.program_counter});
-                    frame.code.print(std.io.getStdOut().writer()) catch {};
+                    //frame.code.print(std.io.getStdOut().writer()) catch {};
                 },
                 .nop => {},
                 .br => {
