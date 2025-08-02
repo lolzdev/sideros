@@ -6,5 +6,9 @@ the maintainer responsible for the parts involved.
 Source: src/mods
 Maintainer: luccie@sideros.org
 
+- OpenGL renderer:
+Source: src/rendering/opengl
+Maintainer: h3ll@sideros.org
+
 - Everything else:
 Maintainer: torres@sideros.org
