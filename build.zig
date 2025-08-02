@@ -116,7 +116,7 @@ pub fn build(b: *std.Build) void {
         .root_module = sideros,
         .name = "sideros",
     });
-    // TODO: This does not generate documentation correctly?
+
     const install_docs = b.addInstallDirectory(.{
         .source_dir = root_lib.getEmittedDocs(),
         .install_dir = .prefix,
