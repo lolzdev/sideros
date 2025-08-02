@@ -2,9 +2,9 @@ const std = @import("std");
 const config = @import("config");
 const math = @import("sideros").math;
 const Input = @import("sideros").Input;
-const mods = @import("mods");
-const ecs = @import("ecs");
-pub const Renderer = @import("renderer");
+const mods = @import("sideros").mods;
+const ecs = @import("sideros").ecs;
+const Renderer = @import("sideros").Renderer;
 
 fn testSystem2(pool: *ecs.Pool) void {
     std.debug.print("{any}\n", .{pool.resources.input.isKeyDown(.a)});
