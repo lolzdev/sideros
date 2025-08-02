@@ -82,6 +82,7 @@ pub fn build(b: *std.Build) void {
         .root_source_file = b.path("src/renderer/Renderer.zig"),
         .target = target,
         .optimize = optimize,
+        .link_libc = true,
     });
     renderer.addImport("sideros", sideros);
     renderer.addImport("ecs", ecs);
@@ -89,6 +90,10 @@ pub fn build(b: *std.Build) void {
 
     renderer.addIncludePath(b.path("ext/glfw/include"));
     compileAllShaders(b, renderer);
+
+    sideros.addImport("mods", mods);
+    sideros.addImport("ecs", ecs);
+    sideros.addImport("renderer", renderer);
 
     const exe = b.addExecutable(.{
         .name = "sideros",
@@ -98,49 +103,27 @@ pub fn build(b: *std.Build) void {
             .optimize = optimize,
         }),
     });
-    exe.root_module.addImport("mods", mods);
     exe.root_module.addImport("sideros", sideros);
-    exe.root_module.addImport("renderer", renderer);
-    exe.root_module.addImport("ecs", ecs);
 
     exe.linkSystemLibrary("vulkan");
+    exe.linkSystemLibrary("wayland-client");
     exe.linkLibrary(glfw);
     exe.linkLibC();
 
     b.installArtifact(exe);
 
+    const root_lib = b.addLibrary(.{
+        .root_module = sideros,
+        .name = "sideros",
+    });
     // TODO: This does not generate documentation correctly?
     const install_docs = b.addInstallDirectory(.{
-        .source_dir = exe.getEmittedDocs(),
+        .source_dir = root_lib.getEmittedDocs(),
         .install_dir = .prefix,
-        .install_subdir = "docs",
+        .install_subdir = "docs/sideros",
     });
     const docs_step = b.step("docs", "Generate documentation");
     docs_step.dependOn(&install_docs.step);
-
-    // NOTE: This is a hack to generate documentation
-    const mods_lib = b.addLibrary(.{
-        .root_module = mods,
-        .name = "mods",
-    });
-
-    const mods_docs = b.addInstallDirectory(.{
-        .source_dir = mods_lib.getEmittedDocs(),
-        .install_dir = .prefix,
-        .install_subdir = "docs/mods",
-    });
-    docs_step.dependOn(&mods_docs.step);
-
-    const ecs_lib = b.addLibrary(.{
-        .root_module = ecs,
-        .name = "ecs",
-    });
-    const ecs_docs = b.addInstallDirectory(.{
-        .source_dir = ecs_lib.getEmittedDocs(),
-        .install_dir = .prefix,
-        .install_subdir = "docs/ecs",
-    });
-    docs_step.dependOn(&ecs_docs.step);
 
     const run_cmd = b.addRunArtifact(exe);
     run_cmd.step.dependOn(b.getInstallStep());
