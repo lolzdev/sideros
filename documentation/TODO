@@ -20,11 +20,6 @@ Zig has built-in unit testing which should be used to verify that everything is 
 
 MEDIUM:
 
-- Implement internal windowing system:
-The engine now uses GLFW to interface with the user's windowing system. But GLFW lacks flexibility and thus it might be better
-to implement an internal abstraction to create windows and receive input, based on xcb for X11, wayland-client for Wayland,
-Cocoa for MacOS and win32 for Windows.
-
 HARD:
 
 
