@@ -1,1 +1,8 @@
-TODO
+Once you got a modification you want to send, create a commit using git and generate a patch file with the following command:
+
+$ git format-patch -M origin/master
+
+and when you have the patch file send it to the patch mailing list, possibly using git send-email like this:
+
+$ git send-email *.patch
+
