@@ -73,7 +73,8 @@ pub const Instance = struct {
     handle: c.VkInstance,
 
     pub fn create(allocator: Allocator) !Instance {
-        const extensions = Window.getExtensions();
+        const extensions = [_][*c]const u8 {c.VK_KHR_WAYLAND_SURFACE_EXTENSION_NAME, c.VK_KHR_SURFACE_EXTENSION_NAME};
+        //const extensions = [_][:0]const u8 {"VK_KHR_wayland_surface\0", "VK_KHR_surface\0"};
 
         // Querry avaliable extensions size
         var avaliableExtensionsCount: u32 = 0;
@@ -140,7 +141,7 @@ pub const Instance = struct {
             .sType = c.VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
             .pApplicationInfo = &app_info,
             .enabledExtensionCount = @intCast(extensions.len),
-            .ppEnabledExtensionNames = extensions.ptr,
+            .ppEnabledExtensionNames = @ptrCast(extensions[0..]),
             .enabledLayerCount = @intCast(newLayers.items.len),
             .ppEnabledLayerNames = newLayers.items.ptr,
         };
@@ -267,7 +268,7 @@ pub fn RenderPass(comptime n: usize) type {
 
         pub fn begin(self: Self, swapchain: Swapchain(n), device: Device(n), image: usize, frame: usize) void {
             std.debug.assert(frame < n);
-            const clear_color: c.VkClearValue = .{ .color = .{ .float32 = .{ 0.0, 0.0, 0.0, 1.0 } } };
+            const clear_color: c.VkClearValue = .{ .color = .{ .float32 = .{ 1.0, 0.0, 0.0, 1.0 } } };
 
             const begin_info: c.VkRenderPassBeginInfo = .{
                 .sType = c.VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
@@ -604,7 +605,7 @@ pub fn Swapchain(comptime n: usize) type {
         }
 
         // TODO: Allow to recreate so Window can be resized
-        pub fn create(allocator: Allocator, surface: Surface, device: Device(n), physical_device: PhysicalDevice, w: Window, render_pass: RenderPass(n)) !Self {
+        pub fn create(allocator: Allocator, surface: Surface, device: Device(n), physical_device: PhysicalDevice, render_pass: RenderPass(n)) !Self {
             const present_modes = try surface.presentModes(allocator, physical_device);
             defer allocator.free(present_modes);
             const capabilities = try surface.capabilities(physical_device);
@@ -625,7 +626,7 @@ pub fn Swapchain(comptime n: usize) type {
             if (capabilities.currentExtent.width != std.math.maxInt(u32)) {
                 extent = capabilities.currentExtent;
             } else {
-                const width, const height = w.size();
+                const width: u32, const height: u32 = .{800, 600};
 
                 extent = .{
                     .width = @intCast(width),
@@ -756,10 +757,16 @@ pub fn Swapchain(comptime n: usize) type {
 pub const Surface = struct {
     handle: c.VkSurfaceKHR,
 
-    pub fn create(instance: Instance, w: Window) !Surface {
+    pub fn create(instance: Instance, display: ?*anyopaque, surface: ?*anyopaque) !Surface {
         var handle: c.VkSurfaceKHR = undefined;
-        try mapError(c.glfwCreateWindowSurface(instance.handle, w.raw, null, &handle));
-        return Surface{
+        const create_info: c.VkWaylandSurfaceCreateInfoKHR = .{
+            .sType = c.VK_STRUCTURE_TYPE_WAYLAND_SURFACE_CREATE_INFO_KHR,
+            .display = @ptrCast(display),
+            .surface = @ptrCast(surface),
+        };
+
+        try mapError(c.vkCreateWaylandSurfaceKHR(instance.handle, &create_info, null, &handle));
+        return .{
             .handle = handle,
         };
     }
@@ -834,7 +841,7 @@ pub fn Device(comptime n: usize) type {
         }
 
         pub fn waitFence(self: Self, frame: usize) !void {
-            std.debug.assert(frame < n);
+            //std.debug.assert(frame < n);
             try mapError(c.vkWaitForFences(self.handle, 1, &self.in_flight_fence[frame], c.VK_TRUE, std.math.maxInt(u64)));
             try mapError(c.vkResetFences(self.handle, 1, &self.in_flight_fence[frame]));
         }
@@ -917,28 +924,30 @@ pub fn Device(comptime n: usize) type {
 
         pub fn submit(self: Self, swapchain: Swapchain(n), image: usize, frame: usize) !void {
             std.debug.assert(frame < n);
-            //const wait_semaphores: [1]c.VkSemaphore = .{self.image_available[frame]};
-            //const signal_semaphores: [1]c.VkSemaphore = .{self.render_finished[frame]};
-            //const swapchains: [1]c.VkSwapchainKHR = .{swapchain.handle};
+            const wait_semaphores: [1]c.VkSemaphore = .{self.image_available[frame]};
+            const signal_semaphores: [1]c.VkSemaphore = .{self.render_finished[frame]};
+            const swapchains: [1]c.VkSwapchainKHR = .{swapchain.handle};
+            _ = swapchains;
             const stages: []const u32 = &[_]u32{c.VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT};
 
             const submit_info: c.VkSubmitInfo = .{
                 .sType = c.VK_STRUCTURE_TYPE_SUBMIT_INFO,
                 .waitSemaphoreCount = 1,
-                .pWaitSemaphores = &self.image_available[frame],
+                .pWaitSemaphores = wait_semaphores[0..].ptr,
                 .pWaitDstStageMask = stages.ptr,
                 .commandBufferCount = 1,
                 .pCommandBuffers = &self.command_buffers[frame],
                 .signalSemaphoreCount = 1,
-                .pSignalSemaphores = &self.render_finished[frame],
+                .pSignalSemaphores = signal_semaphores[0..].ptr,
             };
 
+            _ = c.vkResetFences(self.handle, 1, &self.in_flight_fence[frame]);
             try mapError(c.vkQueueSubmit(self.graphics_queue, 1, &submit_info, self.in_flight_fence[frame]));
 
             const present_info: c.VkPresentInfoKHR = .{
                 .sType = c.VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
                 .waitSemaphoreCount = 1,
-                .pWaitSemaphores = &self.render_finished[frame],
+                .pWaitSemaphores = signal_semaphores[0..].ptr,
                 .swapchainCount = 1,
                 .pSwapchains = &swapchain.handle,
                 .pImageIndices = @ptrCast(&image),

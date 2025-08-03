@@ -1,5 +1,5 @@
 pub const c = @cImport({
-    @cDefine("GLFW_INCLUDE_NONE", {});
     @cInclude("vulkan/vulkan.h");
-    @cInclude("GLFW/glfw3.h");
+    @cInclude("vulkan/vulkan_wayland.h");
+    @cInclude("wayland-client.h");
 });

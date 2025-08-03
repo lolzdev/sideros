@@ -19,10 +19,10 @@ current_frame: u32,
 vertex_buffer: vk.Buffer,
 index_buffer: vk.Buffer,
 
-pub fn init(allocator: Allocator, w: Window) !Renderer {
+pub fn init(allocator: Allocator, display: ?*anyopaque, s: ?*anyopaque) !Renderer {
     const instance = try vk.Instance.create(allocator);
 
-    const surface = try vk.Surface.create(instance, w);
+    const surface = try vk.Surface.create(instance, display, s);
 
     var physical_device = try vk.PhysicalDevice.pick(allocator, instance);
     const device = try physical_device.create_device(surface, allocator, 2);
@@ -34,7 +34,7 @@ pub fn init(allocator: Allocator, w: Window) !Renderer {
 
     const render_pass = try vk.RenderPass(2).create(allocator, device, surface, physical_device);
 
-    const swapchain = try vk.Swapchain(2).create(allocator, surface, device, physical_device, w, render_pass);
+    const swapchain = try vk.Swapchain(2).create(allocator, surface, device, physical_device, render_pass);
 
     const graphics_pipeline = try vk.GraphicsPipeline(2).create(device, swapchain, render_pass, vertex_shader, fragment_shader);
 
@@ -75,8 +75,9 @@ pub fn deinit(self: Renderer) void {
 }
 
 // TODO: render is maybe a bad name? something like present() or submit() is better?
-pub fn render(pool: *ecs.Pool) anyerror!void {
-    var renderer = pool.resources.renderer;
+//pub fn render(pool: *ecs.Pool) anyerror!void {
+pub fn render(renderer: *Renderer) anyerror!void {
+    //var renderer = pool.resources.renderer;
 
     try renderer.device.waitFence(renderer.current_frame);
     const image = try renderer.swapchain.nextImage(renderer.device, renderer.current_frame);
@@ -94,4 +95,6 @@ pub fn render(pool: *ecs.Pool) anyerror!void {
     try renderer.device.submit(renderer.swapchain, image, renderer.current_frame);
 
     renderer.current_frame = (renderer.current_frame + 1) % 2;
+
+    renderer.device.waitIdle();
 }

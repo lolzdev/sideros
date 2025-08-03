@@ -10,9 +10,8 @@ pub const Error = error{
 };
 
 pub fn getExtensions() [][*c]const u8 {
-    var extension_count: u32 = undefined;
-    const raw: [*c][*c]const u8 = c.glfwGetRequiredInstanceExtensions(&extension_count);
-    const extensions = raw[0..extension_count];
+    const raw: [*c][*c]const u8 = .{"VK_KHR_wayland_surface", "VK_KHR_surface"};
+    const extensions = raw[0..2];
 
     return extensions;
 }
@@ -20,25 +19,10 @@ pub fn getExtensions() [][*c]const u8 {
 title: []const u8,
 width: usize,
 height: usize,
-raw: *c.GLFWwindow,
+raw: *c.wl_display,
 
 pub fn create(width: usize, height: usize, title: []const u8) !Window {
-    if (c.glfwInit() != c.GLFW_TRUE) {
-        const status = c.glfwGetError(null);
-
-        return switch (status) {
-            c.GLFW_PLATFORM_UNAVAILABLE => Error.platform_unavailable,
-            c.GLFW_PLATFORM_ERROR => Error.platform_error,
-            else => unreachable,
-        };
-    }
-
-    c.glfwWindowHint(c.GLFW_RESIZABLE, c.GLFW_FALSE);
-    c.glfwWindowHint(c.GLFW_CLIENT_API, c.GLFW_NO_API);
-    const raw = c.glfwCreateWindow(@intCast(width), @intCast(height), title.ptr, null, null);
-    c.glfwShowWindow(raw);
-    _ = c.glfwSetKeyCallback(raw, keyCallback);
-    _ = c.glfwSetCursorPosCallback(raw, cursorCallback);
+    const raw = c.wl_display_connect(null);
 
     return Window{
         .title = title,
@@ -52,12 +36,8 @@ pub fn setResources(self: *Window, resources: *ecs.Resources) void {
     c.glfwSetWindowUserPointer(self.raw, resources);
 }
 
-pub fn pollEvents() void {
-    c.glfwPollEvents();
-}
-
 pub fn shouldClose(self: Window) bool {
-    return c.glfwWindowShouldClose(self.raw) == c.GLFW_TRUE;
+    return c.wl_display_dispatch(self.raw) != -1;
 }
 
 pub fn size(self: Window) struct { usize, usize } {
@@ -70,8 +50,7 @@ pub fn size(self: Window) struct { usize, usize } {
 }
 
 pub fn destroy(self: Window) void {
-    c.glfwDestroyWindow(self.raw);
-    c.glfwTerminate();
+    c.wl_display_disconnect(self.raw);
 }
 
 pub fn getTime() f64 {

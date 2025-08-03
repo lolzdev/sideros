@@ -7,5 +7,6 @@ layout (binding = 0) uniform Uniform {
 } ubo;
 
 void main() {
-    gl_Position = ubo.proj * vec4(vertPos, 1.0);
+    vec4 out_vec = ubo.proj * vec4(vertPos, 1.0);
+    gl_Position = vec4(out_vec.x, out_vec.y, 0.5, out_vec.w);
 }
