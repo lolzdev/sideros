@@ -2,7 +2,6 @@ const c = @import("sideros").c;
 const ecs = @import("ecs");
 const std = @import("std");
 const vk = @import("vulkan.zig");
-pub const Window = @import("Window.zig");
 pub const Mesh = @import("Mesh.zig");
 const Allocator = std.mem.Allocator;
 
