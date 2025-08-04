@@ -24,35 +24,31 @@ pub const Functype = struct {
         allocator.free(self.returns);
     }
 };
-pub const Function = struct {
-	func_type: Functype,
-	typ: union(enum) {
-	    internal: struct {
-	        locals: []Valtype,
-	        ir: IR,
-	    },
-	    external: void,
-	}
-};
+pub const Function = struct { func_type: Functype, typ: union(enum) {
+    internal: struct {
+        locals: []Valtype,
+        ir: IR,
+    },
+    external: void,
+} };
 
 pub const ExportFunction = enum {
-	preinit,
+    preinit,
     logErr,
     logWarn,
     logInfo,
     logDebug,
 };
 pub const Exports = struct {
-	preinit: ?u32 = null,
+    preinit: ?u32 = null,
     logErr: ?u32 = null,
     logWarn: ?u32 = null,
     logInfo: ?u32 = null,
     logDebug: ?u32 = null,
 };
 comptime {
-	std.debug.assert(@typeInfo(ExportFunction).@"enum".fields.len == @typeInfo(Exports).@"struct".fields.len );
+    std.debug.assert(@typeInfo(ExportFunction).@"enum".fields.len == @typeInfo(Exports).@"struct".fields.len);
 }
-
 
 pub const Module = struct {
     memory: Memory,
@@ -62,7 +58,7 @@ pub const Module = struct {
     pub fn deinit(self: Module, allocator: Allocator) void {
         // self.exports.deinit(allocator);
         for (self.functions) |f| {
-	        std.debug.print("Freeing function parameters at {*}\n", .{f.func_type.parameters.ptr});
+            std.debug.print("Freeing function parameters at {*}\n", .{f.func_type.parameters.ptr});
             allocator.free(f.func_type.parameters);
             allocator.free(f.func_type.returns);
             switch (f.typ) {
@@ -173,7 +169,7 @@ pub const Runtime = struct {
                 .localget => try self.stack.append(frame.locals[index.u32]),
                 .localset => frame.locals[index.u32] = self.stack.pop().?,
                 .localtee => frame.locals[index.u32] = self.stack.items[self.stack.items.len - 1],
-                .globalget => @panic("UNIMPLEMENTED"),
+                .globalget => try self.stack.append(self.global_runtime.getGlobal(index.u32)),
                 .globalset => @panic("UNIMPLEMENTED"),
 
                 .tableget => @panic("UNIMPLEMENTED"),
@@ -433,18 +429,18 @@ pub const Runtime = struct {
 
     // TODO: Do name resolution at parseTime
     pub fn callExternal(self: *Runtime, allocator: Allocator, name: ExportFunction, parameters: []Value) !void {
-	    switch (name) {
-		    .preinit => {
-			    if (self.module.exports.preinit) |func| {
-				    try self.call(allocator, func, parameters);
-			    } else {
-				    std.debug.panic("Function preinit unavailable\n", .{});
-			    }
-		    },
+        switch (name) {
+            .preinit => {
+                if (self.module.exports.preinit) |func| {
+                    try self.call(allocator, func, parameters);
+                } else {
+                    std.debug.panic("Function preinit unavailable\n", .{});
+                }
+            },
             else => {
                 std.debug.panic("Function {any} not handled\n", .{name});
-            }
-	    }
+            },
+        }
     }
 
     pub fn call(self: *Runtime, allocator: Allocator, function: usize, parameters: []Value) AllocationError!void {
@@ -491,3 +487,24 @@ pub const Runtime = struct {
         }
     }
 };
+
+pub fn handleGlobalInit(allocator: Allocator, ir: IR) !Value {
+    var instruction_pointer: usize = 0;
+    var stack = try std.ArrayList(Value).initCapacity(allocator, 10);
+    defer stack.deinit();
+    while (instruction_pointer < ir.opcodes.len){
+        const opcode: IR.Opcode = ir.opcodes[instruction_pointer];
+        const index = ir.indices[instruction_pointer];
+        switch (opcode) {
+            .i32_const => try stack.append(Value{ .i32 = index.i32 }),
+            else => {
+                std.debug.panic("TODO: Handle opcode {any}\n", .{opcode});
+            }
+        }
+        instruction_pointer += 1;
+    }
+    if (stack.items.len != 1){
+        std.debug.panic("Improper amount of variables at end\n", .{});
+    }
+    return stack.pop().?;
+}

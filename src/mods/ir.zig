@@ -723,6 +723,18 @@ const IRParserState = struct {
         try self.fix_branches_for_block(start, end, jump_addr);
     }
 
+    fn parseGlobal(self: *IRParserState) !void {
+        while (true) {
+            const op = self.parser.peek() orelse return Parser.Error.unterminated_wasm;
+            if (op == 0x0B) {
+                _ = try self.parser.readByte();
+                break;
+            } else {
+                try self.parseExpression();
+            }
+        }
+    }
+
     fn parseIf(self: *IRParserState) !void {
         // TODO: Should we do something with this?
         _ = try self.parseBlockType();
@@ -825,6 +837,22 @@ pub fn parse(parser: *Parser) !IR {
     };
     try state.parseFunction();
     if (state.branches.count() != 0) return Parser.Error.unresolved_branch;
+    return .{
+        .opcodes = try state.opcodes.toOwnedSlice(state.allocator),
+        .indices = try state.indices.toOwnedSlice(state.allocator),
+        .select_valtypes = &.{},
+    };
+}
+
+pub fn parseGlobalExpr(parser: *Parser) !IR {
+    var state = IRParserState{
+        .opcodes = .{},
+        .indices = .{},
+        .branches = .{},
+        .parser = parser,
+        .allocator = parser.allocator,
+    };
+    try state.parseGlobal();
     return .{
         .opcodes = try state.opcodes.toOwnedSlice(state.allocator),
         .indices = try state.indices.toOwnedSlice(state.allocator),

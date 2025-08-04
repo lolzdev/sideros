@@ -13,6 +13,9 @@ memory: Memtype,
 exports: vm.Exports,
 importCount: u32,
 
+globalValues: []vm.Value,
+globalTypes: []Globaltype,
+
 const Parser = @This();
 
 pub const Error = error{
@@ -35,6 +38,7 @@ pub const Error = error{
     double_else,
     duplicated_funcsec,
     duplicated_typesec,
+    duplicated_globalsec,
     unresolved_branch,
     unterminated_wasm,
 };
@@ -53,6 +57,8 @@ pub fn init(allocator: Allocator, bytes: []const u8) !Parser {
                 .max = 0,
             },
         },
+        .globalValues = &.{},
+        .globalTypes = &.{},
         .exports = .{},
     };
 }
@@ -249,7 +255,7 @@ fn parseTabletype(self: *Parser) !Tabletype {
     };
 }
 
-const Globaltype = struct {
+pub const Globaltype = struct {
     t: vm.Valtype,
     m: enum {
         @"const",
@@ -435,10 +441,36 @@ fn parseMemsec(self: *Parser) !void {
     std.debug.assert(self.byte_idx == end_idx);
 }
 
+pub const Global = struct {
+    t: Globaltype,
+    ir: IR,
+};
+
+fn parseGlobal(self: *Parser) !Global {
+    return .{
+        .t = try parseGlobaltype(self),
+        .ir = try IR.parseGlobalExpr(self),
+    };
+}
+
 fn parseGlobalsec(self: *Parser) !void {
-    self.warn("globalsec");
     const size = try self.readU32();
-    _ = try self.read(size);
+    const end_idx = self.byte_idx + size;
+
+    const globals = try self.parseVector(Parser.parseGlobal);
+    defer self.allocator.free(globals);
+
+    if (self.globalValues.len != 0) return Error.duplicated_globalsec;
+    if (self.globalTypes.len != 0) return Error.duplicated_globalsec;
+    self.globalValues = try self.allocator.alloc(vm.Value, globals.len);
+    self.globalTypes = try self.allocator.alloc(Globaltype, globals.len);
+
+    for(globals, 0..) |global, i| {
+        self.globalValues[i] = try vm.handleGlobalInit(self.allocator, global.ir);
+        self.globalTypes[i] = global.t;
+    }
+
+    std.debug.assert(self.byte_idx == end_idx);
 }
 
 pub const Export = struct {
