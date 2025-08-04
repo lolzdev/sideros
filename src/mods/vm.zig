@@ -37,9 +37,17 @@ pub const Function = struct {
 
 pub const ExportFunction = enum {
 	preinit,
+    logErr,
+    logWarn,
+    logInfo,
+    logDebug,
 };
 pub const Exports = struct {
 	preinit: ?u32 = null,
+    logErr: ?u32 = null,
+    logWarn: ?u32 = null,
+    logInfo: ?u32 = null,
+    logDebug: ?u32 = null,
 };
 comptime {
 	std.debug.assert(@typeInfo(ExportFunction).@"enum".fields.len == @typeInfo(Exports).@"struct".fields.len );
@@ -117,7 +125,7 @@ pub const Runtime = struct {
             const index = frame.code.indices[frame.program_counter];
             switch (opcode) {
                 .@"unreachable" => {
-                    std.log.err("Reached unreachable statement at IR counter {any}\n", .{frame.program_counter});
+                    std.debug.panic("Reached unreachable statement at IR counter {any}\n", .{frame.program_counter});
                 },
                 .nop => {},
                 .br => {
@@ -433,6 +441,9 @@ pub const Runtime = struct {
 				    std.debug.panic("Function preinit unavailable\n", .{});
 			    }
 		    },
+            else => {
+                std.debug.panic("Function {any} not handled\n", .{name});
+            }
 	    }
     }
 
@@ -470,7 +481,7 @@ pub const Runtime = struct {
                 allocator.free(frame.locals);
             },
             .external => {
-                std.log.err("TODO: Handle external function {any}\n", .{function});
+                std.debug.panic("TODO: Handle external function {any}\n", .{function});
                 // TODO(ernesto): handle external functions
                 // const name = self.module.imports[f.external].name;
                 // if (self.global_runtime.functions.get(name)) |external| {
