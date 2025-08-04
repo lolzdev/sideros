@@ -54,6 +54,8 @@ pub const Module = struct {
     memory: Memory,
     functions: []Function,
     exports: Exports,
+    exported_memory: u32,
+    imported_funcs: u32,
 
     pub fn deinit(self: Module, allocator: Allocator) void {
         // self.exports.deinit(allocator);
@@ -96,9 +98,9 @@ pub const Runtime = struct {
 
     pub fn init(allocator: Allocator, module: Module, global_runtime: *wasm.GlobalRuntime) !Runtime {
         // if memory max is not set the memory is allowed to grow but it is not supported at the moment
-        const max = module.memory.max orelse 1_000;
+        const max = module.memory.max orelse module.memory.min;
         if (module.memory.max == null) {
-            std.log.warn("Growing memory is not yet supported, usign a default value of 1Kb\n", .{});
+            std.log.warn("Growing memory is not yet supported, usign the minimum memory\n", .{});
         }
         const memory = try allocator.alloc(u8, max);
         return Runtime{
@@ -137,13 +139,22 @@ pub const Runtime = struct {
                 .br_table => @panic("UNIMPLEMENTED"),
                 .@"return" => break :loop,
                 .call => {
-                    // TODO: figure out how many parameters to push
-                    var parameters = std.ArrayList(Value).init(allocator);
-                    defer parameters.deinit();
-                    for (self.module.functions[index.u32].func_type.parameters) |_| {
-                        try parameters.append(self.stack.pop().?);
+                    if (index.u32 == self.module.exports.logDebug) {
+                        std.debug.print("TODO: logDebug\n", .{});
+                    } else if (index.u32 == self.module.exports.logInfo) {
+                        std.debug.print("TODO: logInfo\n", .{});
+                    } else if (index.u32 == self.module.exports.logWarn) {
+                        std.debug.print("TODO: logWarn\n", .{});
+                    } else if (index.u32 == self.module.exports.logErr) {
+                        std.debug.print("TODO: logErr\n", .{});
+                    } else {
+                        var parameters = std.ArrayList(Value).init(allocator);
+                        defer parameters.deinit();
+                        for (self.module.functions[index.u32 - self.module.imported_funcs].func_type.parameters) |_| {
+                            try parameters.append(self.stack.pop().?);
+                        }
+                        try self.call(allocator, index.u32 - self.module.imported_funcs, parameters.items);
                     }
-                    try self.call(allocator, index.u32, parameters.items);
                 },
                 .call_indirect => @panic("UNIMPLEMENTED"),
 
@@ -212,15 +223,19 @@ pub const Runtime = struct {
                 .i64_load16_u => @panic("UNIMPLEMENTED"),
                 .i64_load32_s => @panic("UNIMPLEMENTED"),
                 .i64_load32_u => @panic("UNIMPLEMENTED"),
-                // .i32_store => {
-                //     // TODO(ernesto): I'm pretty sure this is wrong
-                //     const start = index.memarg.offset + index.memarg.alignment;
-                //     const end = start + @sizeOf(u32);
-                //     const val = std.mem.nativeToLittle(i32, self.stack.pop().?.i32);
-                //     @memcpy(self.memory[start..end], std.mem.asBytes(&val));
-                // },
                 .i32_store => @panic("UNIMPLEMENTED"),
-                .i64_store => @panic("UNIMPLEMENTED"),
+                .i64_store => {
+                    // TODO(ernesto): I'm pretty sure this is wrong
+                    const val = std.mem.nativeToLittle(i64, self.stack.pop().?.i64);
+                    const offsetVal = self.stack.pop().?.i32;
+                    if (offsetVal < 0) {
+                        std.debug.panic("offsetVal is negative (val: {any})\n", .{offsetVal});
+                    }
+                    const offset: u64 = @intCast(offsetVal);
+                    const start: usize = @intCast(@as(u64, index.memarg.offset) + offset);
+                    const end = start + @sizeOf(u64);
+                    @memcpy(self.memory[start..end], std.mem.asBytes(&val));
+                },
                 .f32_store => @panic("UNIMPLEMENTED"),
                 .f64_store => @panic("UNIMPLEMENTED"),
                 .i32_store8 => @panic("UNIMPLEMENTED"),
@@ -497,18 +512,18 @@ pub fn handleGlobalInit(allocator: Allocator, ir: IR) !Value {
     var instruction_pointer: usize = 0;
     var stack = try std.ArrayList(Value).initCapacity(allocator, 10);
     defer stack.deinit();
-    while (instruction_pointer < ir.opcodes.len){
+    while (instruction_pointer < ir.opcodes.len) {
         const opcode: IR.Opcode = ir.opcodes[instruction_pointer];
         const index = ir.indices[instruction_pointer];
         switch (opcode) {
             .i32_const => try stack.append(Value{ .i32 = index.i32 }),
             else => {
                 std.debug.panic("TODO: Handle opcode {any}\n", .{opcode});
-            }
+            },
         }
         instruction_pointer += 1;
     }
-    if (stack.items.len != 1){
+    if (stack.items.len != 1) {
         std.debug.panic("Improper amount of variables at end\n", .{});
     }
     return stack.pop().?;

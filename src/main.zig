@@ -22,7 +22,7 @@ pub fn main() !void {
     // defer global_runtime.deinit();
     // try global_runtime.addFunction("debug", mods.Wasm.debug);
 
-    // //const file = try std.fs.cwd().openFile("assets/core.wasm", .{});
+    // // const file = try std.fs.cwd().openFile("assets/core.wasm", .{});
     // const file = try std.fs.cwd().openFile("./test.wasm", .{});
     // const all = try file.readToEndAlloc(allocator, 1_000_000); // 1 MB
     // defer allocator.free(all);

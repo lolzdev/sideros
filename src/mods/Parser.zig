@@ -12,11 +12,13 @@ functions: []vm.Function,
 memory: Memtype,
 exports: vm.Exports,
 importCount: u32,
+exported_memory: u32,
 
 globalValues: []vm.Value,
 globalTypes: []Globaltype,
 
 const Parser = @This();
+const PAGE_SIZE = 64_000;
 
 pub const Error = error{
     OutOfMemory,
@@ -45,6 +47,7 @@ pub const Error = error{
 
 pub fn init(allocator: Allocator, bytes: []const u8) !Parser {
     return .{
+        .exported_memory = 0,
         .importCount = 0,
         .bytes = bytes,
         .byte_idx = 0,
@@ -79,6 +82,8 @@ pub fn module(self: *Parser) vm.Module {
             .min = self.memory.lim.min,
             .max = self.memory.lim.max,
         },
+        .imported_funcs = self.importCount,
+        .exported_memory = self.exported_memory,
         .functions = self.functions,
         .exports = self.exports,
     };
@@ -226,12 +231,12 @@ const Limits = struct {
 fn parseLimits(self: *Parser) !Limits {
     return switch (try self.readByte()) {
         0x00 => .{
-            .min = try self.readU32(),
+            .min = try self.readU32() * PAGE_SIZE,
             .max = null,
         },
         0x01 => .{
-            .min = try self.readU32(),
-            .max = try self.readU32(),
+            .min = try self.readU32() * PAGE_SIZE,
+            .max = try self.readU32() * PAGE_SIZE,
         },
         else => Error.invalid_limits,
     };
@@ -305,18 +310,6 @@ pub fn parseModule(self: *Parser) !void {
     if (self.exports.preinit != null and self.exports.preinit.? != 0){
         self.exports.preinit.? -= self.importCount;
     }
-    if (self.exports.logDebug != null and self.exports.logDebug.? != 0){
-        self.exports.logDebug.? -= self.importCount;
-    }
-    if (self.exports.logInfo != null and self.exports.logInfo.? != 0){
-        self.exports.logInfo.? -= self.importCount;
-    }
-    if (self.exports.logWarn != null and self.exports.logWarn.? != 0){
-        self.exports.logWarn.? -= self.importCount;
-    }
-    if (self.exports.logErr != null and self.exports.logErr.? != 0){
-        self.exports.logErr.? -= self.importCount;
-    }
 }
 
 fn parseCustomsec(self: *Parser) !void {
@@ -365,24 +358,26 @@ fn parseImportsec(self: *Parser) !void {
     const size = try self.readU32();
     const end_idx = self.byte_idx + size;
 
-    // TODO(ernesto): this should be used to do name resolution.
     const imports = try self.parseVector(Parser.parseImport);
     self.importCount = @intCast(imports.len);
+
+    var index: u32 = 0;
 
     for (imports) |i| {
         switch (i.importdesc) {
             .func => {
                 if (std.mem.eql(u8, i.name, "logDebug")) {
-                    self.exports.logDebug = i.importdesc.func;
+                    self.exports.logDebug = index;
                 } else if (std.mem.eql(u8, i.name, "logInfo")) {
-                    self.exports.logInfo = i.importdesc.func;
+                    self.exports.logInfo = index;
                 } else if (std.mem.eql(u8, i.name, "logWarn")) {
-                    self.exports.logWarn = i.importdesc.func;
+                    self.exports.logWarn = index;
                 } else if (std.mem.eql(u8, i.name, "logErr")) {
-                    self.exports.logErr = i.importdesc.func;
+                    self.exports.logErr = index;
                 } else {
                     std.log.warn("imported function {s} not supported\n", .{i.name});
                 }
+                index += 1;
             },
             else => std.debug.print("[TODO]: Handle import desc {any}\n", .{i.importdesc}),
         }
@@ -513,6 +508,9 @@ fn parseExportsec(self: *Parser) !void {
                 } else {
                     std.log.warn("exported function {s} not supported\n", .{e.name});
                 }
+            },
+            .mem => {
+                self.exported_memory = e.exportdesc.mem * PAGE_SIZE;
             },
             else => std.debug.print("[WARN]: export ignored\n", .{}),
         }
