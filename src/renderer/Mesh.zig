@@ -44,6 +44,8 @@ pub fn createVertexBuffer(allocator: Allocator, device: anytype) !vk.Buffer {
     const gltf_data = try gltf.parseFile(allocator, "assets/models/block.glb");
 
     const vertices = gltf_data.vertices;
+    defer allocator.free(vertices);
+    defer allocator.free(gltf_data.indices);
 
     var data: [*c]?*anyopaque = null;
 
@@ -77,6 +79,8 @@ pub fn createVertexBuffer(allocator: Allocator, device: anytype) !vk.Buffer {
 pub fn createIndexBuffer(allocator: Allocator, device: anytype) !vk.Buffer {
     const gltf_data = try gltf.parseFile(allocator, "assets/models/block.glb");
     const indices = gltf_data.indices;
+    defer allocator.free(indices);
+    defer allocator.free(gltf_data.vertices);
     //const indices = [_]u16{ 0, 1, 2, 3, 0, 2 };
 
     var data: [*c]?*anyopaque = null;

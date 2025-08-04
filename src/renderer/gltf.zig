@@ -152,9 +152,13 @@ pub const Model = struct {
 pub fn parseFile(allocator: Allocator, name: []const u8) !struct { vertices: [][3]f32, indices: []u16 } {
     const file = try std.fs.cwd().openFile(name, .{});
     const all = try file.readToEndAlloc(allocator, 1_000_000);
+    defer allocator.free(all);
     const json_chunk = std.mem.bytesAsValue(Model.Chunk, all[Model.Header.offset..]);
 
-    const data = (try std.json.parseFromSlice(Model.JsonChunk, allocator, @constCast(all[Model.Chunk.offset .. Model.Chunk.offset + json_chunk.length]), .{ .ignore_unknown_fields = true })).value;
+    const parsed = try std.json.parseFromSlice(Model.JsonChunk, allocator, @constCast(all[Model.Chunk.offset .. Model.Chunk.offset + json_chunk.length]), .{ .ignore_unknown_fields = true });
+    defer parsed.deinit();
+
+    const data = parsed.value;
     const binary = Model.Binary{ .data = all[Model.Chunk.offset + json_chunk.length + 8 ..] };
 
     const vertices = try binary.readVec3(allocator, data.bufferViews.?[data.meshes.?[0].primitives.?[0].attributes.?.POSITION.?], data.accessors.?[data.meshes.?[0].primitives.?[0].attributes.?.POSITION.?].count);
