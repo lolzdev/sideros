@@ -3,6 +3,7 @@ const Allocator = std.mem.Allocator;
 const components = @import("components.zig");
 const sparse = @import("sparse.zig");
 const Renderer = @import("renderer");
+const Camera = @import("renderer").Camera;
 const Input = @import("sideros").Input;
 const ecs = @import("ecs.zig");
 
@@ -11,6 +12,7 @@ pub const SystemGroup = []const System;
 pub const SyncGroup = []const System;
 
 pub const Resources = struct {
+    camera: Camera,
     renderer: Renderer,
     input: Input,
     delta_time: f64 = 0.0,

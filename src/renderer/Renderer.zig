@@ -1,8 +1,10 @@
 const c = @import("sideros").c;
+const math = @import("sideros").math;
 const ecs = @import("ecs");
 const std = @import("std");
 const vk = @import("vulkan.zig");
 pub const Mesh = @import("Mesh.zig");
+pub const Camera = @import("Camera.zig");
 const Allocator = std.mem.Allocator;
 
 const Renderer = @This();
@@ -76,6 +78,10 @@ pub fn deinit(self: Renderer) void {
 // TODO: render is maybe a bad name? something like present() or submit() is better?
 pub fn render(pool: *ecs.Pool) anyerror!void {
     var renderer = pool.resources.renderer;
+    var camera = pool.resources.camera;
+
+    const view_memory = renderer.graphics_pipeline.view_memory;
+    @memcpy(view_memory[0..@sizeOf(math.Matrix)], std.mem.asBytes(&camera.getView()));
 
     try renderer.device.waitFence(renderer.current_frame);
     const image = try renderer.swapchain.nextImage(renderer.device, renderer.current_frame);

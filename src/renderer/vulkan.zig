@@ -304,6 +304,8 @@ pub fn GraphicsPipeline(comptime n: usize) type {
         descriptor_set: c.VkDescriptorSet,
         descriptor_set_layout: c.VkDescriptorSetLayout,
         projection_buffer: Buffer,
+        view_buffer: Buffer,
+        view_memory: [*c]u8,
 
         const Self = @This();
 
@@ -373,7 +375,8 @@ pub fn GraphicsPipeline(comptime n: usize) type {
                 .rasterizerDiscardEnable = c.VK_FALSE,
                 .polygonMode = c.VK_POLYGON_MODE_FILL,
                 .lineWidth = 1.0,
-                .cullMode = c.VK_CULL_MODE_BACK_BIT,
+                //.cullMode = c.VK_CULL_MODE_BACK_BIT,
+                .cullMode = c.VK_CULL_MODE_NONE,
                 .frontFace = c.VK_FRONT_FACE_COUNTER_CLOCKWISE,
                 .depthBiasEnable = c.VK_FALSE,
             };
@@ -404,20 +407,27 @@ pub fn GraphicsPipeline(comptime n: usize) type {
                 .blendConstants = .{ 0.0, 0.0, 0.0, 0.0 },
             };
 
-            const set_binding = c.VkDescriptorSetLayoutBinding{
+            const projection_binding = c.VkDescriptorSetLayoutBinding{
                 .binding = 0,
                 .descriptorType = c.VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
                 .descriptorCount = 1,
                 .stageFlags = c.VK_SHADER_STAGE_VERTEX_BIT,
             };
 
-            const bindings = [_]c.VkDescriptorSetLayoutBinding{set_binding};
+            const view_binding = c.VkDescriptorSetLayoutBinding{
+                .binding = 1,
+                .descriptorType = c.VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+                .descriptorCount = 1,
+                .stageFlags = c.VK_SHADER_STAGE_VERTEX_BIT,
+            };
+
+            const bindings = [_]c.VkDescriptorSetLayoutBinding{projection_binding, view_binding};
 
             var descriptor_set_layout: c.VkDescriptorSetLayout = undefined;
 
             const descriptor_set_layout_info = c.VkDescriptorSetLayoutCreateInfo{
                 .sType = c.VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
-                .bindingCount = 1,
+                .bindingCount = 2,
                 .pBindings = bindings[0..].ptr,
             };
 
@@ -462,7 +472,7 @@ pub fn GraphicsPipeline(comptime n: usize) type {
 
             var size = c.VkDescriptorPoolSize{
                 .type = c.VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-                .descriptorCount = 1,
+                .descriptorCount = 2,
             };
 
             const descriptor_pool_info = c.VkDescriptorPoolCreateInfo{
@@ -520,6 +530,38 @@ pub fn GraphicsPipeline(comptime n: usize) type {
 
             c.vkUpdateDescriptorSets(device.handle, 1, &write_descriptor_set, 0, null);
 
+            const view_buffer = try device.createBuffer(BufferUsage{ .uniform_buffer = true, .transfer_dst = true }, BufferFlags{ .device_local = true }, @sizeOf(math.Matrix));
+
+            var view_data: [*c]u8 = undefined;
+
+            try mapError(c.vkMapMemory(
+                device.handle,
+                view_buffer.memory,
+                0,
+                view_buffer.size,
+                0,
+                @ptrCast(&view_data),
+            ));
+
+
+            const view_descriptor_buffer_info = c.VkDescriptorBufferInfo{
+                .buffer = view_buffer.handle,
+                .offset = 0,
+                .range = view_buffer.size,
+            };
+
+            const write_view_descriptor_set = c.VkWriteDescriptorSet{
+                .sType = c.VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                .dstSet = descriptor_set,
+                .dstBinding = 1,
+                .dstArrayElement = 0,
+                .descriptorCount = 1,
+                .descriptorType = c.VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+                .pBufferInfo = &view_descriptor_buffer_info,
+            };
+
+            c.vkUpdateDescriptorSets(device.handle, 1, &write_view_descriptor_set, 0, null);
+
             return Self{
                 .layout = layout,
                 .handle = pipeline,
@@ -527,6 +569,8 @@ pub fn GraphicsPipeline(comptime n: usize) type {
                 .descriptor_set = descriptor_set,
                 .descriptor_set_layout = descriptor_set_layout,
                 .projection_buffer = projection_buffer,
+                .view_buffer = view_buffer,
+                .view_memory = view_data,
             };
         }
 

@@ -45,6 +45,10 @@ pub fn main() !void {
     //defer w.destroy();
 
     const resources = ecs.Resources{
+        .camera = .{
+            .position = .{0.0, 0.0, 100},
+            .target = .{0.0, 0.0, 0.0},
+        },
         .renderer = undefined,
         .input = .{ .key_pressed = .{false} ** @intFromEnum(Input.KeyCode.menu) },
     };

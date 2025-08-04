@@ -8,15 +8,15 @@ pub const Matrix = struct {
     rows: [4]@Vector(4, f32),
 
     pub fn lookAt(eye: @Vector(3, f32), target: @Vector(3, f32), arbitrary_up: @Vector(3, f32)) Matrix {
-        const forward = normalize(eye - target);
-        const right = normalize(cross(arbitrary_up, forward));
-        const up = cross(forward, right);
+        const forward = normalize(target - eye);
+        const right = normalize(cross(forward, arbitrary_up));
+        const up = cross(right, forward);
 
         const view = [_]@Vector(4, f32){
-            @Vector(4, f32){ right[0], right[1], right[2], 0.0 },
-            @Vector(4, f32){ up[0], up[1], up[2], 0.0 },
-            @Vector(4, f32){ forward[0], forward[1], forward[2], 0.0 },
-            @Vector(4, f32){ 0.0, 0.0, 1.0, eye[2] },
+            @Vector(4, f32){ right[0], up[0], -forward[0], 0.0 },
+            @Vector(4, f32){ right[1], up[1], -forward[1], 0.0 },
+            @Vector(4, f32){ right[2], up[2], -forward[2], 0.0 },
+            @Vector(4, f32){ -dot(eye, right), -dot(eye, up), -dot(eye, forward), 1.0 },
         };
 
         return Matrix{
@@ -25,11 +25,17 @@ pub const Matrix = struct {
     }
 
     pub fn perspective(fov: f32, aspect: f32, near: f32, far: f32) Matrix {
+        const focal_length = 1.0 / tan(fov / 2.0);
+        const x = focal_length / aspect;
+        const y = -focal_length;
+        const a = near / (far - near);
+        const b = far * a;
+
         const projection = [_]@Vector(4, f32){
-            @Vector(4, f32){ 1.0 / (aspect * tan(fov / 2.0)), 0.0, 0.0, 0.0 },
-            @Vector(4, f32){ 0.0, 1.0 / tan(fov / 2.0), 0.0, 0.0 },
-            @Vector(4, f32){ 0.0, 0.0, -((far + near) / (far - near)), -((2 * far * near) / (far - near)) },
-            @Vector(4, f32){ 0.0, 0.0, -1.0, 1.0 },
+            @Vector(4, f32){ x, 0.0, 0.0, 0.0 },
+            @Vector(4, f32){ 0.0, y, 0.0, 0.0 },
+            @Vector(4, f32){ 0.0, 0.0, a, b },
+            @Vector(4, f32){ 0.0, 0.0, 1.0, 0.0 },
         };
 
         return Matrix{
