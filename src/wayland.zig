@@ -1,4 +1,4 @@
-const c = @import("c.zig").c;
+const c = @import("sideros").c;
 const std = @import("std");
 const Renderer = @import("sideros").Renderer;
 
@@ -136,7 +136,7 @@ pub fn init(allocator: std.mem.Allocator) !void {
         _ = c.wl_display_dispatch(display);
     }
 
-    var renderer = try Renderer.init(allocator, @ptrCast(display), @ptrCast(surface));
+    var renderer = try Renderer.init(@TypeOf(display), @TypeOf(surface), allocator, display, surface);
     defer renderer.deinit();
     try renderer.render();
 

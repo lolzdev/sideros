@@ -1,4 +1,4 @@
-const c = @import("c.zig").c;
+const c = @import("sideros").c;
 const std = @import("std");
 const vk = @import("vulkan.zig");
 const gltf = @import("gltf.zig");

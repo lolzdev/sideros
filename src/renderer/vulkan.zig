@@ -1,5 +1,5 @@
 const std = @import("std");
-const c = @import("c.zig").c;
+const c = @import("sideros").c;
 const Window = @import("Window.zig");
 const Mesh = @import("Mesh.zig");
 const sideros = @import("sideros");
@@ -7,6 +7,7 @@ const Camera = @import("Camera.zig");
 const math = sideros.math;
 const Allocator = std.mem.Allocator;
 
+const config = sideros.config;
 const builtin = @import("builtin");
 const debug = (builtin.mode == .Debug);
 
@@ -73,8 +74,7 @@ pub const Instance = struct {
     handle: c.VkInstance,
 
     pub fn create(allocator: Allocator) !Instance {
-        const extensions = [_][*c]const u8 {c.VK_KHR_WAYLAND_SURFACE_EXTENSION_NAME, c.VK_KHR_SURFACE_EXTENSION_NAME};
-        //const extensions = [_][:0]const u8 {"VK_KHR_wayland_surface\0", "VK_KHR_surface\0"};
+        const extensions = [_][*c]const u8 {if (config.wayland) c.VK_KHR_WAYLAND_SURFACE_EXTENSION_NAME else c.VK_KHR_XCB_SURFACE_EXTENSION_NAME, c.VK_KHR_SURFACE_EXTENSION_NAME};
 
         // Querry avaliable extensions size
         var avaliableExtensionsCount: u32 = 0;
@@ -757,15 +757,25 @@ pub fn Swapchain(comptime n: usize) type {
 pub const Surface = struct {
     handle: c.VkSurfaceKHR,
 
-    pub fn create(instance: Instance, display: ?*anyopaque, surface: ?*anyopaque) !Surface {
+    pub fn create(comptime C: type, comptime S: type, instance: Instance, display: C, surface: S) !Surface {
         var handle: c.VkSurfaceKHR = undefined;
-        const create_info: c.VkWaylandSurfaceCreateInfoKHR = .{
-            .sType = c.VK_STRUCTURE_TYPE_WAYLAND_SURFACE_CREATE_INFO_KHR,
-            .display = @ptrCast(display),
-            .surface = @ptrCast(surface),
-        };
+        if (config.wayland) {
+            const create_info: c.VkWaylandSurfaceCreateInfoKHR = .{
+                .sType = c.VK_STRUCTURE_TYPE_WAYLAND_SURFACE_CREATE_INFO_KHR,
+                .display = display,
+                .surface = surface,
+            };
 
-        try mapError(c.vkCreateWaylandSurfaceKHR(instance.handle, &create_info, null, &handle));
+            try mapError(c.vkCreateWaylandSurfaceKHR(instance.handle, &create_info, null, &handle));
+        } else {
+            const create_info: c.VkXcbSurfaceCreateInfoKHR = .{
+                .sType = c.VK_STRUCTURE_TYPE_XCB_SURFACE_CREATE_INFO_KHR,
+                .connection = display,
+                .window = surface,
+            };
+            try mapError(c.vkCreateXcbSurfaceKHR(instance.handle, &create_info, null, &handle));
+        }
+
         return .{
             .handle = handle,
         };

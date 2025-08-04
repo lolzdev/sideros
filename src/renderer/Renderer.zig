@@ -1,4 +1,4 @@
-const c = @import("c.zig");
+const c = @import("sideros").c;
 const ecs = @import("ecs");
 const std = @import("std");
 const vk = @import("vulkan.zig");
@@ -19,10 +19,10 @@ current_frame: u32,
 vertex_buffer: vk.Buffer,
 index_buffer: vk.Buffer,
 
-pub fn init(allocator: Allocator, display: ?*anyopaque, s: ?*anyopaque) !Renderer {
+pub fn init(comptime C: type, comptime S: type, allocator: Allocator, display: C, s: S) !Renderer {
     const instance = try vk.Instance.create(allocator);
 
-    const surface = try vk.Surface.create(instance, display, s);
+    const surface = try vk.Surface.create(C, S, instance, display, s);
 
     var physical_device = try vk.PhysicalDevice.pick(allocator, instance);
     const device = try physical_device.create_device(surface, allocator, 2);

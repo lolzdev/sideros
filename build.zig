@@ -51,12 +51,26 @@ pub fn build(b: *std.Build) void {
         }),
     });
     exe.root_module.addImport("sideros", sideros);
-    exe.root_module.addCSourceFile(.{ .file = b.path("ext/xdg-shell.c") });
-    exe.root_module.addIncludePath(b.path("ext"));
+    sideros.addIncludePath(b.path("ext"));
 
     exe.linkSystemLibrary("vulkan");
-    exe.linkSystemLibrary("wayland-client");
     exe.linkLibC();
+
+    const options = b.addOptions();
+
+    if (target.result.os.tag == .linux) {
+        const wayland = b.option(bool, "wayland", "Use Wayland to create the main window") orelse false;
+        if (wayland) {
+            exe.linkSystemLibrary("wayland-client");
+            exe.root_module.addCSourceFile(.{ .file = b.path("ext/xdg-shell.c") });
+        } else {
+            exe.linkSystemLibrary("xcb");
+            exe.linkSystemLibrary("xcb-icccm");
+        }
+        options.addOption(bool, "wayland", wayland);
+    }
+
+    sideros.addOptions("config", options);
 
     b.installArtifact(exe);
 

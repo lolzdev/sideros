@@ -1,11 +1,12 @@
 const std = @import("std");
-const config = @import("config");
+const config = @import("sideros").config;
 const math = @import("sideros").math;
 const Input = @import("sideros").Input;
 const mods = @import("sideros").mods;
 const ecs = @import("sideros").ecs;
-//const Renderer = @import("sideros").Renderer;
-const wayland = @import("wayland.zig");
+const builtin = @import("builtin");
+
+const platform = if (builtin.target.os.tag == .linux) (if (config.wayland) @import("wayland.zig") else @import("xorg.zig")) else @import("xorg.zig");
 
 //fn testSystem2(pool: *ecs.Pool) void {
 //    std.debug.print("{any}\n", .{pool.resources.input.isKeyDown(.a)});
@@ -66,5 +67,6 @@ pub fn main() !void {
     //     try pool.addComponent(entity, ecs.components.Position{ .x = 1.0, .y = 0.5, .z = 3.0 });
     //     try pool.addComponent(entity, ecs.components.Speed{ .speed = 5.0 });
     // }
-    try wayland.init(allocator);
+
+    try platform.init(allocator);
 }
