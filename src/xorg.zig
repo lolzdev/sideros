@@ -1,8 +1,9 @@
 const std = @import("std");
 const Renderer = @import("sideros").Renderer;
 const c = @import("sideros").c;
+const ecs = @import("sideros").ecs;
 
-pub fn init(allocator: std.mem.Allocator) !void {
+pub fn init(allocator: std.mem.Allocator, pool: *ecs.Pool) !void {
     const connection = c.xcb_connect(null, null);
     defer c.xcb_disconnect(connection);
 
@@ -28,6 +29,8 @@ pub fn init(allocator: std.mem.Allocator) !void {
     var renderer = try Renderer.init(@TypeOf(connection), @TypeOf(window), allocator, connection, window);
     defer renderer.deinit();
 
+    pool.resources.renderer = renderer;
+
     while (true) {
         if (c.xcb_poll_for_event(connection)) |e| {
             switch (e.*.response_type & ~@as(u32, 0x80)) {
@@ -36,6 +39,6 @@ pub fn init(allocator: std.mem.Allocator) !void {
             std.c.free(e);
         }
 
-        try renderer.render();
+        pool.tick();
     }
 }

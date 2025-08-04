@@ -1,6 +1,7 @@
 const c = @import("sideros").c;
 const std = @import("std");
 const Renderer = @import("sideros").Renderer;
+const ecs = @import("sideros").ecs;
 
 var resize = false;
 var quit = false;
@@ -11,7 +12,7 @@ const State = struct {
     compositor: ?*c.wl_compositor = null,
     shell: ?*c.xdg_wm_base = null,
     surface: ?*c.wl_surface = null,
-    renderer: *Renderer = undefined,
+    pool: *ecs.Pool = undefined,
     configured: bool = false,
 };
 
@@ -77,7 +78,7 @@ fn frameHandleDone(data: ?*anyopaque, callback: ?*c.wl_callback, time: u32) call
     const cb = c.wl_surface_frame(state.surface);
     _ = c.wl_callback_add_listener(cb, &frame_listener, state);
 
-    state.renderer.render() catch @panic("can't render");
+    state.pool.tick();
     _ = c.wl_surface_commit(state.surface);
 }
 
@@ -104,7 +105,7 @@ const registry_listener: c.wl_registry_listener = .{
     .global_remove = registryHandleGlobalRemove,
 };
 
-pub fn init(allocator: std.mem.Allocator) !void {
+pub fn init(allocator: std.mem.Allocator, pool: *ecs.Pool) !void {
     var state: State = .{};
     const display = c.wl_display_connect(null);
     defer c.wl_display_disconnect(display);
@@ -138,9 +139,10 @@ pub fn init(allocator: std.mem.Allocator) !void {
 
     var renderer = try Renderer.init(@TypeOf(display), @TypeOf(surface), allocator, display, surface);
     defer renderer.deinit();
-    try renderer.render();
 
-    state.renderer = &renderer;
+    pool.resources.renderer = renderer;
+    state.pool = pool;
+    pool.tick();
 
     const cb = c.wl_surface_frame(surface);
     _ = c.wl_callback_add_listener(cb, &frame_listener, @ptrCast(&state));

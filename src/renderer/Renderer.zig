@@ -74,9 +74,8 @@ pub fn deinit(self: Renderer) void {
 }
 
 // TODO: render is maybe a bad name? something like present() or submit() is better?
-//pub fn render(pool: *ecs.Pool) anyerror!void {
-pub fn render(renderer: *Renderer) anyerror!void {
-    //var renderer = pool.resources.renderer;
+pub fn render(pool: *ecs.Pool) anyerror!void {
+    var renderer = pool.resources.renderer;
 
     try renderer.device.waitFence(renderer.current_frame);
     const image = try renderer.swapchain.nextImage(renderer.device, renderer.current_frame);

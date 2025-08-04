@@ -5,6 +5,7 @@ const Input = @import("sideros").Input;
 const mods = @import("sideros").mods;
 const ecs = @import("sideros").ecs;
 const builtin = @import("builtin");
+const Renderer = @import("sideros").Renderer;
 
 const platform = if (builtin.target.os.tag == .linux) (if (config.wayland) @import("wayland.zig") else @import("xorg.zig")) else @import("xorg.zig");
 
@@ -43,30 +44,15 @@ pub fn main() !void {
     //var w = try Renderer.Window.create(800, 600, "sideros");
     //defer w.destroy();
 
-    //var r = try Renderer.init(allocator, w);
-    //defer r.deinit();
+    const resources = ecs.Resources{
+        .renderer = undefined,
+        .input = .{ .key_pressed = .{false} ** @intFromEnum(Input.KeyCode.menu) },
+    };
+    var pool = try ecs.Pool.init(allocator, resources);
+    defer pool.deinit();
+    try pool.addSystemGroup(&[_]ecs.System{
+        Renderer.render,
+    }, true);
 
-    //const resources = ecs.Resources{
-    //    .window = w,
-    //    .renderer = r,
-    //    .input = .{ .key_pressed = .{false} ** @intFromEnum(Input.KeyCode.menu) },
-    //};
-
-    //var pool = try ecs.Pool.init(allocator, resources);
-    //defer pool.deinit();
-    //w.setResources(&pool.resources);
-    //try pool.addSystemGroup(&[_]ecs.System{
-    //    Renderer.render,
-    //}, true);
-    //try pool.addSystemGroup(&[_]ecs.System{
-    //    testSystem2,
-    //});
-
-    // for (0..1000) |_| {
-    //     const entity = try pool.createEntity();
-    //     try pool.addComponent(entity, ecs.components.Position{ .x = 1.0, .y = 0.5, .z = 3.0 });
-    //     try pool.addComponent(entity, ecs.components.Speed{ .speed = 5.0 });
-    // }
-
-    try platform.init(allocator);
+    try platform.init(allocator, &pool);
 }

@@ -11,7 +11,6 @@ pub const SystemGroup = []const System;
 pub const SyncGroup = []const System;
 
 pub const Resources = struct {
-    window: Renderer.Window,
     renderer: Renderer,
     input: Input,
     delta_time: f64 = 0.0,
