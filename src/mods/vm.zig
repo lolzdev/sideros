@@ -170,7 +170,7 @@ pub const Runtime = struct {
                 .localset => frame.locals[index.u32] = self.stack.pop().?,
                 .localtee => frame.locals[index.u32] = self.stack.items[self.stack.items.len - 1],
                 .globalget => try self.stack.append(self.global_runtime.getGlobal(index.u32)),
-                .globalset => @panic("UNIMPLEMENTED"),
+                .globalset => try self.global_runtime.updateGlobal(index.u32, self.stack.pop().?),
 
                 .tableget => @panic("UNIMPLEMENTED"),
                 .tableset => @panic("UNIMPLEMENTED"),
@@ -212,13 +212,14 @@ pub const Runtime = struct {
                 .i64_load16_u => @panic("UNIMPLEMENTED"),
                 .i64_load32_s => @panic("UNIMPLEMENTED"),
                 .i64_load32_u => @panic("UNIMPLEMENTED"),
-                .i32_store => {
-                    // TODO(ernesto): I'm pretty sure this is wrong
-                    const start = index.memarg.offset + index.memarg.alignment;
-                    const end = start + @sizeOf(u32);
-                    const val = std.mem.nativeToLittle(i32, self.stack.pop().?.i32);
-                    @memcpy(self.memory[start..end], std.mem.asBytes(&val));
-                },
+                // .i32_store => {
+                //     // TODO(ernesto): I'm pretty sure this is wrong
+                //     const start = index.memarg.offset + index.memarg.alignment;
+                //     const end = start + @sizeOf(u32);
+                //     const val = std.mem.nativeToLittle(i32, self.stack.pop().?.i32);
+                //     @memcpy(self.memory[start..end], std.mem.asBytes(&val));
+                // },
+                .i32_store => @panic("UNIMPLEMENTED"),
                 .i64_store => @panic("UNIMPLEMENTED"),
                 .f32_store => @panic("UNIMPLEMENTED"),
                 .f64_store => @panic("UNIMPLEMENTED"),
@@ -306,7 +307,11 @@ pub const Runtime = struct {
                     const b = self.stack.pop().?.i32;
                     try self.stack.append(Value{ .i32 = a + b });
                 },
-                .i32_sub => @panic("UNIMPLEMENTED"),
+                .i32_sub => {
+                    const b = self.stack.pop().?.i32;
+                    const a = self.stack.pop().?.i32;
+                    try self.stack.append(Value{ .i32 = a - b });
+                },
                 .i32_and => {
                     const a = self.stack.pop().?.i32;
                     const b = self.stack.pop().?.i32;

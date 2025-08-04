@@ -255,12 +255,14 @@ fn parseTabletype(self: *Parser) !Tabletype {
     };
 }
 
+pub const GlobalMutability = enum {
+    @"const",
+    @"var",
+};
+
 pub const Globaltype = struct {
     t: vm.Valtype,
-    m: enum {
-        @"const",
-        @"var",
-    },
+    m: GlobalMutability,
 };
 fn parseGlobaltype(self: *Parser) !Globaltype {
     return .{

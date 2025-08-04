@@ -41,11 +41,8 @@ pub const GlobalRuntime = struct {
 
     pub fn updateGlobal(self: *GlobalRuntime, index: u32, value: vm.Value) !void {
         const globType = self.globals.get(index) orelse std.debug.panic("Tried updating global {any} but couldn't find it.\n", .{index});
-        if(globType.m == globType.m.@"const"){
+        if(globType.m == Parser.GlobalMutability.@"const"){
             std.debug.panic("Attempted write to immutable global\n", .{});
-        }
-        if (globType.@"type" != value) {
-            std.debug.panic("Type mismatches for global {any}\n", .{index});
         }
         try self.globalExprs.put(index, value);
     }
