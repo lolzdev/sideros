@@ -28,12 +28,14 @@ pub fn init(allocator: std.mem.Allocator) !void {
     var renderer = try Renderer.init(@TypeOf(connection), @TypeOf(window), allocator, connection, window);
     defer renderer.deinit();
 
-    while (c.xcb_wait_for_event(connection)) |e| {
-        switch (e.*.response_type & ~@as(u32, 0x80)) {
-            else => {},
+    while (true) {
+        if (c.xcb_poll_for_event(connection)) |e| {
+            switch (e.*.response_type & ~@as(u32, 0x80)) {
+                else => {},
+            }
+            std.c.free(e);
         }
 
         try renderer.render();
-        std.c.free(e);
     }
 }
