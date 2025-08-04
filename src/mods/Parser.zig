@@ -11,6 +11,7 @@ types: []vm.Functype,
 functions: []vm.Function,
 memory: Memtype,
 exports: vm.Exports,
+importCount: u32,
 
 const Parser = @This();
 
@@ -39,41 +40,42 @@ pub const Error = error{
 };
 
 pub fn init(allocator: Allocator, bytes: []const u8) !Parser {
-	return .{
-		.bytes = bytes,
-		.byte_idx = 0,
-		.allocator = allocator,
-		.types = &.{},
-		.functions = &.{},
-		.memory = .{
-			.lim = .{
-				.min = 0,
-				.max = 0,
-			},
-		},
-		.exports = .{},
-	};
+    return .{
+        .importCount = 0,
+        .bytes = bytes,
+        .byte_idx = 0,
+        .allocator = allocator,
+        .types = &.{},
+        .functions = &.{},
+        .memory = .{
+            .lim = .{
+                .min = 0,
+                .max = 0,
+            },
+        },
+        .exports = .{},
+    };
 }
 
 pub fn deinit(self: Parser) void {
-	for (self.types) |t| {
-		self.allocator.free(t.parameters);
-		self.allocator.free(t.returns);
-	}
-	self.allocator.free(self.types);
-	self.allocator.free(self.functions);
+    for (self.types) |t| {
+        self.allocator.free(t.parameters);
+        self.allocator.free(t.returns);
+    }
+    self.allocator.free(self.types);
+    self.allocator.free(self.functions);
 }
 
 pub fn module(self: *Parser) vm.Module {
-	defer self.functions = &.{};
-	return .{
-		.memory = .{
-			.min = self.memory.lim.min,
-			.max = self.memory.lim.max,
-		},
-		.functions = self.functions,
-		.exports = self.exports,
-	};
+    defer self.functions = &.{};
+    return .{
+        .memory = .{
+            .min = self.memory.lim.min,
+            .max = self.memory.lim.max,
+        },
+        .functions = self.functions,
+        .exports = self.exports,
+    };
 }
 
 // TODO: This function should not exists
@@ -292,6 +294,21 @@ pub fn parseModule(self: *Parser) !void {
             else => return Error.invalid_section,
         };
     }
+    if (self.exports.preinit != null and self.exports.preinit.? != 0){
+        self.exports.preinit.? -= self.importCount;
+    }
+    if (self.exports.logDebug != null and self.exports.logDebug.? != 0){
+        self.exports.logDebug.? -= self.importCount;
+    }
+    if (self.exports.logInfo != null and self.exports.logInfo.? != 0){
+        self.exports.logInfo.? -= self.importCount;
+    }
+    if (self.exports.logWarn != null and self.exports.logWarn.? != 0){
+        self.exports.logWarn.? -= self.importCount;
+    }
+    if (self.exports.logErr != null and self.exports.logErr.? != 0){
+        self.exports.logErr.? -= self.importCount;
+    }
 }
 
 fn parseCustomsec(self: *Parser) !void {
@@ -316,7 +333,7 @@ fn parseTypesec(self: *Parser) !void {
 pub const Import = struct {
     name: []const u8,
     module: []const u8,
-    importdesc: union { func: u32, table: Tabletype, mem: Memtype, global: Globaltype },
+    importdesc: union(enum) { func: u32, table: Tabletype, mem: Memtype, global: Globaltype },
     pub fn deinit(self: Import, allocator: Allocator) void {
         allocator.free(self.name);
         allocator.free(self.module);
@@ -324,8 +341,8 @@ pub const Import = struct {
 };
 fn parseImport(self: *Parser) !Import {
     return .{
-        .name = try self.readName(),
         .module = try self.readName(),
+        .name = try self.readName(),
         .importdesc = switch (try self.readByte()) {
             0x00 => .{ .func = try self.readU32() },
             0x01 => .{ .table = try self.parseTabletype() },
@@ -342,6 +359,26 @@ fn parseImportsec(self: *Parser) !void {
 
     // TODO(ernesto): this should be used to do name resolution.
     const imports = try self.parseVector(Parser.parseImport);
+    self.importCount = @intCast(imports.len);
+
+    for (imports) |i| {
+        switch (i.importdesc) {
+            .func => {
+                if (std.mem.eql(u8, i.name, "logDebug")) {
+                    self.exports.logDebug = i.importdesc.func;
+                } else if (std.mem.eql(u8, i.name, "logInfo")) {
+                    self.exports.logInfo = i.importdesc.func;
+                } else if (std.mem.eql(u8, i.name, "logWarn")) {
+                    self.exports.logWarn = i.importdesc.func;
+                } else if (std.mem.eql(u8, i.name, "logErr")) {
+                    self.exports.logErr = i.importdesc.func;
+                } else {
+                    std.log.warn("imported function {s} not supported\n", .{i.name});
+                }
+            },
+            else => std.debug.print("[TODO]: Handle import desc {any}\n", .{i.importdesc}),
+        }
+    }
     defer self.allocator.free(imports);
 
     // TODO: run this check not only on debug
@@ -360,8 +397,8 @@ fn parseFuncsec(self: *Parser) !void {
 
     for (types, 0..) |t, i| {
         self.functions[i].func_type = .{
-	        .parameters = try self.allocator.alloc(vm.Valtype, self.types[t].parameters.len),
-	        .returns = try self.allocator.alloc(vm.Valtype, self.types[t].returns.len),
+            .parameters = try self.allocator.alloc(vm.Valtype, self.types[t].parameters.len),
+            .returns = try self.allocator.alloc(vm.Valtype, self.types[t].returns.len),
         };
         @memcpy(self.functions[i].func_type.parameters, self.types[t].parameters);
         @memcpy(self.functions[i].func_type.returns, self.types[t].returns);
@@ -431,17 +468,17 @@ fn parseExportsec(self: *Parser) !void {
 
     const exports = try self.parseVector(Parser.parseExport);
     defer {
-	    for (exports) |e| self.allocator.free(e.name);
-	    self.allocator.free(exports);
+        for (exports) |e| self.allocator.free(e.name);
+        self.allocator.free(exports);
     }
     for (exports) |e| {
         switch (e.exportdesc) {
             .func => {
-	            if (std.mem.eql(u8, e.name, "preinit")) {
-		            self.exports.preinit = e.exportdesc.func;
-	            } else {
-		            std.log.warn("exported function {s} not supported\n", .{e.name});
-	            }
+                if (std.mem.eql(u8, e.name, "preinit")) {
+                    self.exports.preinit = e.exportdesc.func;
+                } else {
+                    std.log.warn("exported function {s} not supported\n", .{e.name});
+                }
             },
             else => std.debug.print("[WARN]: export ignored\n", .{}),
         }
