@@ -1,7 +1,6 @@
 const std = @import("std");
 const ecs = @import("ecs");
-const sideros = @import("sideros");
-const math = sideros.math;
+const math = @import("math");
 
 const Camera = @This();
 const UP = @Vector(3, f32){ 0.0, 1.0, 0.0 };
@@ -13,9 +12,9 @@ pub const Uniform = struct {
 };
 
 position: @Vector(3, f32),
-target: @Vector(3, f32) = .{0.0, 0.0, 0.0},
-front: @Vector(3, f32) = .{0.0, 0.0, 1.0 },
-up: @Vector(3, f32) = .{0.0, 1.0, 0.0 },
+target: @Vector(3, f32) = .{ 0.0, 0.0, 0.0 },
+front: @Vector(3, f32) = .{ 0.0, 0.0, 1.0 },
+up: @Vector(3, f32) = .{ 0.0, 1.0, 0.0 },
 speed: f32 = 2.5,
 
 pub fn getProjection(width: usize, height: usize) math.Matrix {

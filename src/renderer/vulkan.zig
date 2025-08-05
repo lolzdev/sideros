@@ -1,14 +1,14 @@
 pub const Texture = @import("Texture.zig");
 
 const std = @import("std");
-const c = @import("sideros").c;
+pub const c = @cImport({
+    @cInclude("vulkan/vulkan.h");
+});
+const math = @import("math");
 const Mesh = @import("Mesh.zig");
-const sideros = @import("sideros");
 const Camera = @import("Camera.zig");
-const math = sideros.math;
 const Allocator = std.mem.Allocator;
 
-const config = sideros.config;
 const builtin = @import("builtin");
 const debug = (builtin.mode == .Debug);
 
@@ -73,92 +73,6 @@ pub const BufferFlags = packed struct(u32) {
 
 pub const Instance = struct {
     handle: c.VkInstance,
-
-    pub fn create(allocator: Allocator) !Instance {
-        const extensions = [_][*c]const u8 {if (config.wayland) c.VK_KHR_WAYLAND_SURFACE_EXTENSION_NAME else c.VK_KHR_XCB_SURFACE_EXTENSION_NAME, c.VK_KHR_SURFACE_EXTENSION_NAME};
-
-        // Querry avaliable extensions size
-        var avaliableExtensionsCount: u32 = 0;
-        _ = c.vkEnumerateInstanceExtensionProperties(null, &avaliableExtensionsCount, null);
-        // Actually querry avaliable extensions
-        var avaliableExtensions = std.ArrayList(c.VkExtensionProperties).init(allocator);
-        try avaliableExtensions.resize(avaliableExtensionsCount);
-        defer avaliableExtensions.deinit();
-        _ = c.vkEnumerateInstanceExtensionProperties(null, &avaliableExtensionsCount, avaliableExtensions.items.ptr);
-        // Check the extensions we want against the extensions the user has
-        for (extensions) |need_ext| {
-            var found = false;
-            for (avaliableExtensions.items) |useable_ext| {
-                const extensionName: [*c]const u8 = &useable_ext.extensionName;
-                if (std.mem.eql(u8, std.mem.sliceTo(need_ext, 0), std.mem.sliceTo(extensionName, 0))) {
-                    found = true;
-                    break;
-                }
-            }
-            if (!found) {
-                std.debug.panic("ERROR: Needed vulkan extension {s} not found\n", .{need_ext});
-            }
-        }
-
-        // Querry avaliable layers size
-        var avaliableLayersCount: u32 = 0;
-        _ = c.vkEnumerateInstanceLayerProperties(&avaliableLayersCount, null);
-        // Actually querry avaliable layers
-        var availableLayers = std.ArrayList(c.VkLayerProperties).init(allocator);
-        try availableLayers.resize(avaliableLayersCount);
-        defer availableLayers.deinit();
-        _ = c.vkEnumerateInstanceLayerProperties(&avaliableLayersCount, availableLayers.items.ptr);
-        // Every layer we do have we add to this list, if we don't have it no worries just print a message and continue
-        var newLayers = std.ArrayList([*c]const u8).init(allocator);
-        defer newLayers.deinit();
-        // Loop over layers we want
-        for (validation_layers) |want_layer| {
-            var found = false;
-            for (availableLayers.items) |useable_validation| {
-                const layer_name: [*c]const u8 = &useable_validation.layerName;
-                if (std.mem.eql(u8, std.mem.sliceTo(want_layer, 0), std.mem.sliceTo(layer_name, 0))) {
-                    found = true;
-                    break;
-                }
-            }
-            if (!found) {
-                std.debug.print("WARNING: Compiled in debug mode, but wanted validation layer {s} not found.\n", .{want_layer});
-                std.debug.print("NOTE: Validation layer will be removed from the wanted validation layers\n", .{});
-            } else {
-                try newLayers.append(want_layer);
-            }
-        }
-
-        const app_info: c.VkApplicationInfo = .{
-            .sType = c.VK_STRUCTURE_TYPE_APPLICATION_INFO,
-            .pApplicationName = "sideros",
-            .applicationVersion = c.VK_MAKE_VERSION(1, 0, 0),
-            .engineVersion = c.VK_MAKE_VERSION(1, 0, 0),
-            .pEngineName = "sideros",
-            .apiVersion = c.VK_MAKE_VERSION(1, 3, 0),
-        };
-
-        const instance_info: c.VkInstanceCreateInfo = .{
-            .sType = c.VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
-            .pApplicationInfo = &app_info,
-            .enabledExtensionCount = @intCast(extensions.len),
-            .ppEnabledExtensionNames = @ptrCast(extensions[0..]),
-            .enabledLayerCount = @intCast(newLayers.items.len),
-            .ppEnabledLayerNames = newLayers.items.ptr,
-        };
-
-        var instance: c.VkInstance = undefined;
-
-        try mapError(c.vkCreateInstance(&instance_info, null, &instance));
-
-        return Instance{
-            .handle = instance,
-        };
-    }
-
-    pub fn destroy(self: Instance) void {
-        c.vkDestroyInstance(self.handle, null);
-    }
 };
 
 pub const Buffer = struct {
@@ -608,7 +522,6 @@ pub fn GraphicsPipeline(comptime n: usize) type {
                 @ptrCast(&view_data),
             ));
 
-
             const view_descriptor_buffer_info = c.VkDescriptorBufferInfo{
                 .buffer = view_buffer.handle,
                 .offset = 0,
@@ -862,7 +775,7 @@ pub fn Swapchain(comptime n: usize) type {
             if (capabilities.currentExtent.width != std.math.maxInt(u32)) {
                 extent = capabilities.currentExtent;
             } else {
-                const width: u32, const height: u32 = .{800, 600};
+                const width: u32, const height: u32 = .{ 800, 600 };
 
                 extent = .{
                     .width = @intCast(width),
@@ -993,30 +906,6 @@ pub fn Swapchain(comptime n: usize) type {
 pub const Surface = struct {
     handle: c.VkSurfaceKHR,
 
-    pub fn create(comptime C: type, comptime S: type, instance: Instance, display: C, surface: S) !Surface {
-        var handle: c.VkSurfaceKHR = undefined;
-        if (config.wayland) {
-            const create_info: c.VkWaylandSurfaceCreateInfoKHR = .{
-                .sType = c.VK_STRUCTURE_TYPE_WAYLAND_SURFACE_CREATE_INFO_KHR,
-                .display = display,
-                .surface = surface,
-            };
-
-            try mapError(c.vkCreateWaylandSurfaceKHR(instance.handle, &create_info, null, &handle));
-        } else {
-            const create_info: c.VkXcbSurfaceCreateInfoKHR = .{
-                .sType = c.VK_STRUCTURE_TYPE_XCB_SURFACE_CREATE_INFO_KHR,
-                .connection = display,
-                .window = surface,
-            };
-            try mapError(c.vkCreateXcbSurfaceKHR(instance.handle, &create_info, null, &handle));
-        }
-
-        return .{
-            .handle = handle,
-        };
-    }
-
     pub fn presentModes(self: Surface, allocator: Allocator, device: PhysicalDevice) ![]c.VkPresentModeKHR {
         var mode_count: u32 = 0;
         try mapError(c.vkGetPhysicalDeviceSurfacePresentModesKHR(device.handle, self.handle, &mode_count, null));
@@ -1039,10 +928,6 @@ pub const Surface = struct {
         var caps: c.VkSurfaceCapabilitiesKHR = undefined;
         try mapError(c.vkGetPhysicalDeviceSurfaceCapabilitiesKHR(device.handle, self.handle, &caps));
         return caps;
-    }
-
-    pub fn destroy(self: Surface, instance: Instance) void {
-        c.vkDestroySurfaceKHR(instance.handle, self.handle, null);
     }
 };
 

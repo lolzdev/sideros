@@ -1,5 +1,6 @@
 pub const components = @import("components.zig");
 pub const entities = @import("entities.zig");
+pub const Input = @import("Input.zig");
 
 pub const SystemError = error{
     fail,

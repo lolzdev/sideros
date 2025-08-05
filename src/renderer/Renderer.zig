@@ -1,5 +1,4 @@
-const c = @import("sideros").c;
-const math = @import("sideros").math;
+const math = @import("math");
 const ecs = @import("ecs");
 const std = @import("std");
 const vk = @import("vulkan.zig");
@@ -21,11 +20,9 @@ current_frame: u32,
 vertex_buffer: vk.Buffer,
 index_buffer: vk.Buffer,
 
-pub fn init(comptime C: type, comptime S: type, allocator: Allocator, display: C, s: S) !Renderer {
-    const instance = try vk.Instance.create(allocator);
-
-    const surface = try vk.Surface.create(C, S, instance, display, s);
-
+pub fn init(allocator: Allocator, instance_handle: vk.c.VkInstance, surface_handle: vk.c.VkSurfaceKHR) !Renderer {
+    const instance: vk.Instance = .{ .handle = instance_handle };
+    const surface: vk.Surface = .{ .handle = surface_handle };
     var physical_device = try vk.PhysicalDevice.pick(allocator, instance);
     const device = try physical_device.create_device(surface, allocator, 2);
 
@@ -81,8 +78,6 @@ pub fn deinit(self: Renderer) void {
     self.swapchain.destroy(self.device);
     self.render_pass.destroy(self.device);
     self.device.destroy();
-    self.surface.destroy(self.instance);
-    self.instance.destroy();
 }
 
 // TODO: render is maybe a bad name? something like present() or submit() is better?

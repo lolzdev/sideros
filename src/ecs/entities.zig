@@ -4,8 +4,8 @@ const components = @import("components.zig");
 const sparse = @import("sparse.zig");
 const Renderer = @import("renderer");
 const Camera = @import("renderer").Camera;
-const Input = @import("sideros").Input;
 const ecs = @import("ecs.zig");
+const Input = ecs.Input;
 
 pub const System = ecs.System;
 pub const SystemGroup = []const System;

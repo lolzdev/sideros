@@ -6,8 +6,8 @@ pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
-    const sideros = b.createModule(.{
-        .root_source_file = b.path("src/sideros.zig"),
+    const math = b.createModule(.{
+        .root_source_file = b.path("src/math.zig"),
         .target = target,
         .optimize = optimize,
     });
@@ -17,14 +17,12 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
     });
-    mods.addImport("sideros", sideros);
 
     const ecs = b.createModule(.{
         .root_source_file = b.path("src/ecs/ecs.zig"),
         .target = target,
         .optimize = optimize,
     });
-    ecs.addImport("sideros", sideros);
 
     const renderer = b.createModule(.{
         .root_source_file = b.path("src/renderer/Renderer.zig"),
@@ -34,69 +32,79 @@ pub fn build(b: *std.Build) void {
     });
     renderer.addCSourceFile(.{ .file = b.path("ext/stb_image.c") });
     renderer.addImport("sideros", sideros);
+    renderer.addImport("math", math);
     renderer.addImport("ecs", ecs);
+    // TODO(ernesto): ecs and renderer should be decoupled
     ecs.addImport("renderer", renderer);
 
     compileAllShaders(b, renderer);
 
-    sideros.addImport("mods", mods);
-    sideros.addImport("ecs", ecs);
-    sideros.addImport("renderer", renderer);
-
-    const exe = b.addExecutable(.{
+    const sideros = b.addStaticLibrary(.{
         .name = "sideros",
-        .root_module = b.createModule(.{
-            .root_source_file = b.path("src/main.zig"),
-            .target = target,
-            .optimize = optimize,
-        }),
+        .root_source_file = b.path("src/sideros.zig"),
+        .target = target,
+        .optimize = optimize,
     });
-    exe.root_module.addImport("sideros", sideros);
     sideros.addIncludePath(b.path("ext"));
+    sideros.addIncludePath(b.path("src"));
 
-    exe.linkSystemLibrary("vulkan");
-    exe.linkLibC();
+    sideros.root_module.addImport("mods", mods);
+    sideros.root_module.addImport("ecs", ecs);
+    sideros.root_module.addImport("renderer", renderer);
+
+    b.installArtifact(sideros);
 
     const options = b.addOptions();
 
-    if (target.result.os.tag == .linux) {
-        const wayland = b.option(bool, "wayland", "Use Wayland to create the main window") orelse false;
-        if (wayland) {
-            exe.linkSystemLibrary("wayland-client");
-            exe.root_module.addCSourceFile(.{ .file = b.path("ext/xdg-shell.c") });
-        } else {
-            exe.linkSystemLibrary("xcb");
-            exe.linkSystemLibrary("xcb-icccm");
-        }
-        options.addOption(bool, "wayland", wayland);
+    switch (target.result.os.tag) {
+        .linux => {
+            const wayland = b.option(bool, "wayland", "Use Wayland to create the main window") orelse false;
+            options.addOption(bool, "wayland", wayland);
+
+            const exe = b.addExecutable(.{
+                .name = if (wayland) "sideros-wayland" else "sideros-xorg",
+                .root_module = b.createModule(.{
+                    .root_source_file = b.path(if (wayland) "src/wayland.zig" else "src/xorg.zig"),
+                    .target = target,
+                    .optimize = optimize,
+                }),
+            });
+            exe.root_module.addIncludePath(b.path("src"));
+            exe.linkLibrary(sideros);
+            exe.linkLibC();
+            exe.linkSystemLibrary("vulkan");
+            if (wayland) {
+                exe.root_module.addIncludePath(b.path("ext"));
+                exe.linkSystemLibrary("wayland-client");
+                exe.root_module.addCSourceFile(.{ .file = b.path("ext/xdg-shell.c") });
+            } else {
+                exe.linkSystemLibrary("xcb");
+                exe.linkSystemLibrary("xcb-icccm");
+            }
+            b.installArtifact(exe);
+        },
+        else => {
+            std.debug.panic("Compilation not implemented for OS: {any}\n", .{target.result.os.tag});
+        },
     }
 
-    sideros.addOptions("config", options);
-
-    b.installArtifact(exe);
-
-    const root_lib = b.addLibrary(.{
-        .root_module = sideros,
-        .name = "sideros",
-    });
-
     const install_docs = b.addInstallDirectory(.{
-        .source_dir = root_lib.getEmittedDocs(),
+        .source_dir = sideros.getEmittedDocs(),
         .install_dir = .prefix,
         .install_subdir = "docs/sideros",
     });
     const docs_step = b.step("docs", "Generate documentation");
     docs_step.dependOn(&install_docs.step);
 
-    const run_cmd = b.addRunArtifact(exe);
-    run_cmd.step.dependOn(b.getInstallStep());
+    //const run_cmd = b.addRunArtifact(exe);
+    //run_cmd.step.dependOn(b.getInstallStep());
 
-    if (b.args) |args| {
-        run_cmd.addArgs(args);
-    }
+    //if (b.args) |args| {
+    //run_cmd.addArgs(args);
+    //}
 
-    const run_step = b.step("run", "Run the app");
-    run_step.dependOn(&run_cmd.step);
+    //const run_step = b.step("run", "Run the app");
+    //run_step.dependOn(&run_cmd.step);
 
     const exe_unit_tests = b.addTest(.{
         .root_module = b.createModule(.{

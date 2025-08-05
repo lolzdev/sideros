@@ -1,4 +1,3 @@
-const c = @import("sideros").c;
 const std = @import("std");
 const vk = @import("vulkan.zig");
 const gltf = @import("gltf.zig");
@@ -19,11 +18,11 @@ pub const Vertex = struct {
         };
     }
 
-    pub fn bindingDescription() c.VkVertexInputBindingDescription {
-        const binding_description: c.VkVertexInputBindingDescription = .{
+    pub fn bindingDescription() vk.c.VkVertexInputBindingDescription {
+        const binding_description: vk.c.VkVertexInputBindingDescription = .{
             .binding = 0,
             .stride = @sizeOf(Vertex),
-            .inputRate = c.VK_VERTEX_INPUT_RATE_VERTEX,
+            .inputRate = vk.c.VK_VERTEX_INPUT_RATE_VERTEX,
         };
 
         return binding_description;
@@ -89,7 +88,7 @@ pub fn createVertexBuffer(allocator: Allocator, device: anytype) !vk.Buffer {
 
     const buffer = try device.createBuffer(vk.BufferUsage{ .transfer_src = true }, vk.BufferFlags{ .host_visible = true, .host_coherent = true }, @sizeOf([8]f32) * vertices.len);
 
-    try vk.mapError(c.vkMapMemory(
+    try vk.mapError(vk.c.vkMapMemory(
         device.handle,
         buffer.memory,
         0,
@@ -104,7 +103,7 @@ pub fn createVertexBuffer(allocator: Allocator, device: anytype) !vk.Buffer {
         @memcpy(gpu_vertices, @as([]Vertex, @ptrCast(final_array[0..])));
     }
 
-    c.vkUnmapMemory(device.handle, buffer.memory);
+    vk.c.vkUnmapMemory(device.handle, buffer.memory);
 
     const vertex_buffer = try device.createBuffer(vk.BufferUsage{ .vertex_buffer = true, .transfer_dst = true }, vk.BufferFlags{ .device_local = true }, @sizeOf(Vertex) * vertices.len);
 
@@ -126,7 +125,7 @@ pub fn createIndexBuffer(allocator: Allocator, device: anytype) !vk.Buffer {
 
     const buffer = try device.createBuffer(vk.BufferUsage{ .transfer_src = true }, vk.BufferFlags{ .host_visible = true, .host_coherent = true }, @sizeOf(u16) * indices.len);
 
-    try vk.mapError(c.vkMapMemory(
+    try vk.mapError(vk.c.vkMapMemory(
         device.handle,
         buffer.memory,
         0,
@@ -141,7 +140,7 @@ pub fn createIndexBuffer(allocator: Allocator, device: anytype) !vk.Buffer {
         @memcpy(gpu_indices, indices[0..]);
     }
 
-    c.vkUnmapMemory(device.handle, buffer.memory);
+    vk.c.vkUnmapMemory(device.handle, buffer.memory);
 
     const index_buffer = try device.createBuffer(vk.BufferUsage{ .index_buffer = true, .transfer_dst = true }, vk.BufferFlags{ .device_local = true }, @sizeOf(u16) * indices.len);
 
