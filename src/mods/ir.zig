@@ -628,10 +628,10 @@ const IRParserState = struct {
             0x02...0x03 => self.parseBlock(b),
             0x04 => self.parseIf(),
             0x0C...0x0D => self.parseBranch(b),
-            0x0E => @panic("UNIMPLEMENTED"),
+            0x0E => self.parseTableBranch(b),
             0x0F => self.push(@enumFromInt(b), .{ .u64 = 0 }),
             0x10 => self.push(@enumFromInt(b), .{ .u32 = try self.parser.readU32() }),
-            0x11 => @panic("UNIMPLEMENTED"),
+            0x11 => self.push(@enumFromInt(b), .{ .indirect = .{ .y = try self.parser.readU32(), .x = try self.parser.readU32() } }),
             0xD0 => self.push(@enumFromInt(b), .{ .reftype = try self.parser.parseReftype() }),
             0xD1 => self.push(@enumFromInt(b), .{ .u64 = 0 }),
             0xD2 => self.push(@enumFromInt(b), .{ .u32 = try self.parser.readU32() }),
@@ -683,7 +683,14 @@ const IRParserState = struct {
         const n = try self.parser.readU32();
         try switch (n) {
             0...7 => self.push(@enumFromInt(0xD3 + @as(u8, @intCast(n))), .{ .u64 = 0 }),
-            8...11 => @panic("UNIMPLEMENTED"),
+            8...9 => @panic("UNIMPLEMENTED"),
+            10...11 => {
+                try self.push(@enumFromInt(0xD3 + @as(u8, @intCast(n))), .{ .u64 = 0 });
+                _ = try self.parser.readByte();
+                if (n == 10) {
+                    _ = try self.parser.readByte();
+                }
+            },
             12...17 => @panic("UNIMPLEMENTED"),
             else => {
                 std.log.err("Invalid misc instruction {d} at position {d}\n", .{ n, self.parser.byte_idx });
@@ -807,6 +814,18 @@ const IRParserState = struct {
         try self.push(@enumFromInt(b), .{ .u64 = 0 });
     }
 
+    fn parseTableBranch(self: *IRParserState, b: u8) !void {
+        const n = try self.parser.readU32();
+        const idxs = try self.allocator.alloc(u32, n);
+        // defer self.allocator.free(idxs);
+        for (idxs) |*i| {
+            i.* = try self.parser.readU32();
+            try self.branches.put(self.allocator, @intCast(self.opcodes.items.len), i.*);
+        }
+        try self.branches.put(self.allocator, @intCast(self.opcodes.items.len), try self.parser.readU32());
+        try self.push(@enumFromInt(b), .{ .u64 = 0 });
+    }
+
     fn parseVector(self: *IRParserState) !void {
         const n = try self.parser.readU32();
         try switch (n) {
@@ -853,6 +872,22 @@ pub fn parseGlobalExpr(parser: *Parser) !IR {
         .allocator = parser.allocator,
     };
     try state.parseGlobal();
+    return .{
+        .opcodes = try state.opcodes.toOwnedSlice(state.allocator),
+        .indices = try state.indices.toOwnedSlice(state.allocator),
+        .select_valtypes = &.{},
+    };
+}
+
+pub fn parseSingleExpr(parser: *Parser) !IR {
+    var state = IRParserState{
+        .opcodes = .{},
+        .indices = .{},
+        .branches = .{},
+        .parser = parser,
+        .allocator = parser.allocator,
+    };
+    try state.parseExpression();
     return .{
         .opcodes = try state.opcodes.toOwnedSlice(state.allocator),
         .indices = try state.indices.toOwnedSlice(state.allocator),
