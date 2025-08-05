@@ -12,10 +12,10 @@ const allocator = gpa.allocator();
 var pool: ecs.Pool = undefined;
 var renderer: Renderer = undefined;
 
-export fn sideros_init(init: api.GameInit) callconv(.C) void {
+export fn sideros_init(init: api.GameInit) callconv(.c) void {
     pool = ecs.Pool.init(allocator, .{
         .camera = .{
-            .position = .{ 0.0, 0.0, 1.0 },
+            .position = .{ 30.0, 30.0, 30.0 },
             .target = .{ 0.0, 0.0, 0.0 },
         },
         .renderer = undefined,
@@ -24,16 +24,16 @@ export fn sideros_init(init: api.GameInit) callconv(.C) void {
     // TODO(ernesto): I think this @ptrCast are unavoidable but maybe not?
     renderer = Renderer.init(allocator, @ptrCast(init.instance), @ptrCast(init.surface)) catch @panic("TODO: Gracefully handle error");
     pool.addSystemGroup(&[_]ecs.System{Renderer.render}, true) catch @panic("TODO: Gracefuly handle error");
-    pool.resources.renderer = renderer;
+    pool.resources.renderer = &renderer;
     pool.tick();
 }
 
-export fn sideros_update(gameUpdate: api.GameUpdate) callconv(.C) void {
+export fn sideros_update(gameUpdate: api.GameUpdate) callconv(.c) void {
     _ = gameUpdate;
     pool.tick();
 }
 
-export fn sideros_cleanup() callconv(.C) void {
+export fn sideros_cleanup() callconv(.c) void {
     renderer.deinit();
     pool.deinit();
     if (gpa.deinit() != .ok) @panic("Memory leaked");

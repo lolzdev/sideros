@@ -190,11 +190,10 @@ fn toplevelHandleConfigure(data: ?*anyopaque, toplevel: ?*c.xdg_toplevel, width:
 }
 
 fn toplevelHandleClose(data: ?*anyopaque, toplevel: ?*c.xdg_toplevel) callconv(.c) void {
-    const state: *State = @alignCast(@ptrCast(data));
+    _ = date;
     _ = toplevel;
 
     quit = true;
-    state.pool.resources.renderer.deinit();
 }
 
 fn toplevelHandleConfigureBounds(data: ?*anyopaque, toplevel: ?*c.xdg_toplevel, width: i32, height: i32) callconv(.c) void {

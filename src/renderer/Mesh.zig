@@ -2,6 +2,7 @@ const std = @import("std");
 const vk = @import("vulkan.zig");
 const gltf = @import("gltf.zig");
 const Allocator = std.mem.Allocator;
+const c = vk.c;
 
 const Mesh = @This();
 

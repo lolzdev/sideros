@@ -6,6 +6,7 @@ typedef struct {
 } GameInit;
 
 typedef struct {
+  double dt;
 } GameUpdate;
 
 void sideros_init(GameInit init);

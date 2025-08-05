@@ -30,8 +30,9 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
         .link_libc = true,
     });
+    renderer.addIncludePath(b.path("ext"));
     renderer.addCSourceFile(.{ .file = b.path("ext/stb_image.c") });
-    renderer.addImport("sideros", sideros);
+    //renderer.addImport("sideros", sideros);
     renderer.addImport("math", math);
     renderer.addImport("ecs", ecs);
     // TODO(ernesto): ecs and renderer should be decoupled
@@ -39,11 +40,13 @@ pub fn build(b: *std.Build) void {
 
     compileAllShaders(b, renderer);
 
-    const sideros = b.addStaticLibrary(.{
+    const sideros = b.addLibrary(.{
         .name = "sideros",
-        .root_source_file = b.path("src/sideros.zig"),
-        .target = target,
-        .optimize = optimize,
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/sideros.zig"),
+            .target = target,
+            .optimize = optimize,
+        }),
     });
     sideros.addIncludePath(b.path("ext"));
     sideros.addIncludePath(b.path("src"));

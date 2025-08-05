@@ -1,6 +1,9 @@
 const Texture = @This();
-const c = @import("sideros").c;
 const vk = @import("vulkan.zig");
+const c = vk.c;
+pub const stb = @cImport({
+    @cInclude("stb_image.h");
+});
 
 image: c.VkImage,
 image_memory: c.VkDeviceMemory,
@@ -11,8 +14,8 @@ pub fn init(path: [:0]const u8, device: anytype) !Texture {
     var height: i32 = 0;
     var channels: i32 = 0;
 
-    const pixels = c.stbi_load(path, &width, &height, &channels, c.STBI_rgb_alpha);
-    defer c.stbi_image_free(pixels);
+    const pixels = stb.stbi_load(path, &width, &height, &channels, stb.STBI_rgb_alpha);
+    defer stb.stbi_image_free(pixels);
 
     const size: c.VkDeviceSize  = @as(u64, @intCast(width)) * @as(u64, @intCast(height)) * 4;
     const image_buffer = try device.createBuffer(vk.BufferUsage{ .transfer_src = true }, vk.BufferFlags{ .host_visible = true, .host_coherent = true }, size);
