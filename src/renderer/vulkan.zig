@@ -1,3 +1,5 @@
+pub const Texture = @import("Texture.zig");
+
 const std = @import("std");
 const c = @import("sideros").c;
 const Mesh = @import("Mesh.zig");
@@ -165,22 +167,7 @@ pub const Buffer = struct {
     size: usize,
 
     pub fn copyTo(self: Buffer, device: anytype, dest: Buffer) !void {
-        const command_buffer_info: c.VkCommandBufferAllocateInfo = .{
-            .sType = c.VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
-            .commandPool = device.command_pool,
-            .level = c.VK_COMMAND_BUFFER_LEVEL_PRIMARY,
-            .commandBufferCount = 1,
-        };
-
-        var command_buffer: c.VkCommandBuffer = undefined;
-        try mapError(c.vkAllocateCommandBuffers(device.handle, &command_buffer_info, @ptrCast(&command_buffer)));
-
-        const begin_info: c.VkCommandBufferBeginInfo = .{
-            .sType = c.VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
-            .flags = c.VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
-        };
-
-        try mapError(c.vkBeginCommandBuffer(command_buffer, &begin_info));
+        const command_buffer = try device.beginSingleTimeCommands();
 
         const copy_region: c.VkBufferCopy = .{
             .srcOffset = 0,
@@ -189,22 +176,50 @@ pub const Buffer = struct {
         };
 
         c.vkCmdCopyBuffer(command_buffer, self.handle, dest.handle, 1, &copy_region);
-        try mapError(c.vkEndCommandBuffer(command_buffer));
 
-        const submit_info: c.VkSubmitInfo = .{
-            .sType = c.VK_STRUCTURE_TYPE_SUBMIT_INFO,
-            .commandBufferCount = 1,
-            .pCommandBuffers = &command_buffer,
-        };
-
-        try mapError(c.vkQueueSubmit(device.graphics_queue, 1, &submit_info, null));
-        try mapError(c.vkQueueWaitIdle(device.graphics_queue));
-        c.vkFreeCommandBuffers(device.handle, device.command_pool, 1, &command_buffer);
+        try device.endSingleTimeCommands(command_buffer);
     }
 
     pub fn destroy(self: Buffer, device_handle: c.VkDevice) void {
         c.vkDestroyBuffer(device_handle, self.handle, null);
         c.vkFreeMemory(device_handle, self.memory, null);
+    }
+};
+
+pub const Sampler = struct {
+    handle: c.VkSampler,
+
+    pub fn init(device: anytype) !Sampler {
+        var sampler: c.VkSampler = undefined;
+
+        const create_info: c.VkSamplerCreateInfo = .{
+            .sType = c.VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
+            .magFilter = c.VK_FILTER_LINEAR,
+            .minFilter = c.VK_FILTER_LINEAR,
+            .addressModeU = c.VK_SAMPLER_ADDRESS_MODE_REPEAT,
+            .addressModeV = c.VK_SAMPLER_ADDRESS_MODE_REPEAT,
+            .addressModeW = c.VK_SAMPLER_ADDRESS_MODE_REPEAT,
+            .borderColor = c.VK_BORDER_COLOR_INT_OPAQUE_BLACK,
+            .unnormalizedCoordinates = c.VK_FALSE,
+            .compareEnable = c.VK_FALSE,
+            .compareOp = c.VK_COMPARE_OP_ALWAYS,
+            .mipmapMode = c.VK_SAMPLER_MIPMAP_MODE_LINEAR,
+            .mipLodBias = 0.0,
+            .minLod = 0.0,
+            .maxLod = 0.0,
+            .anisotropyEnable = c.VK_FALSE,
+            .maxAnisotropy = 1.0,
+        };
+
+        try mapError(c.vkCreateSampler(device.handle, &create_info, null, &sampler));
+
+        return .{
+            .handle = sampler,
+        };
+    }
+
+    pub fn deinit(self: Sampler, device: anytype) void {
+        c.vkDestroySampler(device.handle, self.handle, null);
     }
 };
 
@@ -267,7 +282,7 @@ pub fn RenderPass(comptime n: usize) type {
 
         pub fn begin(self: Self, swapchain: Swapchain(n), device: Device(n), image: usize, frame: usize) void {
             std.debug.assert(frame < n);
-            const clear_color: c.VkClearValue = .{ .color = .{ .float32 = .{ 1.0, 0.0, 0.0, 1.0 } } };
+            const clear_color: c.VkClearValue = .{ .color = .{ .float32 = .{ 0.0, 0.0, 0.0, 1.0 } } };
 
             const begin_info: c.VkRenderPassBeginInfo = .{
                 .sType = c.VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
@@ -300,16 +315,23 @@ pub fn GraphicsPipeline(comptime n: usize) type {
     return struct {
         layout: c.VkPipelineLayout,
         handle: c.VkPipeline,
+        texture_set_layout: c.VkDescriptorSetLayout,
         descriptor_pool: c.VkDescriptorPool,
         descriptor_set: c.VkDescriptorSet,
         descriptor_set_layout: c.VkDescriptorSetLayout,
         projection_buffer: Buffer,
+        light_buffer: Buffer,
         view_buffer: Buffer,
         view_memory: [*c]u8,
+        view_pos_memory: [*c]u8,
+        texture_sampler: Sampler,
+        diffuse_sampler: Sampler,
+        textures: std.ArrayList(c.VkDescriptorSet),
+        light_pos: [*]f32,
 
         const Self = @This();
 
-        pub fn create(device: Device(n), swapchain: Swapchain(n), render_pass: RenderPass(n), vertex_shader: c.VkShaderModule, fragment_shader: c.VkShaderModule) !Self {
+        pub fn create(allocator: std.mem.Allocator, device: Device(n), swapchain: Swapchain(n), render_pass: RenderPass(n), vertex_shader: c.VkShaderModule, fragment_shader: c.VkShaderModule) !Self {
             const vertex_shader_stage_info: c.VkPipelineShaderStageCreateInfo = .{
                 .sType = c.VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
                 .stage = c.VK_SHADER_STAGE_VERTEX_BIT,
@@ -327,14 +349,14 @@ pub fn GraphicsPipeline(comptime n: usize) type {
             // TODO: shouldn't this be closer to usage?
             const shader_stage_infos: []const c.VkPipelineShaderStageCreateInfo = &.{ vertex_shader_stage_info, fragment_shader_stage_info };
 
-            const vertex_attributes: []const c.VkVertexInputAttributeDescription = &.{Mesh.Vertex.attributeDescription()};
+            const vertex_attributes: []const c.VkVertexInputAttributeDescription = Mesh.Vertex.attributeDescriptions();
             const vertex_bindings: []const c.VkVertexInputBindingDescription = &.{Mesh.Vertex.bindingDescription()};
 
             const vertex_input_info: c.VkPipelineVertexInputStateCreateInfo = .{
                 .sType = c.VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
                 .vertexBindingDescriptionCount = 1,
                 .pVertexBindingDescriptions = vertex_bindings.ptr,
-                .vertexAttributeDescriptionCount = 1,
+                .vertexAttributeDescriptionCount = 3,
                 .pVertexAttributeDescriptions = vertex_attributes.ptr,
             };
 
@@ -375,8 +397,7 @@ pub fn GraphicsPipeline(comptime n: usize) type {
                 .rasterizerDiscardEnable = c.VK_FALSE,
                 .polygonMode = c.VK_POLYGON_MODE_FILL,
                 .lineWidth = 1.0,
-                //.cullMode = c.VK_CULL_MODE_BACK_BIT,
-                .cullMode = c.VK_CULL_MODE_NONE,
+                .cullMode = c.VK_CULL_MODE_BACK_BIT,
                 .frontFace = c.VK_FRONT_FACE_COUNTER_CLOCKWISE,
                 .depthBiasEnable = c.VK_FALSE,
             };
@@ -421,23 +442,60 @@ pub fn GraphicsPipeline(comptime n: usize) type {
                 .stageFlags = c.VK_SHADER_STAGE_VERTEX_BIT,
             };
 
-            const bindings = [_]c.VkDescriptorSetLayoutBinding{projection_binding, view_binding};
+            const light_binding = c.VkDescriptorSetLayoutBinding{
+                .binding = 2,
+                .descriptorType = c.VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+                .descriptorCount = 1,
+                .stageFlags = c.VK_SHADER_STAGE_FRAGMENT_BIT,
+            };
+
+            const view_pos_binding = c.VkDescriptorSetLayoutBinding{
+                .binding = 3,
+                .descriptorType = c.VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+                .descriptorCount = 1,
+                .stageFlags = c.VK_SHADER_STAGE_FRAGMENT_BIT,
+            };
+
+            const texture_sampler_binding = c.VkDescriptorSetLayoutBinding{
+                .binding = 0,
+                .descriptorType = c.VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+                .descriptorCount = 1,
+                .stageFlags = c.VK_SHADER_STAGE_FRAGMENT_BIT,
+            };
+
+            const diffuse_sampler_binding = c.VkDescriptorSetLayoutBinding{
+                .binding = 1,
+                .descriptorType = c.VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+                .descriptorCount = 1,
+                .stageFlags = c.VK_SHADER_STAGE_FRAGMENT_BIT,
+            };
+
+            const bindings = [_]c.VkDescriptorSetLayoutBinding{projection_binding, view_binding, light_binding, view_pos_binding};
+            const texture_bindings = [_]c.VkDescriptorSetLayoutBinding{texture_sampler_binding, diffuse_sampler_binding};
 
             var descriptor_set_layout: c.VkDescriptorSetLayout = undefined;
+            var texture_descriptor_set_layout: c.VkDescriptorSetLayout = undefined;
 
             const descriptor_set_layout_info = c.VkDescriptorSetLayoutCreateInfo{
                 .sType = c.VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
-                .bindingCount = 2,
+                .bindingCount = 4,
                 .pBindings = bindings[0..].ptr,
             };
 
-            try mapError(c.vkCreateDescriptorSetLayout(device.handle, &descriptor_set_layout_info, null, &descriptor_set_layout));
+            const texture_descriptor_set_layout_info = c.VkDescriptorSetLayoutCreateInfo{
+                .sType = c.VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
+                .bindingCount = 2,
+                .pBindings = texture_bindings[0..].ptr,
+            };
 
-            const set_layouts = [_]c.VkDescriptorSetLayout{descriptor_set_layout};
+            try mapError(c.vkCreateDescriptorSetLayout(device.handle, &descriptor_set_layout_info, null, &descriptor_set_layout));
+            try mapError(c.vkCreateDescriptorSetLayout(device.handle, &texture_descriptor_set_layout_info, null, &texture_descriptor_set_layout));
+
+            var set_layouts = [_]c.VkDescriptorSetLayout{descriptor_set_layout, texture_descriptor_set_layout};
 
             const layout_info: c.VkPipelineLayoutCreateInfo = .{
                 .sType = c.VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
-                .setLayoutCount = 1,
+                .setLayoutCount = 2,
                 .pSetLayouts = set_layouts[0..].ptr,
                 .pushConstantRangeCount = 0,
                 .pPushConstantRanges = null,
@@ -470,16 +528,23 @@ pub fn GraphicsPipeline(comptime n: usize) type {
 
             try mapError(c.vkCreateGraphicsPipelines(device.handle, null, 1, &pipeline_info, null, @ptrCast(&pipeline)));
 
-            var size = c.VkDescriptorPoolSize{
+            const size = c.VkDescriptorPoolSize{
                 .type = c.VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+                .descriptorCount = 4,
+            };
+
+            const sampler_size = c.VkDescriptorPoolSize{
+                .type = c.VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
                 .descriptorCount = 2,
             };
 
+            const sizes = [_]c.VkDescriptorPoolSize {size, sampler_size};
+
             const descriptor_pool_info = c.VkDescriptorPoolCreateInfo{
                 .sType = c.VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
-                .maxSets = 1,
-                .poolSizeCount = 1,
-                .pPoolSizes = &size,
+                .maxSets = 2,
+                .poolSizeCount = 2,
+                .pPoolSizes = sizes[0..].ptr,
             };
 
             var descriptor_pool: c.VkDescriptorPool = undefined;
@@ -562,16 +627,141 @@ pub fn GraphicsPipeline(comptime n: usize) type {
 
             c.vkUpdateDescriptorSets(device.handle, 1, &write_view_descriptor_set, 0, null);
 
+            const light_buffer = try device.createBuffer(BufferUsage{ .uniform_buffer = true, .transfer_dst = true }, BufferFlags{ .device_local = true }, @sizeOf([3]f32));
+
+            var light_data: [*c]u8 = undefined;
+
+            try mapError(c.vkMapMemory(
+                device.handle,
+                light_buffer.memory,
+                0,
+                light_buffer.size,
+                0,
+                @ptrCast(&light_data),
+            ));
+
+            const light_pos: [*]f32 = @alignCast(@ptrCast(light_data));
+
+            const light_descriptor_buffer_info = c.VkDescriptorBufferInfo{
+                .buffer = light_buffer.handle,
+                .offset = 0,
+                .range = light_buffer.size,
+            };
+
+            const write_light_descriptor_set = c.VkWriteDescriptorSet{
+                .sType = c.VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                .dstSet = descriptor_set,
+                .dstBinding = 2,
+                .dstArrayElement = 0,
+                .descriptorCount = 1,
+                .descriptorType = c.VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+                .pBufferInfo = &light_descriptor_buffer_info,
+            };
+
+            c.vkUpdateDescriptorSets(device.handle, 1, &write_light_descriptor_set, 0, null);
+
+            const view_pos_buffer = try device.createBuffer(BufferUsage{ .uniform_buffer = true, .transfer_dst = true }, BufferFlags{ .device_local = true }, @sizeOf([3]f32));
+
+            var view_pos_data: [*c]u8 = undefined;
+
+            try mapError(c.vkMapMemory(
+                device.handle,
+                view_pos_buffer.memory,
+                0,
+                view_pos_buffer.size,
+                0,
+                @ptrCast(&view_pos_data),
+            ));
+
+            const view_pos_descriptor_buffer_info = c.VkDescriptorBufferInfo{
+                .buffer = view_pos_buffer.handle,
+                .offset = 0,
+                .range = view_pos_buffer.size,
+            };
+
+            const write_view_pos_descriptor_set = c.VkWriteDescriptorSet{
+                .sType = c.VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                .dstSet = descriptor_set,
+                .dstBinding = 3,
+                .dstArrayElement = 0,
+                .descriptorCount = 1,
+                .descriptorType = c.VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+                .pBufferInfo = &view_pos_descriptor_buffer_info,
+            };
+
+            c.vkUpdateDescriptorSets(device.handle, 1, &write_view_pos_descriptor_set, 0, null);
+
             return Self{
                 .layout = layout,
                 .handle = pipeline,
+                .texture_set_layout = texture_descriptor_set_layout,
                 .descriptor_pool = descriptor_pool,
                 .descriptor_set = descriptor_set,
                 .descriptor_set_layout = descriptor_set_layout,
                 .projection_buffer = projection_buffer,
                 .view_buffer = view_buffer,
                 .view_memory = view_data,
+                .light_buffer = light_buffer,
+                .view_pos_memory = view_pos_data,
+                .texture_sampler = try Sampler.init(device),
+                .diffuse_sampler = try Sampler.init(device),
+                .textures = std.ArrayList(c.VkDescriptorSet).init(allocator),
+                .light_pos = light_pos,
             };
+        }
+
+        pub fn addTexture(self: *Self, device: anytype, texture: Texture, diffuse: Texture) !usize {
+            var set_layouts = [_]c.VkDescriptorSetLayout{self.texture_set_layout};
+            const descriptor_allocate_info = c.VkDescriptorSetAllocateInfo{
+                .sType = c.VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
+                .descriptorPool = self.descriptor_pool,
+                .descriptorSetCount = 1,
+                .pSetLayouts = set_layouts[0..].ptr,
+            };
+
+            var descriptor_set: c.VkDescriptorSet = undefined;
+            try mapError(c.vkAllocateDescriptorSets(device.handle, &descriptor_allocate_info, &descriptor_set));
+
+            const texture_info: c.VkDescriptorImageInfo = .{
+                .imageLayout = c.VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                .imageView = texture.image_view,
+                .sampler = self.texture_sampler.handle,
+            };
+
+            const diffuse_info: c.VkDescriptorImageInfo = .{
+                .imageLayout = c.VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                .imageView = diffuse.image_view,
+                .sampler = self.diffuse_sampler.handle,
+            };
+
+            const write_texture_descriptor_set = c.VkWriteDescriptorSet{
+                .sType = c.VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                .dstSet = descriptor_set,
+                .dstBinding = 0,
+                .dstArrayElement = 0,
+                .descriptorCount = 1,
+                .descriptorType = c.VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+                .pImageInfo = &texture_info,
+            };
+
+            const write_diffuse_descriptor_set = c.VkWriteDescriptorSet{
+                .sType = c.VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                .dstSet = descriptor_set,
+                .dstBinding = 1,
+                .dstArrayElement = 0,
+                .descriptorCount = 1,
+                .descriptorType = c.VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+                .pImageInfo = &diffuse_info,
+            };
+
+            const writes = [_]c.VkWriteDescriptorSet {write_texture_descriptor_set, write_diffuse_descriptor_set};
+
+            c.vkUpdateDescriptorSets(device.handle, 2, writes[0..].ptr, 0, null);
+
+            const index = self.textures.items.len;
+            try self.textures.append(descriptor_set);
+
+            return index;
         }
 
         pub fn bind(self: Self, device: Device(n), frame: usize) void {
@@ -580,6 +770,9 @@ pub fn GraphicsPipeline(comptime n: usize) type {
         }
 
         pub fn destroy(self: Self, device: Device(n)) void {
+            self.textures.deinit();
+            self.texture_sampler.deinit(device);
+            self.diffuse_sampler.deinit(device);
             self.projection_buffer.destroy(device.handle);
             c.vkDestroyDescriptorSetLayout(device.handle, self.descriptor_set_layout, null);
             c.vkDestroyDescriptorPool(device.handle, self.descriptor_pool, null);
@@ -865,6 +1058,7 @@ pub fn Device(comptime n: usize) type {
         in_flight_fence: [n]c.VkFence,
         graphics_family: u32,
         present_family: u32,
+        device_properties: c.VkPhysicalDeviceProperties,
         memory_properties: c.VkPhysicalDeviceMemoryProperties,
 
         const Self = @This();
@@ -888,9 +1082,145 @@ pub fn Device(comptime n: usize) type {
             try mapError(c.vkEndCommandBuffer(self.command_buffers[frame]));
         }
 
+        pub fn beginSingleTimeCommands(self: Self) !c.VkCommandBuffer {
+            const command_buffer_info: c.VkCommandBufferAllocateInfo = .{
+                .sType = c.VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+                .commandPool = self.command_pool,
+                .level = c.VK_COMMAND_BUFFER_LEVEL_PRIMARY,
+                .commandBufferCount = 1,
+            };
+
+            var command_buffer: c.VkCommandBuffer = undefined;
+            try mapError(c.vkAllocateCommandBuffers(self.handle, &command_buffer_info, @ptrCast(&command_buffer)));
+
+            const begin_info: c.VkCommandBufferBeginInfo = .{
+                .sType = c.VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+                .flags = c.VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
+            };
+
+            try mapError(c.vkBeginCommandBuffer(command_buffer, &begin_info));
+
+            return command_buffer;
+        }
+
+        pub fn endSingleTimeCommands(self: Self, command_buffer: c.VkCommandBuffer) !void {
+            try mapError(c.vkEndCommandBuffer(command_buffer));
+
+            const submit_info: c.VkSubmitInfo = .{
+                .sType = c.VK_STRUCTURE_TYPE_SUBMIT_INFO,
+                .commandBufferCount = 1,
+                .pCommandBuffers = &command_buffer,
+            };
+
+            try mapError(c.vkQueueSubmit(self.graphics_queue, 1, &submit_info, null));
+            try mapError(c.vkQueueWaitIdle(self.graphics_queue));
+            c.vkFreeCommandBuffers(self.handle, self.command_pool, 1, &command_buffer);
+        }
+
+        pub fn copyBufferToImage(self: Self, buffer: Buffer, image: c.VkImage, width: u32, height: u32) !void {
+            const command_buffer = try self.beginSingleTimeCommands();
+
+            const region: c.VkBufferImageCopy = .{
+                .bufferOffset = 0,
+                .bufferRowLength = 0,
+                .bufferImageHeight = 0,
+                .imageSubresource = .{
+                    .aspectMask = c.VK_IMAGE_ASPECT_COLOR_BIT,
+                    .mipLevel = 0,
+                    .baseArrayLayer = 0,
+                    .layerCount = 1,
+                },
+                .imageOffset = .{
+                    .x = 0, .y = 0, .z = 0,
+                },
+                .imageExtent = .{
+                    .width = width, .height = height, .depth = 1,
+                },
+            };
+
+            c.vkCmdCopyBufferToImage(
+                command_buffer,
+                buffer.handle,
+                image,
+                c.VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                1,
+                &region
+            );
+
+            try self.endSingleTimeCommands(command_buffer);
+        }
+
+        pub fn transitionImageLayout(self: Self, image: c.VkImage, format: c.VkFormat, old_layout: c.VkImageLayout, new_layout: c.VkImageLayout) !void {
+            _ = format;
+            const command_buffer = try self.beginSingleTimeCommands();
+
+            var barrier: c.VkImageMemoryBarrier = .{
+                .sType = c.VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+                .oldLayout = old_layout,
+                .newLayout = new_layout,
+                .srcQueueFamilyIndex = c.VK_QUEUE_FAMILY_IGNORED,
+                .dstQueueFamilyIndex = c.VK_QUEUE_FAMILY_IGNORED,
+                .image = image,
+                .subresourceRange = .{
+                    .aspectMask = c.VK_IMAGE_ASPECT_COLOR_BIT,
+                    .baseMipLevel = 0,
+                    .levelCount = 1,
+                    .baseArrayLayer = 0,
+                    .layerCount = 1,
+                },
+                .srcAccessMask = 0,
+                .dstAccessMask = 0,
+            };
+
+            var sourceStage: c.VkPipelineStageFlags = undefined;
+            var destinationStage: c.VkPipelineStageFlags = undefined;
+
+            if (old_layout == c.VK_IMAGE_LAYOUT_UNDEFINED and new_layout == c.VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL) {
+                barrier.srcAccessMask = 0;
+                barrier.dstAccessMask = c.VK_ACCESS_TRANSFER_WRITE_BIT;
+
+                sourceStage = c.VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+                destinationStage = c.VK_PIPELINE_STAGE_TRANSFER_BIT;
+            } else if (old_layout == c.VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL and new_layout == c.VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) {
+                barrier.srcAccessMask = c.VK_ACCESS_TRANSFER_WRITE_BIT;
+                barrier.dstAccessMask = c.VK_ACCESS_SHADER_READ_BIT;
+
+                sourceStage = c.VK_PIPELINE_STAGE_TRANSFER_BIT;
+                destinationStage = c.VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+            } else {
+                return error.UnsupportedTransition;
+            }
+
+            c.vkCmdPipelineBarrier(
+                command_buffer,
+                sourceStage,
+                destinationStage,
+                0,
+                0, null,
+                0, null,
+                1, &barrier
+            );
+
+            try self.endSingleTimeCommands(command_buffer);
+        }
+
+        
+
         pub fn draw(self: Self, indices: u32, frame: usize) void {
             std.debug.assert(frame < n);
             c.vkCmdDrawIndexed(self.command_buffers[frame], indices, 1, 0, 0, 0);
+        }
+
+        pub fn findMemoryType(self: Self, filter: u32, properties: c.VkMemoryPropertyFlags) error{NoSuitableMemory}!u32 {
+            const memory_properties = self.memory_properties;
+
+            for (0..memory_properties.memoryTypeCount) |i| {
+                if ((filter & (@as(u32, 1) << @intCast(i))) != 0 and (memory_properties.memoryTypes[i].propertyFlags & properties) == properties) {
+                    return @intCast(i);
+                }
+            }
+
+            return error.NoSuitableMemory;
         }
 
         pub fn waitFence(self: Self, frame: usize) !void {
@@ -917,8 +1247,9 @@ pub fn Device(comptime n: usize) type {
             c.vkCmdBindVertexBuffers(self.command_buffers[frame], 0, 1, &buffer.handle, &offset);
         }
 
-        pub fn bindDescriptorSets(self: Self, pipeline: GraphicsPipeline(n), frame: usize) void {
-            c.vkCmdBindDescriptorSets(self.command_buffers[frame], c.VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.layout, 0, 1, &pipeline.descriptor_set, 0, null);
+        pub fn bindDescriptorSets(self: Self, pipeline: GraphicsPipeline(n), frame: usize, texture: usize) void {
+            const sets = [_]c.VkDescriptorSet {pipeline.descriptor_set, pipeline.textures.items[texture]};
+            c.vkCmdBindDescriptorSets(self.command_buffers[frame], c.VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.layout, 0, 2, sets[0..].ptr, 0, null);
         }
 
         pub fn updateBuffer(self: Self, comptime T: type, buffer: Buffer, data: [*]T, frame: usize) void {
@@ -1083,6 +1414,8 @@ pub const PhysicalDevice = struct {
         return graphics_queue.?;
     }
 
+    
+
     pub fn presentQueue(self: PhysicalDevice, surface: Surface, allocator: Allocator) !u32 {
         const queue_families = try self.queueFamilyProperties(allocator);
         defer allocator.free(queue_families);
@@ -1192,6 +1525,9 @@ pub const PhysicalDevice = struct {
         var memory_properties: c.VkPhysicalDeviceMemoryProperties = undefined;
         c.vkGetPhysicalDeviceMemoryProperties(self.handle, &memory_properties);
 
+        var device_properties: c.VkPhysicalDeviceProperties = undefined;
+        c.vkGetPhysicalDeviceProperties(self.handle, &device_properties);
+
         return Device(n){
             .handle = device,
             .graphics_queue = graphics_queue,
@@ -1204,6 +1540,7 @@ pub const PhysicalDevice = struct {
             .graphics_family = graphics_queue_index,
             .present_family = present_queue_index,
             .memory_properties = memory_properties,
+            .device_properties = device_properties,
         };
     }
 };

@@ -4,6 +4,7 @@ const ecs = @import("ecs");
 const std = @import("std");
 const vk = @import("vulkan.zig");
 pub const Mesh = @import("Mesh.zig");
+const Texture = vk.Texture;
 pub const Camera = @import("Camera.zig");
 const Allocator = std.mem.Allocator;
 
@@ -37,7 +38,7 @@ pub fn init(comptime C: type, comptime S: type, allocator: Allocator, display: C
 
     const swapchain = try vk.Swapchain(2).create(allocator, surface, device, physical_device, render_pass);
 
-    const graphics_pipeline = try vk.GraphicsPipeline(2).create(device, swapchain, render_pass, vertex_shader, fragment_shader);
+    var graphics_pipeline = try vk.GraphicsPipeline(2).create(allocator, device, swapchain, render_pass, vertex_shader, fragment_shader);
 
     // TODO: I think the renderer shouldn't have to interact with buffers. I think the API should change to
     // something along the lines of
@@ -47,6 +48,15 @@ pub fn init(comptime C: type, comptime S: type, allocator: Allocator, display: C
     //    ...
     //    renderer.submit()
     const triangle = try Mesh.create(allocator, device);
+
+    const texture = try Texture.init("assets/textures/container.png", device);
+    const diffuse = try Texture.init("assets/textures/container_specular.png", device);
+
+    _ = try graphics_pipeline.addTexture(device, texture, diffuse);
+
+    graphics_pipeline.light_pos[0] = 0.0;
+    graphics_pipeline.light_pos[1] = 2.0;
+    graphics_pipeline.light_pos[2] = 0.0;
 
     return Renderer{
         .instance = instance,
@@ -83,6 +93,12 @@ pub fn render(pool: *ecs.Pool) anyerror!void {
     const view_memory = renderer.graphics_pipeline.view_memory;
     @memcpy(view_memory[0..@sizeOf(math.Matrix)], std.mem.asBytes(&camera.getView()));
 
+    const view_pos_memory = renderer.graphics_pipeline.view_pos_memory;
+    const view_pos: [*]f32 = @alignCast(@ptrCast(view_pos_memory));
+    view_pos[0] = camera.position[0];
+    view_pos[1] = camera.position[1];
+    view_pos[2] = camera.position[2];
+
     try renderer.device.waitFence(renderer.current_frame);
     const image = try renderer.swapchain.nextImage(renderer.device, renderer.current_frame);
     try renderer.device.resetCommand(renderer.current_frame);
@@ -91,7 +107,7 @@ pub fn render(pool: *ecs.Pool) anyerror!void {
     renderer.graphics_pipeline.bind(renderer.device, renderer.current_frame);
     renderer.device.bindVertexBuffer(renderer.vertex_buffer, renderer.current_frame);
     renderer.device.bindIndexBuffer(renderer.index_buffer, renderer.current_frame);
-    renderer.device.bindDescriptorSets(renderer.graphics_pipeline, renderer.current_frame);
+    renderer.device.bindDescriptorSets(renderer.graphics_pipeline, renderer.current_frame, 0);
     renderer.device.draw(@intCast(renderer.index_buffer.size / @sizeOf(u16)), renderer.current_frame);
     renderer.render_pass.end(renderer.device, renderer.current_frame);
     try renderer.device.endCommand(renderer.current_frame);

@@ -8,10 +8,14 @@ const Mesh = @This();
 
 pub const Vertex = struct {
     position: [3]f32,
+    normal: [3]f32,
+    uv: [2]f32,
 
-    pub fn create(x: f32, y: f32, z: f32) Vertex {
+    pub fn create(x: f32, y: f32, z: f32, normal_x: f32, normal_y: f32, normal_z: f32, u: f32, v: f32) Vertex {
         return Vertex{
             .position = .{ x, y, z },
+            .normal = .{ normal_x, normal_y, normal_z },
+            .uv = .{u, v},
         };
     }
 
@@ -25,15 +29,29 @@ pub const Vertex = struct {
         return binding_description;
     }
 
-    pub fn attributeDescription() c.VkVertexInputAttributeDescription {
-        const attribute_description: c.VkVertexInputAttributeDescription = .{
-            .location = 0,
-            .binding = 0,
-            .format = c.VK_FORMAT_R32G32B32_SFLOAT,
-            .offset = 0,
+    pub fn attributeDescriptions() []const c.VkVertexInputAttributeDescription {
+        const attributes: []const c.VkVertexInputAttributeDescription = &.{
+            .{
+                .location = 0,
+                .binding = 0,
+                .format = c.VK_FORMAT_R32G32B32_SFLOAT,
+                .offset = 0,
+            },
+            .{
+                .location = 1,
+                .binding = 0,
+                .format = c.VK_FORMAT_R32G32B32_SFLOAT,
+                .offset = 12,
+            },
+            .{
+                .location = 2,
+                .binding = 0,
+                .format = c.VK_FORMAT_R32G32_SFLOAT,
+                .offset = 24,
+            },
         };
 
-        return attribute_description;
+        return attributes;
     }
 };
 
@@ -41,15 +59,35 @@ vertex_buffer: vk.Buffer,
 index_buffer: vk.Buffer,
 
 pub fn createVertexBuffer(allocator: Allocator, device: anytype) !vk.Buffer {
-    const gltf_data = try gltf.parseFile(allocator, "assets/models/block.glb");
+    const gltf_data = try gltf.parseFile(allocator, "assets/models/cube.glb");
 
     const vertices = gltf_data.vertices;
+    const normals = gltf_data.normals;
+    const uvs = gltf_data.uvs;
+    defer allocator.free(uvs);
+    defer allocator.free(normals);
     defer allocator.free(vertices);
     defer allocator.free(gltf_data.indices);
 
+    const final_array = try allocator.alloc([8]f32, vertices.len);
+    defer allocator.free(final_array);
+
+    for (vertices, normals, uvs, final_array) |vertex, normal, uv, *final| {
+        final[0] = vertex[0];
+        final[1] = vertex[1];
+        final[2] = vertex[2];
+
+        final[3] = normal[0];
+        final[4] = normal[1];
+        final[5] = normal[2];
+
+        final[6] = uv[0];
+        final[7] = uv[1];
+    }
+
     var data: [*c]?*anyopaque = null;
 
-    const buffer = try device.createBuffer(vk.BufferUsage{ .transfer_src = true }, vk.BufferFlags{ .host_visible = true, .host_coherent = true }, @sizeOf(Vertex) * vertices.len);
+    const buffer = try device.createBuffer(vk.BufferUsage{ .transfer_src = true }, vk.BufferFlags{ .host_visible = true, .host_coherent = true }, @sizeOf([8]f32) * vertices.len);
 
     try vk.mapError(c.vkMapMemory(
         device.handle,
@@ -63,7 +101,7 @@ pub fn createVertexBuffer(allocator: Allocator, device: anytype) !vk.Buffer {
     if (data) |ptr| {
         const gpu_vertices: [*]Vertex = @ptrCast(@alignCast(ptr));
 
-        @memcpy(gpu_vertices, @as([]Vertex, @ptrCast(vertices[0..])));
+        @memcpy(gpu_vertices, @as([]Vertex, @ptrCast(final_array[0..])));
     }
 
     c.vkUnmapMemory(device.handle, buffer.memory);
@@ -77,11 +115,12 @@ pub fn createVertexBuffer(allocator: Allocator, device: anytype) !vk.Buffer {
 }
 
 pub fn createIndexBuffer(allocator: Allocator, device: anytype) !vk.Buffer {
-    const gltf_data = try gltf.parseFile(allocator, "assets/models/block.glb");
+    const gltf_data = try gltf.parseFile(allocator, "assets/models/cube.glb");
     const indices = gltf_data.indices;
     defer allocator.free(indices);
     defer allocator.free(gltf_data.vertices);
-    //const indices = [_]u16{ 0, 1, 2, 3, 0, 2 };
+    defer allocator.free(gltf_data.normals);
+    defer allocator.free(gltf_data.uvs);
 
     var data: [*c]?*anyopaque = null;
 

@@ -50,15 +50,15 @@ pub fn main() !void {
     //var w = try Renderer.Window.create(800, 600, "sideros");
     //defer w.destroy();
 
-    const resources = ecs.Resources{
+    var resources = ecs.Resources{
         .camera = .{
-            .position = .{0.0, 0.0, 100},
+            .position = .{30.0, 30.0, 30.0},
             .target = .{0.0, 0.0, 0.0},
         },
         .renderer = undefined,
         .input = .{ .key_pressed = .{false} ** @intFromEnum(Input.KeyCode.menu) },
     };
-    var pool = try ecs.Pool.init(allocator, resources);
+    var pool = try ecs.Pool.init(allocator, &resources);
     defer pool.deinit();
     try pool.addSystemGroup(&[_]ecs.System{
         Renderer.render,

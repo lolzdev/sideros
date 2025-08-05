@@ -58,10 +58,11 @@ fn toplevelHandleConfigure(data: ?*anyopaque, toplevel: ?*c.xdg_toplevel, width:
 }
 
 fn toplevelHandleClose(data: ?*anyopaque, toplevel: ?*c.xdg_toplevel) callconv(.c) void {
-    _ = data;
+    const state: *State = @alignCast(@ptrCast(data));
     _ = toplevel;
 
     quit = true;
+    state.pool.resources.renderer.deinit();
 }
 
 fn toplevelHandleConfigureBounds(data: ?*anyopaque, toplevel: ?*c.xdg_toplevel, width: i32, height: i32) callconv(.c) void {
@@ -124,7 +125,7 @@ pub fn init(allocator: std.mem.Allocator, pool: *ecs.Pool) !void {
     state.surface = surface;
 
     const toplevel = c.xdg_surface_get_toplevel(xdg_surface);
-    _ = c.xdg_toplevel_add_listener(toplevel, &toplevel_listener, null);
+    _ = c.xdg_toplevel_add_listener(toplevel, &toplevel_listener, @ptrCast(&state));
     const title = [_]u8 {'s', 'i', 'd', 'e', 'r', 'o', 's', 0};
     c.xdg_toplevel_set_title(toplevel, @ptrCast(&title[0]));
     c.xdg_toplevel_set_app_id(toplevel, @ptrCast(&title[0]));
@@ -138,9 +139,8 @@ pub fn init(allocator: std.mem.Allocator, pool: *ecs.Pool) !void {
     }
 
     var renderer = try Renderer.init(@TypeOf(display), @TypeOf(surface), allocator, display, surface);
-    defer renderer.deinit();
 
-    pool.resources.renderer = renderer;
+    pool.resources.renderer = &renderer;
     state.pool = pool;
     pool.tick();
 

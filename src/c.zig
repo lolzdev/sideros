@@ -6,4 +6,5 @@ pub const c = @cImport({
     @cInclude("vulkan/vulkan_wayland.h");
     @cInclude("vulkan/vulkan_xcb.h");
     @cInclude("xcb/xcb_icccm.h");
+    @cInclude("stb_image.h");
 });

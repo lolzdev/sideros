@@ -13,7 +13,7 @@ pub const SyncGroup = []const System;
 
 pub const Resources = struct {
     camera: Camera,
-    renderer: Renderer,
+    renderer: *Renderer,
     input: Input,
     delta_time: f64 = 0.0,
 };
@@ -26,7 +26,7 @@ pub const Human = struct {
 // TODO(ernesto): Move pool to its own file
 pub const Pool = struct {
     humans: std.MultiArrayList(Human),
-    resources: Resources,
+    resources: *Resources,
     allocator: Allocator,
     system_groups: std.ArrayList(SystemGroup),
     sync_groups: std.ArrayList(SyncGroup),
@@ -34,7 +34,7 @@ pub const Pool = struct {
     wait_group: std.Thread.WaitGroup,
     mutex: std.Thread.Mutex,
 
-    pub fn init(allocator: Allocator, resources: Resources) !@This() {
+    pub fn init(allocator: Allocator, resources: *Resources) !@This() {
         var pool = @This(){
             .humans = .{},
             .resources = resources,

@@ -29,7 +29,7 @@ pub fn init(allocator: std.mem.Allocator, pool: *ecs.Pool) !void {
     var renderer = try Renderer.init(@TypeOf(connection), @TypeOf(window), allocator, connection, window);
     defer renderer.deinit();
 
-    pool.resources.renderer = renderer;
+    pool.resources.renderer = &renderer;
 
     while (true) {
         if (c.xcb_poll_for_event(connection)) |e| {

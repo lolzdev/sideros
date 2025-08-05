@@ -32,6 +32,7 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
         .link_libc = true,
     });
+    renderer.addCSourceFile(.{ .file = b.path("ext/stb_image.c") });
     renderer.addImport("sideros", sideros);
     renderer.addImport("ecs", ecs);
     ecs.addImport("renderer", renderer);

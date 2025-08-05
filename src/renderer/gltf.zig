@@ -122,6 +122,7 @@ pub const Model = struct {
     const Binary = struct {
         data: []u8,
         const Vec3 = [3]f32;
+        const Vec2 = [2]f32;
 
         pub fn readU16(self: Binary, allocator: Allocator, view: BufferView, count: usize) ![]u16 {
             const data = self.data[view.byteOffset .. view.byteOffset + view.byteLength];
@@ -146,10 +147,21 @@ pub const Model = struct {
 
             return vectors;
         }
+
+        pub fn readVec2(self: Binary, allocator: Allocator, view: BufferView, count: usize) ![]Vec2 {
+            const data = self.data[view.byteOffset .. view.byteOffset + view.byteLength];
+            const vectors = try allocator.alloc(Vec2, count);
+
+            for (0..count) |i| {
+                vectors[i] = std.mem.bytesAsValue(Vec2, data[(@sizeOf(Vec2) * i) .. (@sizeOf(Vec2) * i) + @sizeOf(Vec2)]).*;
+            }
+
+            return vectors;
+        }
     };
 };
 
-pub fn parseFile(allocator: Allocator, name: []const u8) !struct { vertices: [][3]f32, indices: []u16 } {
+pub fn parseFile(allocator: Allocator, name: []const u8) !struct { vertices: [][3]f32, normals: [][3]f32, uvs: [][2]f32, indices: []u16 } {
     const file = try std.fs.cwd().openFile(name, .{});
     const all = try file.readToEndAlloc(allocator, 1_000_000);
     defer allocator.free(all);
@@ -162,7 +174,12 @@ pub fn parseFile(allocator: Allocator, name: []const u8) !struct { vertices: [][
     const binary = Model.Binary{ .data = all[Model.Chunk.offset + json_chunk.length + 8 ..] };
 
     const vertices = try binary.readVec3(allocator, data.bufferViews.?[data.meshes.?[0].primitives.?[0].attributes.?.POSITION.?], data.accessors.?[data.meshes.?[0].primitives.?[0].attributes.?.POSITION.?].count);
+
+    const normals = try binary.readVec3(allocator, data.bufferViews.?[data.meshes.?[0].primitives.?[0].attributes.?.NORMAL.?], data.accessors.?[data.meshes.?[0].primitives.?[0].attributes.?.NORMAL.?].count);
+
+    const uvs = try binary.readVec2(allocator, data.bufferViews.?[data.meshes.?[0].primitives.?[0].attributes.?.TEXCOORD_0.?], data.accessors.?[data.meshes.?[0].primitives.?[0].attributes.?.TEXCOORD_0.?].count);
+
     const indices = try binary.readU16(allocator, data.bufferViews.?[data.meshes.?[0].primitives.?[0].indices.?], data.accessors.?[data.meshes.?[0].primitives.?[0].indices.?].count);
 
-    return .{ .vertices = vertices, .indices = indices };
+    return .{ .vertices = vertices, .normals = normals, .uvs = uvs, .indices = indices };
 }
