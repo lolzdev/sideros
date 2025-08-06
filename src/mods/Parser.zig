@@ -318,8 +318,8 @@ pub fn parseModule(self: *Parser) !void {
             else => return Error.invalid_section,
         };
     }
-    if (self.exports.preinit != null and self.exports.preinit.? != 0){
-        self.exports.preinit.? -= self.importCount;
+    if (self.exports.init != null and self.exports.init.? != 0){
+        self.exports.init.? -= self.importCount;
     }
 }
 
@@ -385,7 +385,7 @@ fn parseImportsec(self: *Parser) !void {
                 } else if (std.mem.eql(u8, i.name, "logErr")) {
                     self.exports.logErr = index;
                 } else {
-                    std.log.warn("imported function {s} not supported\n", .{i.name});
+                    std.debug.panic("imported function {s} not supported\n", .{i.name});
                 }
                 index += 1;
             },
@@ -546,8 +546,8 @@ fn parseExportsec(self: *Parser) !void {
     for (exports) |e| {
         switch (e.exportdesc) {
             .func => {
-                if (std.mem.eql(u8, e.name, "preinit")) {
-                    self.exports.preinit = e.exportdesc.func;
+                if (std.mem.eql(u8, e.name, "init")) {
+                    self.exports.init = e.exportdesc.func;
                 } else {
                     std.log.warn("exported function {s} not supported\n", .{e.name});
                 }

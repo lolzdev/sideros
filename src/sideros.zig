@@ -18,8 +18,8 @@ fn init_mods() void {
     var global_runtime = mods.GlobalRuntime.init(allocator);
     defer global_runtime.deinit();
 
-    // const file = std.fs.cwd().openFile("assets/mods/core.wasm", .{}) catch @panic("Couldn't open assets/mods/core.wasm");
-    const file = std.fs.cwd().openFile("./test.wasm", .{}) catch @panic("Couldn't open test.wasm");
+    const file = std.fs.cwd().openFile("assets/mods/core.wasm", .{}) catch @panic("Couldn't open assets/mods/core.wasm");
+    // const file = std.fs.cwd().openFile("./test.wasm", .{}) catch @panic("Couldn't open test.wasm");
     const all = file.readToEndAlloc(allocator, 1_000_000) catch @panic("Unable to read the file"); // 1 MB
     defer allocator.free(all);
     var parser = mods.Parser.init(allocator, all) catch @panic("Failed to init parser");
@@ -38,9 +38,9 @@ fn init_mods() void {
     defer runtime.deinit(allocator);
 
     var parameters = [_]mods.VM.Value{.{ .i32 = 17 }};
-    runtime.callExternal(allocator, .preinit, &parameters) catch @panic("Failed to call to preinit");
+    runtime.callExternal(allocator, .init, &parameters) catch @panic("Failed to call to init");
     const result = runtime.stack.pop().?;
-    std.debug.print("Result of preinit: {any}\n", .{result});
+    std.debug.print("Result of init: {any}\n", .{result});
 }
 
 export fn sideros_init(init: api.GameInit) callconv(.c) void {

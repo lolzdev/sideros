@@ -33,14 +33,14 @@ pub const Function = struct { func_type: Functype, typ: union(enum) {
 } };
 
 pub const ExportFunction = enum {
-    preinit,
+    init,
     logErr,
     logWarn,
     logInfo,
     logDebug,
 };
 pub const Exports = struct {
-    preinit: ?u32 = null,
+    init: ?u32 = null,
     logErr: ?u32 = null,
     logWarn: ?u32 = null,
     logInfo: ?u32 = null,
@@ -372,13 +372,21 @@ pub const Runtime = struct {
                     const b = self.stack.pop().?.i32;
                     try self.stack.append(Value{ .i32 = @intCast(@as(u1, @bitCast(b > a))) });
                 },
-                .i32_le_s => @panic("UNIMPLEMENTED"),
+                .i32_le_s => {
+                    const a = self.stack.pop().?.i32;
+                    const b = self.stack.pop().?.i32;
+                    try self.stack.append(Value{ .i32 = @intCast(@as(u1, @bitCast(b <= a))) });
+                },
                 .i32_le_u => {
                     const a = self.stack.pop().?.i32;
                     const b = self.stack.pop().?.i32;
                     try self.stack.append(Value{ .i32 = @intCast(@as(u1, @bitCast(b <= a))) });
                 },
-                .i32_ge_s => @panic("UNIMPLEMENTED"),
+                .i32_ge_s => {
+                    const a = self.stack.pop().?.i32;
+                    const b = self.stack.pop().?.i32;
+                    try self.stack.append(Value{ .i32 = @intCast(@as(u1, @bitCast(b >= a))) });
+                },
                 .i32_ge_u => {
                     const a = self.stack.pop().?.i32;
                     const b = self.stack.pop().?.i32;
@@ -471,8 +479,16 @@ pub const Runtime = struct {
                     const b = self.stack.pop().?.i32;
                     try self.stack.append(Value{ .i32 = (b << @as(u5, @intCast(a))) });
                 },
-                .i32_shr_s => @panic("UNIMPLEMENTED"),
-                .i32_shr_u => @panic("UNIMPLEMENTED"),
+                .i32_shr_s => {
+                    const a = self.stack.pop().?.i32;
+                    const b = self.stack.pop().?.i32;
+                    try self.stack.append(Value{ .i32 = (b >> @as(u5, @intCast(a))) });
+                },
+                .i32_shr_u => {
+                    const a = self.stack.pop().?.i32;
+                    const b = self.stack.pop().?.i32;
+                    try self.stack.append(Value{ .i32 = (b >> @as(u5, @intCast(a))) });
+                },
                 .i32_rotl => @panic("UNIMPLEMENTED"),
                 .i32_rotr => @panic("UNIMPLEMENTED"),
 
@@ -581,11 +597,11 @@ pub const Runtime = struct {
     // TODO: Do name resolution at parseTime
     pub fn callExternal(self: *Runtime, allocator: Allocator, name: ExportFunction, parameters: []Value) !void {
         switch (name) {
-            .preinit => {
-                if (self.module.exports.preinit) |func| {
+            .init => {
+                if (self.module.exports.init) |func| {
                     try self.call(allocator, func, parameters);
                 } else {
-                    std.debug.panic("Function preinit unavailable\n", .{});
+                    std.debug.panic("Function init unavailable\n", .{});
                 }
             },
             else => {
