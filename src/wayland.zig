@@ -190,7 +190,7 @@ fn toplevelHandleConfigure(data: ?*anyopaque, toplevel: ?*c.xdg_toplevel, width:
 }
 
 fn toplevelHandleClose(data: ?*anyopaque, toplevel: ?*c.xdg_toplevel) callconv(.c) void {
-    _ = date;
+    _ = data;
     _ = toplevel;
 
     quit = true;

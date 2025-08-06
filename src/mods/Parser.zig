@@ -14,14 +14,18 @@ exports: vm.Exports,
 importCount: u32,
 exported_memory: u32,
 
+parsedData: []u8,
+tables: []Tabletype,
+elems: [][]u32,
 globalValues: []vm.Value,
 globalTypes: []Globaltype,
 
 const Parser = @This();
-const PAGE_SIZE = 64_000;
+const PAGE_SIZE = 65536;
 
 pub const Error = error{
     OutOfMemory,
+    DivideBy0,
     Overflow,
     invalid_instruction,
     invalid_magic,
@@ -41,12 +45,17 @@ pub const Error = error{
     duplicated_funcsec,
     duplicated_typesec,
     duplicated_globalsec,
+    duplicated_tablesec,
+    duplicated_elemsec,
     unresolved_branch,
     unterminated_wasm,
 };
 
 pub fn init(allocator: Allocator, bytes: []const u8) !Parser {
     return .{
+        .elems = &.{},
+        .tables = &.{},
+        .parsedData = &.{},
         .exported_memory = 0,
         .importCount = 0,
         .bytes = bytes,
@@ -72,12 +81,14 @@ pub fn deinit(self: Parser) void {
         self.allocator.free(t.returns);
     }
     self.allocator.free(self.types);
-    self.allocator.free(self.functions);
 }
 
 pub fn module(self: *Parser) vm.Module {
     defer self.functions = &.{};
     return .{
+        .elems = self.elems,
+        .tables = self.tables,
+        .data = self.parsedData,
         .memory = .{
             .min = self.memory.lim.min,
             .max = self.memory.lim.max,
@@ -165,7 +176,7 @@ fn VectorFnResult(parse_fn: anytype) type {
         else => ret_type,
     };
 }
-fn parseVector(self: *Parser, parse_fn: anytype) ![]VectorFnResult(parse_fn) {
+pub fn parseVector(self: *Parser, parse_fn: anytype) ![]VectorFnResult(parse_fn) {
     const n = try self.readU32();
     const ret = try self.allocator.alloc(VectorFnResult(parse_fn), n);
     for (ret) |*i| {
@@ -231,12 +242,12 @@ const Limits = struct {
 fn parseLimits(self: *Parser) !Limits {
     return switch (try self.readByte()) {
         0x00 => .{
-            .min = try self.readU32() * PAGE_SIZE,
+            .min = try self.readU32(),
             .max = null,
         },
         0x01 => .{
-            .min = try self.readU32() * PAGE_SIZE,
-            .max = try self.readU32() * PAGE_SIZE,
+            .min = try self.readU32(),
+            .max = try self.readU32(),
         },
         else => Error.invalid_limits,
     };
@@ -249,7 +260,7 @@ fn parseMemtype(self: *Parser) !Memtype {
     return .{ .lim = try self.parseLimits() };
 }
 
-const Tabletype = struct {
+pub const Tabletype = struct {
     et: std.wasm.RefType,
     lim: Limits,
 };
@@ -359,7 +370,6 @@ fn parseImportsec(self: *Parser) !void {
     const end_idx = self.byte_idx + size;
 
     const imports = try self.parseVector(Parser.parseImport);
-    self.importCount = @intCast(imports.len);
 
     var index: u32 = 0;
 
@@ -379,9 +389,17 @@ fn parseImportsec(self: *Parser) !void {
                 }
                 index += 1;
             },
+            .mem => {
+                self.memory = i.importdesc.mem;
+                self.memory.lim.min *= PAGE_SIZE;
+                if (self.memory.lim.max != null) {
+                    self.memory.lim.max.? *= PAGE_SIZE;
+                }
+            },
             else => std.debug.print("[TODO]: Handle import desc {any}\n", .{i.importdesc}),
         }
     }
+    self.importCount = index;
     defer self.allocator.free(imports);
 
     // TODO: run this check not only on debug
@@ -414,10 +432,31 @@ fn parseFuncsec(self: *Parser) !void {
     std.debug.assert(self.byte_idx == end_idx);
 }
 
+pub const Table = struct {
+    t: Tabletype,
+};
+
+fn parseTable(self: *Parser) !Table {
+    return .{
+        .t = try self.parseTabletype()
+    };
+}
+
 fn parseTablesec(self: *Parser) !void {
-    self.warn("tablesec");
     const size = try self.readU32();
-    _ = try self.read(size);
+    const end_idx = self.byte_idx + size;
+
+    const tables = try self.parseVector(Parser.parseTable);
+    defer self.allocator.free(tables);
+
+    if (self.tables.len != 0) return Error.duplicated_tablesec;
+    self.tables = try self.allocator.alloc(Tabletype, tables.len);
+
+    for (tables, 0..) |t, i| {
+        self.tables[i] = t.t;
+    }
+ 
+    std.debug.assert(self.byte_idx == end_idx);
 }
 
 fn parseMemsec(self: *Parser) !void {
@@ -430,6 +469,10 @@ fn parseMemsec(self: *Parser) !void {
         // WTF?
     } else if (mems.len == 1) {
         self.memory = mems[0];
+        self.memory.lim.min *= PAGE_SIZE;
+        if (self.memory.lim.max != null) {
+            self.memory.lim.max.? *= PAGE_SIZE;
+        }
     } else {
         std.debug.print("[WARN]: Parsing more than one memory is not yet supported\n", .{});
     }
@@ -526,10 +569,71 @@ fn parseStartsec(self: *Parser) !void {
     _ = try self.read(size);
 }
 
+const Elemmode = union(enum) {
+    Passive,
+    Active: struct {
+        tableidx: u32,
+        offset: vm.Value,
+    },
+    Declarative,
+};
+
+pub const Elem = struct {
+    indices: []u32,
+    elemMode: Elemmode,
+};
+
+fn parseElem(self: *Parser) !Elem {
+    const b: u32 = try self.readU32();
+    switch (b){
+        0 => {
+            // if (try self.parseReftype() != std.wasm.RefType.funcref){
+            //     std.debug.panic("Active function index element table was not a function reference\n", .{});
+            // }
+            const elemMode: Elemmode = .{
+                .Active = .{
+                    .tableidx = 0,
+                    .offset = try vm.handleGlobalInit(self.allocator, try IR.parseGlobalExpr(self)),
+                }
+            };
+            const n = try self.readU32();
+            const indices: []u32 = try self.allocator.alloc(u32, n);
+            for (0..n) |i| {
+                indices[i] = try self.readU32();
+            }
+            return .{
+                .indices = indices,
+                .elemMode = elemMode,
+            };
+        },
+        else => {
+            std.debug.panic("TODO: Handle elem type {any}\n", .{b});
+        }
+    }
+}
+
 fn parseElemsec(self: *Parser) !void {
-    self.warn("elemsec");
     const size = try self.readU32();
-    _ = try self.read(size);
+    const end_idx = self.byte_idx + size;
+
+    const elems = try self.parseVector(Parser.parseElem);
+    defer self.allocator.free(elems);
+
+    self.elems = try self.allocator.alloc([]u32, elems.len);
+
+    for (elems) |elem| {
+        if (elem.elemMode != Elemmode.Active){
+            std.debug.panic("No support for non active elements\n", .{});
+        }
+        const tab = self.tables[elem.elemMode.Active.tableidx];
+        self.elems[elem.elemMode.Active.tableidx] = try self.allocator.alloc(u32, tab.lim.min);
+        std.crypto.secureZero(u32, self.elems[elem.elemMode.Active.tableidx]);
+        for (elem.indices, 0..) |idx, i| {
+            self.elems[elem.elemMode.Active.tableidx][i + @as(usize, @intCast(elem.elemMode.Active.offset.i32))] = idx;
+        }
+    }
+
+    std.debug.assert(self.byte_idx == end_idx);
 }
 
 pub const Func = struct {
@@ -599,10 +703,36 @@ fn parseCodesec(self: *Parser) !void {
     std.debug.assert(self.byte_idx == end_idx);
 }
 
+pub const Data = struct {
+    offsetVal: vm.Value,
+    data: []u8,
+};
+
+fn parseData(self: *Parser) !Data {
+    const b: u32 = try self.readU32();
+    switch (b) {
+        0 => {
+            return .{
+                .offsetVal = try vm.handleGlobalInit(self.allocator, try IR.parseGlobalExpr(self)),
+                .data = try self.parseVector(readByte),
+            };
+        },
+        else => {
+            std.debug.panic("TODO: Handle data type {any}\n", .{b});
+        }
+    }
+}
+
 fn parseDatasec(self: *Parser) !void {
-    self.warn("datasec");
     const size = try self.readU32();
-    _ = try self.read(size);
+    const end_idx = self.byte_idx + size;
+    const datas = try self.parseVector(Parser.parseData);
+    defer self.allocator.free(datas);
+    for (datas) |data| {
+        self.parsedData = try self.allocator.realloc(self.parsedData, @as(usize, @intCast(data.offsetVal.i32)) + data.data.len);
+        @memcpy(self.parsedData[@as(usize, @intCast(data.offsetVal.i32))..@as(usize, @intCast(data.offsetVal.i32))+data.data.len], data.data);
+    }
+    std.debug.assert(self.byte_idx == end_idx);
 }
 
 fn parseDatacountsec(self: *Parser) !void {

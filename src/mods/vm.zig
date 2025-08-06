@@ -56,11 +56,13 @@ pub const Module = struct {
     exports: Exports,
     exported_memory: u32,
     imported_funcs: u32,
+    data: []const u8,
+    tables: []Parser.Tabletype,
+    elems: [][]u32,
 
     pub fn deinit(self: Module, allocator: Allocator) void {
         // self.exports.deinit(allocator);
         for (self.functions) |f| {
-            std.debug.print("Freeing function parameters at {*}\n", .{f.func_type.parameters.ptr});
             allocator.free(f.func_type.parameters);
             allocator.free(f.func_type.returns);
             switch (f.typ) {
@@ -103,6 +105,8 @@ pub const Runtime = struct {
             std.log.warn("Growing memory is not yet supported, usign the minimum memory\n", .{});
         }
         const memory = try allocator.alloc(u8, max);
+        @memset(memory, 0);
+        @memcpy(memory[0..module.data.len], module.data);
         return Runtime{
             .module = module,
             .stack = try std.ArrayList(Value).initCapacity(allocator, 10),
@@ -112,7 +116,6 @@ pub const Runtime = struct {
     }
 
     pub fn deinit(self: *Runtime, allocator: Allocator) void {
-        self.module.deinit(allocator);
         self.stack.deinit();
         allocator.free(self.memory);
     }
@@ -121,6 +124,7 @@ pub const Runtime = struct {
         loop: while (frame.program_counter < frame.code.opcodes.len) {
             const opcode: IR.Opcode = frame.code.opcodes[frame.program_counter];
             const index = frame.code.indices[frame.program_counter];
+            // std.debug.print("Executing at {X} {any} \n", .{frame.program_counter, opcode});
             switch (opcode) {
                 .@"unreachable" => {
                     std.debug.panic("Reached unreachable statement at IR counter {any}\n", .{frame.program_counter});
@@ -131,7 +135,7 @@ pub const Runtime = struct {
                     continue;
                 },
                 .br_if => {
-                    if (self.stack.pop().?.i32 != 0) {
+                    if (self.stack.items[self.stack.items.len - 1].i32 != 0) {
                         frame.program_counter = index.u32;
                         continue;
                     }
@@ -140,13 +144,29 @@ pub const Runtime = struct {
                 .@"return" => break :loop,
                 .call => {
                     if (index.u32 == self.module.exports.logDebug) {
-                        std.debug.print("TODO: logDebug\n", .{});
+                        const size: usize = @intCast(self.stack.pop().?.i64);
+                        const offset: usize = @intCast(self.stack.pop().?.i32);
+                        const ptr: []u8 = self.memory[offset .. offset + size];
+                        const extra: u8 = if (ptr.len > 0 and ptr[ptr.len - 1] != '\n') 0x0a else 0;
+                        std.debug.print("[DEBUG]: {s}{c}", .{ptr, extra});
                     } else if (index.u32 == self.module.exports.logInfo) {
-                        std.debug.print("TODO: logInfo\n", .{});
+                        const size: usize = @intCast(self.stack.pop().?.i64);
+                        const offset: usize = @intCast(self.stack.pop().?.i32);
+                        const ptr: []u8 = self.memory[offset .. offset + size];
+                        const extra: u8 = if (ptr.len > 0 and ptr[ptr.len - 1] != '\n') 0x0a else 0;
+                        std.debug.print("[INFO]: {s}{c}", .{ptr, extra});
                     } else if (index.u32 == self.module.exports.logWarn) {
-                        std.debug.print("TODO: logWarn\n", .{});
+                        const size: usize = @intCast(self.stack.pop().?.i64);
+                        const offset: usize = @intCast(self.stack.pop().?.i32);
+                        const ptr: []u8 = self.memory[offset .. offset + size];
+                        const extra: u8 = if (ptr.len > 0 and ptr[ptr.len - 1] != '\n') 0x0a else 0;
+                        std.debug.print("[WARN]: {s}{c}", .{ptr, extra});
                     } else if (index.u32 == self.module.exports.logErr) {
-                        std.debug.print("TODO: logErr\n", .{});
+                        const size: usize = @intCast(self.stack.pop().?.i64);
+                        const offset: usize = @intCast(self.stack.pop().?.i32);
+                        const ptr: []u8 = self.memory[offset .. offset + size];
+                        const extra: u8 = if (ptr.len > 0 and ptr[ptr.len - 1] != '\n') 0x0a else 0;
+                        std.debug.print("[ERROR]: {s}{c}", .{ptr, extra});
                     } else {
                         var parameters = std.ArrayList(Value).init(allocator);
                         defer parameters.deinit();
@@ -156,7 +176,19 @@ pub const Runtime = struct {
                         try self.call(allocator, index.u32 - self.module.imported_funcs, parameters.items);
                     }
                 },
-                .call_indirect => @panic("UNIMPLEMENTED"),
+                .call_indirect => {
+                    std.debug.panic("call_indirect: {any}\n", .{self.stack.pop().?});
+                    if (self.module.tables[index.indirect.x].et != std.wasm.RefType.funcref) {
+                        std.debug.panic("Table at index {any} is not a `funcref` table\n", .{index.indirect.x});
+                    }
+                    const funcIdx = self.module.elems[index.indirect.x][index.indirect.y];
+                    var parameters = std.ArrayList(Value).init(allocator);
+                    defer parameters.deinit();
+                    for (self.module.functions[funcIdx - self.module.imported_funcs].func_type.parameters) |_| {
+                        try parameters.append(self.stack.pop().?);
+                    }
+                    try self.call(allocator, funcIdx - self.module.imported_funcs, parameters.items);
+                },
 
                 .refnull => @panic("UNIMPLEMENTED"),
                 .refisnull => @panic("UNIMPLEMENTED"),
@@ -194,38 +226,62 @@ pub const Runtime = struct {
 
                 // TODO(ernesto): This code is repeated...
                 .i32_load => {
-                    const start = index.memarg.alignment + index.memarg.offset;
+                    const start = index.memarg.offset + @as(u32, @intCast(self.stack.pop().?.i32));
                     const end = start + @sizeOf(i32);
                     try self.stack.append(.{ .i32 = std.mem.littleToNative(i32, std.mem.bytesAsValue(i32, self.memory[start..end]).*) });
                 },
                 .i64_load => {
-                    const start = index.memarg.alignment + index.memarg.offset;
+                    const start = index.memarg.offset + @as(u32, @intCast(self.stack.pop().?.i32));
                     const end = start + @sizeOf(i64);
                     try self.stack.append(.{ .i64 = std.mem.littleToNative(i64, std.mem.bytesAsValue(i64, self.memory[start..end]).*) });
                 },
                 .f32_load => {
-                    const start = index.memarg.alignment + index.memarg.offset;
+                    const start = index.memarg.offset + @as(u32, @intCast(self.stack.pop().?.i32));
                     const end = start + @sizeOf(f32);
                     try self.stack.append(.{ .f32 = std.mem.littleToNative(f32, std.mem.bytesAsValue(f32, self.memory[start..end]).*) });
                 },
                 .f64_load => {
-                    const start = index.memarg.alignment + index.memarg.offset;
+                    const start = index.memarg.offset + @as(u32, @intCast(self.stack.pop().?.i32));
                     const end = start + @sizeOf(f64);
                     try self.stack.append(.{ .f64 = std.mem.littleToNative(f64, std.mem.bytesAsValue(f64, self.memory[start..end]).*) });
                 },
                 .i32_load8_s => @panic("UNIMPLEMENTED"),
-                .i32_load8_u => @panic("UNIMPLEMENTED"),
+                .i32_load8_u => {
+                    const start = index.memarg.offset + @as(u32, @intCast(self.stack.pop().?.i32));
+                    const end = start + @sizeOf(u8);
+                    const raw_value = std.mem.readInt(u8, @as(*const [1]u8, @ptrCast(self.memory[start..end])), std.builtin.Endian.little);
+                    try self.stack.append(.{ .i32 = @intCast(@as(u32, raw_value)) });
+                },
                 .i32_load16_s => @panic("UNIMPLEMENTED"),
-                .i32_load16_u => @panic("UNIMPLEMENTED"),
+                .i32_load16_u => {
+                    const start = index.memarg.offset + @as(u32, @intCast(self.stack.pop().?.i32));
+                    const end = start + @sizeOf(u16);
+                    const raw_value = std.mem.readInt(u16, @as(*const [2]u8, @ptrCast(self.memory[start..end])), std.builtin.Endian.little);
+                    try self.stack.append(.{ .i32 = @intCast(@as(u32, raw_value)) });
+                },
                 .i64_load8_s => @panic("UNIMPLEMENTED"),
                 .i64_load8_u => @panic("UNIMPLEMENTED"),
                 .i64_load16_s => @panic("UNIMPLEMENTED"),
                 .i64_load16_u => @panic("UNIMPLEMENTED"),
                 .i64_load32_s => @panic("UNIMPLEMENTED"),
-                .i64_load32_u => @panic("UNIMPLEMENTED"),
-                .i32_store => @panic("UNIMPLEMENTED"),
+                .i64_load32_u => {
+                    const start = index.memarg.offset + @as(u32, @intCast(self.stack.pop().?.i32));
+                    const end = start + @sizeOf(u32);
+                    const raw_value = std.mem.readInt(u32, @as(*const [4]u8, @ptrCast(self.memory[start..end])), std.builtin.Endian.little);
+                    try self.stack.append(.{ .i64 = @intCast(@as(u64, raw_value)) });
+                },
+                .i32_store => {
+                    const val = std.mem.nativeToLittle(i32, self.stack.pop().?.i32);
+                    const offsetVal = self.stack.pop().?.i32;
+                    if (offsetVal < 0) {
+                        std.debug.panic("offsetVal is negative (val: {any})\n", .{offsetVal});
+                    }
+                    const offset: u64 = @intCast(offsetVal);
+                    const start: usize = @intCast(@as(u64, index.memarg.offset) + offset);
+                    const end = start + @sizeOf(u32);
+                    @memcpy(self.memory[start..end], std.mem.asBytes(&val));
+                },
                 .i64_store => {
-                    // TODO(ernesto): I'm pretty sure this is wrong
                     const val = std.mem.nativeToLittle(i64, self.stack.pop().?.i64);
                     const offsetVal = self.stack.pop().?.i32;
                     if (offsetVal < 0) {
@@ -238,8 +294,28 @@ pub const Runtime = struct {
                 },
                 .f32_store => @panic("UNIMPLEMENTED"),
                 .f64_store => @panic("UNIMPLEMENTED"),
-                .i32_store8 => @panic("UNIMPLEMENTED"),
-                .i32_store16 => @panic("UNIMPLEMENTED"),
+                .i32_store8 => {
+                    const val = std.mem.nativeToLittle(i8, @as(i8, @intCast(self.stack.pop().?.i32)));
+                    const offsetVal = self.stack.pop().?.i32;
+                    if (offsetVal < 0) {
+                        std.debug.panic("offsetVal is negative (val: {any})\n", .{offsetVal});
+                    }
+                    const offset: u64 = @intCast(offsetVal);
+                    const start: usize = @intCast(@as(u64, index.memarg.offset) + offset);
+                    const end = start + @sizeOf(u8);
+                    @memcpy(self.memory[start..end], std.mem.asBytes(&val));
+                },
+                .i32_store16 => {
+                    const val = std.mem.nativeToLittle(i16, @as(i16, @intCast(self.stack.pop().?.i32)));
+                    const offsetVal = self.stack.pop().?.i32;
+                    if (offsetVal < 0) {
+                        std.debug.panic("offsetVal is negative (val: {any})\n", .{offsetVal});
+                    }
+                    const offset: u64 = @intCast(offsetVal);
+                    const start: usize = @intCast(@as(u64, index.memarg.offset) + offset);
+                    const end = start + @sizeOf(u16);
+                    @memcpy(self.memory[start..end], std.mem.asBytes(&val));
+                },
                 .i64_store8 => @panic("UNIMPLEMENTED"),
                 .i64_store16 => @panic("UNIMPLEMENTED"),
                 .i64_store32 => @panic("UNIMPLEMENTED"),
@@ -248,8 +324,18 @@ pub const Runtime = struct {
                 .memorygrow => @panic("UNIMPLEMENTED"),
                 .memoryinit => @panic("UNIMPLEMENTED"),
                 .datadrop => @panic("UNIMPLEMENTED"),
-                .memorycopy => @panic("UNIMPLEMENTED"),
-                .memoryfill => @panic("UNIMPLEMENTED"),
+                .memorycopy => {
+                    const bytes: usize = @intCast(self.stack.pop().?.i32);
+                    const source: usize = @intCast(self.stack.pop().?.i32);
+                    const dest: usize = @intCast(self.stack.pop().?.i32);
+                    @memcpy(self.memory[dest .. dest + bytes], self.memory[source .. source + bytes]);
+                },
+                .memoryfill => {
+                    const bytes: usize = @intCast(self.stack.pop().?.i32);
+                    const val: u8 = @as(u8, @intCast(self.stack.pop().?.i32));
+                    const dest: usize = @intCast(self.stack.pop().?.i32);
+                    @memset(self.memory[dest .. dest + bytes], val);
+                },
 
                 .i32_const => {
                     try self.stack.append(Value{ .i32 = frame.code.indices[frame.program_counter].i32 });
@@ -261,37 +347,55 @@ pub const Runtime = struct {
                 .f64_const => @panic("UNIMPLEMENTED"),
 
                 .i32_eqz => {
-                    try self.stack.append(Value{ .i32 = @intCast(@as(u1, @bitCast(self.stack.pop().?.i32 == 0))) });
+                    const val = self.stack.pop().?.i32;
+                    try self.stack.append(Value{ .i32 = @intFromBool(val == 0) });
                 },
-                .i32_eq => @panic("UNIMPLEMENTED"),
-                .i32_ne => @panic("UNIMPLEMENTED"),
+                .i32_eq => {
+                    const a = self.stack.pop().?.i32;
+                    const b = self.stack.pop().?.i32;
+                    try self.stack.append(Value{ .i32 = @intCast(@as(u1, @bitCast(a == b))) });
+                },
+                .i32_ne => {
+                    const a = self.stack.pop().?.i32;
+                    const b = self.stack.pop().?.i32;
+                    try self.stack.append(Value{ .i32 = @intCast(@as(u1, @bitCast(a != b))) });
+                },
                 .i32_lt_s => @panic("UNIMPLEMENTED"),
                 .i32_lt_u => {
-                    const b = self.stack.pop().?.i32;
                     const a = self.stack.pop().?.i32;
-                    try self.stack.append(Value{ .i32 = @intCast(@as(u1, @bitCast(a < b))) });
+                    const b = self.stack.pop().?.i32;
+                    try self.stack.append(Value{ .i32 = @intCast(@as(u1, @bitCast(b < a))) });
                 },
                 .i32_gt_s => @panic("UNIMPLEMENTED"),
-                .i32_gt_u => @panic("UNIMPLEMENTED"),
+                .i32_gt_u => {
+                    const a = self.stack.pop().?.i32;
+                    const b = self.stack.pop().?.i32;
+                    try self.stack.append(Value{ .i32 = @intCast(@as(u1, @bitCast(b > a))) });
+                },
                 .i32_le_s => @panic("UNIMPLEMENTED"),
-                .i32_le_u => @panic("UNIMPLEMENTED"),
+                .i32_le_u => {
+                    const a = self.stack.pop().?.i32;
+                    const b = self.stack.pop().?.i32;
+                    try self.stack.append(Value{ .i32 = @intCast(@as(u1, @bitCast(b <= a))) });
+                },
                 .i32_ge_s => @panic("UNIMPLEMENTED"),
                 .i32_ge_u => {
-                    const b = self.stack.pop().?.i32;
                     const a = self.stack.pop().?.i32;
-                    try self.stack.append(Value{ .i32 = @intCast(@as(u1, @bitCast(a >= b))) });
+                    const b = self.stack.pop().?.i32;
+                    try self.stack.append(Value{ .i32 = @intCast(@as(u1, @bitCast(b >= a))) });
                 },
 
                 .i64_eqz => {
-                    try self.stack.append(Value{ .i32 = @intCast(@as(u1, @bitCast(self.stack.pop().?.i32 == 0))) });
+                    const val = self.stack.pop().?.i64;
+                    try self.stack.append(Value{ .i64 = @intFromBool(val == 0) });
                 },
                 .i64_eq => @panic("UNIMPLEMENTED"),
                 .i64_ne => @panic("UNIMPLEMENTED"),
                 .i64_lt_s => @panic("UNIMPLEMENTED"),
                 .i64_lt_u => {
-                    const b = self.stack.pop().?.i32;
-                    const a = self.stack.pop().?.i32;
-                    try self.stack.append(Value{ .i32 = @intCast(@as(u1, @bitCast(a < b))) });
+                    const a = self.stack.pop().?.i64;
+                    const b = self.stack.pop().?.i64;
+                    try self.stack.append(Value{ .i32 = @intCast(@as(u1, @bitCast(b < a))) });
                 },
                 .i64_gt_s => @panic("UNIMPLEMENTED"),
                 .i64_gt_u => @panic("UNIMPLEMENTED"),
@@ -323,23 +427,50 @@ pub const Runtime = struct {
                     try self.stack.append(Value{ .i32 = a + b });
                 },
                 .i32_sub => {
-                    const b = self.stack.pop().?.i32;
                     const a = self.stack.pop().?.i32;
-                    try self.stack.append(Value{ .i32 = a - b });
+                    const b = self.stack.pop().?.i32;
+                    try self.stack.append(Value{ .i32 = b - a });
                 },
                 .i32_and => {
                     const a = self.stack.pop().?.i32;
                     const b = self.stack.pop().?.i32;
                     try self.stack.append(Value{ .i32 = a & b });
                 },
-                .i32_mul => @panic("UNIMPLEMENTED"),
+                .i32_mul => {
+                    const a = self.stack.pop().?.i32;
+                    const b = self.stack.pop().?.i32;
+                    try self.stack.append(Value{ .i32 = a * b });
+                },
                 .i32_div_s => @panic("UNIMPLEMENTED"),
-                .i32_div_u => @panic("UNIMPLEMENTED"),
+                .i32_div_u => {
+                    const a_unsigned = @as(u32, @bitCast(self.stack.pop().?.i32));
+                    const b_unsigned = @as(u32, @bitCast(self.stack.pop().?.i32));
+                    try self.stack.append(Value{ .i32 = @bitCast(b_unsigned / a_unsigned) });
+                },
                 .i32_rem_s => @panic("UNIMPLEMENTED"),
-                .i32_rem_u => @panic("UNIMPLEMENTED"),
-                .i32_or => @panic("UNIMPLEMENTED"),
-                .i32_xor => @panic("UNIMPLEMENTED"),
-                .i32_shl => @panic("UNIMPLEMENTED"),
+                .i32_rem_u => {
+                    const divisor = self.stack.pop().?.i32;
+                    const dividend = self.stack.pop().?.i32;
+                    if (divisor == 0) {
+                        std.debug.panic("Divide by 0\n", .{});
+                    }
+                    try self.stack.append(Value{ .i32 = dividend - divisor * @divTrunc(dividend, divisor) });
+                },
+                .i32_or => {
+                    const a = self.stack.pop().?.i32;
+                    const b = self.stack.pop().?.i32;
+                    try self.stack.append(Value{ .i32 = a | b });
+                },
+                .i32_xor => {
+                    const a = self.stack.pop().?.i32;
+                    const b = self.stack.pop().?.i32;
+                    try self.stack.append(Value{ .i32 = a ^ b });
+                },
+                .i32_shl => {
+                    const a = self.stack.pop().?.i32;
+                    const b = self.stack.pop().?.i32;
+                    try self.stack.append(Value{ .i32 = (b << @as(u5, @intCast(a))) });
+                },
                 .i32_shr_s => @panic("UNIMPLEMENTED"),
                 .i32_shr_u => @panic("UNIMPLEMENTED"),
                 .i32_rotl => @panic("UNIMPLEMENTED"),
@@ -463,8 +594,21 @@ pub const Runtime = struct {
         }
     }
 
+    fn reverseSlice(slice: []Value) void {
+        var i: usize = 0;
+        var j = slice.len - 1;
+        while (i < j) {
+            std.mem.swap(Value, &slice[i], &slice[j]);
+            i += 1;
+            j -= 1;
+        }
+    }
+
     pub fn call(self: *Runtime, allocator: Allocator, function: usize, parameters: []Value) AllocationError!void {
         const f = self.module.functions[function];
+        if (parameters.len > 1){
+            reverseSlice(parameters);
+        }
         switch (f.typ) {
             .internal => {
                 const ir: IR = f.typ.internal.ir;
