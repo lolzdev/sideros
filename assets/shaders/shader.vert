@@ -23,7 +23,7 @@ layout(location = 4) out vec2 TexCoords;
 
 void main() {
     mat4 transformation = transform.translation * transform.scale;
-    vec4 out_vec = proj.proj * view.view * vec4(vertPos, 1.0);
+    vec4 out_vec = proj.proj * view.view * transformation * vec4(vertPos, 1.0);
     FragPos = vec3(vec4(vertPos, 1.0));
     Normal = normal;
     TexCoords = uv;
