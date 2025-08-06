@@ -548,7 +548,7 @@ pub fn GraphicsPipeline(comptime n: usize) type {
 
             c.vkUpdateDescriptorSets(device.handle, 1, &write_view_descriptor_set, 0, null);
 
-            const transform_buffer = try device.createBuffer(BufferUsage{ .uniform_buffer = true, .transfer_dst = true }, BufferFlags{ .device_local = true }, @sizeOf(math.Transform));
+            const transform_buffer = try device.createBuffer(BufferUsage{ .uniform_buffer = true, .transfer_dst = true }, BufferFlags{ .device_local = true }, @sizeOf(math.Transform) - @sizeOf(math.Quaternion));
 
             var transform_data: [*c]u8 = undefined;
 

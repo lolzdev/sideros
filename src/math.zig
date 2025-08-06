@@ -11,18 +11,21 @@ pub const Axis = struct {
     pub const z: [3]f32 = .{0.0, 0.0, 1.0};
 };
 
-pub const Transform = struct {
+pub const Transform = extern struct {
     translation: Matrix,
     scale: Matrix,
+    rotation_matrix: Matrix,
     rotation: Quaternion,
 
     pub fn init(position: [3]f32, scale: [3]f32, rotation: [3]f32) Transform {
         var translation = Matrix.identity();
         translation.translate(position);
+        const quaternion = Quaternion.fromEulerAngles(rotation);
 
         return .{
             .translation = translation,
-            .rotation = Quaternion.fromEulerAngles(rotation),
+            .rotation = quaternion,
+            .rotation_matrix = quaternion.matrix(),
             .scale = Matrix.scale(scale),
         };
     }
@@ -35,10 +38,11 @@ pub const Transform = struct {
         const delta = Quaternion.fromAxisAngle(axis, angle);
         self.rotation = self.rotation.mul(delta);
         self.rotation = self.rotation.normalize();
+        self.rotation_matrix = self.rotation.matrix();
     }
 };
 
-pub const Matrix = struct {
+pub const Matrix = extern struct {
     rows: [4][4]f32,
 
     pub fn lookAt(eye: [3]f32, target: [3]f32, arbitrary_up: [3]f32) Matrix {
@@ -134,7 +138,7 @@ pub const Matrix = struct {
     }
 };
 
-const Quaternion = struct {
+pub const Quaternion = extern struct {
     w: f32,
     x: f32,
     y: f32,
@@ -150,7 +154,7 @@ const Quaternion = struct {
             .w = cos(half_angle),
             .x = axis[0] * s,
             .y = axis[1] * s,
-            .z = axis[3] * s,
+            .z = axis[2] * s,
         };
     }
 

@@ -12,6 +12,7 @@ var gpa = std.heap.GeneralPurposeAllocator(.{}){};
 const allocator = gpa.allocator();
 var pool: ecs.Pool = undefined;
 var renderer: Renderer = undefined;
+var resources: ecs.Resources = undefined;
 
 fn init_mods() void {
     var global_runtime = mods.GlobalRuntime.init(allocator);
@@ -43,14 +44,16 @@ fn init_mods() void {
 }
 
 export fn sideros_init(init: api.GameInit) callconv(.c) void {
-    pool = ecs.Pool.init(allocator, .{
+    resources = .{
         .camera = .{
             .position = .{ 5.0, 5.0, 5.0 },
             .target = .{ 0.0, 0.0, 0.0 },
         },
         .renderer = undefined,
         .input = .{ .key_pressed = .{false} ** @intFromEnum(ecs.Input.KeyCode.menu) },
-    }) catch @panic("TODO: Gracefully handle error");
+    };
+
+    pool = ecs.Pool.init(allocator, &resources) catch @panic("TODO: Gracefully handle error");
     // TODO(ernesto): I think this @ptrCast are unavoidable but maybe not?
     renderer = Renderer.init(allocator, @ptrCast(init.instance), @ptrCast(init.surface)) catch @panic("TODO: Gracefully handle error");
     pool.addSystemGroup(&[_]ecs.System{Renderer.render}, true) catch @panic("TODO: Gracefuly handle error");
