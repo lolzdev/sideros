@@ -17,7 +17,7 @@ fn init_mods() void {
     var global_runtime = mods.GlobalRuntime.init(allocator);
     defer global_runtime.deinit();
 
-    // const file = std.fs.cwd().openFile("assets/core.wasm", .{}) catch @panic("Couldn't open assets/core.wasm");
+    // const file = std.fs.cwd().openFile("assets/mods/core.wasm", .{}) catch @panic("Couldn't open assets/mods/core.wasm");
     const file = std.fs.cwd().openFile("./test.wasm", .{}) catch @panic("Couldn't open test.wasm");
     const all = file.readToEndAlloc(allocator, 1_000_000) catch @panic("Unable to read the file"); // 1 MB
     defer allocator.free(all);
