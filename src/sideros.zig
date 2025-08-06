@@ -45,7 +45,7 @@ fn init_mods() void {
 export fn sideros_init(init: api.GameInit) callconv(.c) void {
     pool = ecs.Pool.init(allocator, .{
         .camera = .{
-            .position = .{ 0.0, 0.0, 5.0 },
+            .position = .{ 5.0, 5.0, 5.0 },
             .target = .{ 0.0, 0.0, 0.0 },
         },
         .renderer = undefined,
