@@ -63,16 +63,12 @@ pub const Matrix = struct {
 
     pub fn perspective(fov: f32, aspect: f32, near: f32, far: f32) Matrix {
         const focal_length = 1.0 / tan(fov / 2.0);
-        const x = focal_length / aspect;
-        const y = -focal_length;
-        const a = near / (far - near);
-        const b = far * a;
 
         const projection = [4][4]f32{
-            [4]f32{ x, 0.0, 0.0, 0.0 },
-            [4]f32{ 0.0, y, 0.0, 0.0 },
-            [4]f32{ 0.0, 0.0, a, b },
-            [4]f32{ 0.0, 0.0, 1.0, 0.0 },
+            [4]f32{ focal_length / aspect, 0.0, 0.0, 0.0 },
+            [4]f32{ 0.0, -focal_length, 0.0, 0.0 },
+            [4]f32{ 0.0, 0.0, far / (far - near), 1.0 },
+            [4]f32{ 0.0, 0.0, -(far * near) / (far - near), 0.0 },
         };
 
         return .{
