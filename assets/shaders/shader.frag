@@ -32,6 +32,7 @@ void main() {
 	vec3 reflectDir = reflect(-lightDir, norm);
 	float spec = pow(max(dot(viewDir, reflectDir), 0.0), 2);
 	vec3 specular = lightSpecular * spec * vec3(texture(diffuseSampler, TexCoords));
+	//vec3 specular = lightSpecular * spec * vec3(1.0, 1.0, 1.0);
 
 	vec3 result = (ambient + diffuse + specular);
 	outColor = vec4(result, 1.0);

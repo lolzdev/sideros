@@ -25,8 +25,9 @@ layout(location = 4) out vec2 TexCoords;
 void main() {
     mat4 transformation = transform.translation * transform.scale * transform.rotation;
     vec4 out_vec = proj.proj * view.view * transformation * vec4(vertPos, 1.0);
-    FragPos = vec3(vec4(vertPos, 1.0));
-    Normal = normal;
+    FragPos = vec3(transformation * vec4(vertPos, 1.0));
+
+    Normal = mat3(transpose(inverse(transformation))) * normal;
     TexCoords = uv;
-    gl_Position = vec4(out_vec.x, out_vec.y, out_vec.z, out_vec.w);
+    gl_Position = out_vec;
 }

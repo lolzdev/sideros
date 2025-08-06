@@ -46,7 +46,7 @@ fn init_mods() void {
 export fn sideros_init(init: api.GameInit) callconv(.c) void {
     resources = .{
         .camera = .{
-            .position = .{ 5.0, 5.0, 5.0 },
+            .position = .{ -5.0, 5.0, -5.0 },
             .target = .{ 0.0, 0.0, 0.0 },
         },
         .renderer = undefined,

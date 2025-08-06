@@ -53,8 +53,8 @@ pub fn init(allocator: Allocator, instance_handle: vk.c.VkInstance, surface_hand
 
     _ = try graphics_pipeline.addTexture(device, texture, diffuse);
 
-    graphics_pipeline.light_pos[0] = 0.0;
-    graphics_pipeline.light_pos[1] = 2.0;
+    graphics_pipeline.light_pos[0] = -10.0;
+    graphics_pipeline.light_pos[1] = 0.0;
     graphics_pipeline.light_pos[2] = 0.0;
 
     return Renderer{
@@ -69,7 +69,7 @@ pub fn init(allocator: Allocator, instance_handle: vk.c.VkInstance, surface_hand
         // TODO: Why are we storing the buffer and not the Mesh?
         .vertex_buffer = triangle.vertex_buffer,
         .index_buffer = triangle.index_buffer,
-        .transform = math.Transform.init(.{0.0, 0.0, 0.0}, .{1.0, 1.0, 1.0}, .{0.0, math.rad(45.0), 0.0}),
+        .transform = math.Transform.init(.{0.0, 0.0, 0.0}, .{1.0, 1.0, 1.0}, .{0.0, 0.0, 0.0}),
         .previous_time = try std.time.Instant.now(),
     };
 }
