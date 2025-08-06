@@ -15,7 +15,7 @@ var renderer: Renderer = undefined;
 export fn sideros_init(init: api.GameInit) callconv(.c) void {
     pool = ecs.Pool.init(allocator, .{
         .camera = .{
-            .position = .{ 30.0, 30.0, 30.0 },
+            .position = .{ 0.0, 0.0, 40.0 },
             .target = .{ 0.0, 0.0, 0.0 },
         },
         .renderer = undefined,

@@ -12,13 +12,18 @@ layout (binding = 1) uniform ViewUniform {
     mat4 view;
 } view;
 
+layout (binding = 4) uniform TransformUniform {
+    mat4 translation;
+    mat4 scale;
+} transform;
+
 layout(location = 2) out vec3 Normal;
 layout(location = 3) out vec3 FragPos;
 layout(location = 4) out vec2 TexCoords;
 
 void main() {
+    mat4 transformation = transform.translation * transform.scale;
     vec4 out_vec = proj.proj * view.view * vec4(vertPos, 1.0);
-    //vec4 out_vec = proj.proj * vec4(vertPos, 1.0);
     FragPos = vec3(vec4(vertPos, 1.0));
     Normal = normal;
     TexCoords = uv;

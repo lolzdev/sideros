@@ -19,6 +19,7 @@ graphics_pipeline: vk.GraphicsPipeline(2),
 current_frame: u32,
 vertex_buffer: vk.Buffer,
 index_buffer: vk.Buffer,
+transform: math.Transform,
 
 pub fn init(allocator: Allocator, instance_handle: vk.c.VkInstance, surface_handle: vk.c.VkSurfaceKHR) !Renderer {
     const instance: vk.Instance = .{ .handle = instance_handle };
@@ -67,6 +68,7 @@ pub fn init(allocator: Allocator, instance_handle: vk.c.VkInstance, surface_hand
         // TODO: Why are we storing the buffer and not the Mesh?
         .vertex_buffer = triangle.vertex_buffer,
         .index_buffer = triangle.index_buffer,
+        .transform = math.Transform.init(.{0.0, 0.0, 0.0}, .{1.0, 1.0, 1.0}, .{0.0, 0.0, 0.0}),
     };
 }
 
@@ -93,6 +95,9 @@ pub fn render(pool: *ecs.Pool) anyerror!void {
     view_pos[0] = camera.position[0];
     view_pos[1] = camera.position[1];
     view_pos[2] = camera.position[2];
+
+    const transform_memory = renderer.graphics_pipeline.transform_memory;
+    @memcpy(transform_memory[0..@sizeOf(math.Transform)], std.mem.asBytes(&renderer.transform));
 
     try renderer.device.waitFence(renderer.current_frame);
     const image = try renderer.swapchain.nextImage(renderer.device, renderer.current_frame);

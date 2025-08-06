@@ -237,6 +237,7 @@ pub fn GraphicsPipeline(comptime n: usize) type {
         light_buffer: Buffer,
         view_buffer: Buffer,
         view_memory: [*c]u8,
+        transform_memory: [*c]u8,
         view_pos_memory: [*c]u8,
         texture_sampler: Sampler,
         diffuse_sampler: Sampler,
@@ -356,6 +357,13 @@ pub fn GraphicsPipeline(comptime n: usize) type {
                 .stageFlags = c.VK_SHADER_STAGE_VERTEX_BIT,
             };
 
+            const transform_binding = c.VkDescriptorSetLayoutBinding{
+                .binding = 4,
+                .descriptorType = c.VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+                .descriptorCount = 1,
+                .stageFlags = c.VK_SHADER_STAGE_VERTEX_BIT,
+            };
+
             const light_binding = c.VkDescriptorSetLayoutBinding{
                 .binding = 2,
                 .descriptorType = c.VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
@@ -384,7 +392,7 @@ pub fn GraphicsPipeline(comptime n: usize) type {
                 .stageFlags = c.VK_SHADER_STAGE_FRAGMENT_BIT,
             };
 
-            const bindings = [_]c.VkDescriptorSetLayoutBinding{projection_binding, view_binding, light_binding, view_pos_binding};
+            const bindings = [_]c.VkDescriptorSetLayoutBinding{projection_binding, view_binding, transform_binding, light_binding, view_pos_binding};
             const texture_bindings = [_]c.VkDescriptorSetLayoutBinding{texture_sampler_binding, diffuse_sampler_binding};
 
             var descriptor_set_layout: c.VkDescriptorSetLayout = undefined;
@@ -392,7 +400,7 @@ pub fn GraphicsPipeline(comptime n: usize) type {
 
             const descriptor_set_layout_info = c.VkDescriptorSetLayoutCreateInfo{
                 .sType = c.VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
-                .bindingCount = 4,
+                .bindingCount = 5,
                 .pBindings = bindings[0..].ptr,
             };
 
@@ -444,7 +452,7 @@ pub fn GraphicsPipeline(comptime n: usize) type {
 
             const size = c.VkDescriptorPoolSize{
                 .type = c.VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-                .descriptorCount = 4,
+                .descriptorCount = 5,
             };
 
             const sampler_size = c.VkDescriptorPoolSize{
@@ -540,6 +548,37 @@ pub fn GraphicsPipeline(comptime n: usize) type {
 
             c.vkUpdateDescriptorSets(device.handle, 1, &write_view_descriptor_set, 0, null);
 
+            const transform_buffer = try device.createBuffer(BufferUsage{ .uniform_buffer = true, .transfer_dst = true }, BufferFlags{ .device_local = true }, @sizeOf(math.Transform));
+
+            var transform_data: [*c]u8 = undefined;
+
+            try mapError(c.vkMapMemory(
+                device.handle,
+                transform_buffer.memory,
+                0,
+                transform_buffer.size,
+                0,
+                @ptrCast(&transform_data),
+            ));
+
+            const transform_descriptor_buffer_info = c.VkDescriptorBufferInfo{
+                .buffer = transform_buffer.handle,
+                .offset = 0,
+                .range = transform_buffer.size,
+            };
+
+            const write_transform_descriptor_set = c.VkWriteDescriptorSet{
+                .sType = c.VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                .dstSet = descriptor_set,
+                .dstBinding = 4,
+                .dstArrayElement = 0,
+                .descriptorCount = 1,
+                .descriptorType = c.VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+                .pBufferInfo = &transform_descriptor_buffer_info,
+            };
+
+            c.vkUpdateDescriptorSets(device.handle, 1, &write_transform_descriptor_set, 0, null);
+
             const light_buffer = try device.createBuffer(BufferUsage{ .uniform_buffer = true, .transfer_dst = true }, BufferFlags{ .device_local = true }, @sizeOf([3]f32));
 
             var light_data: [*c]u8 = undefined;
@@ -616,6 +655,7 @@ pub fn GraphicsPipeline(comptime n: usize) type {
                 .view_memory = view_data,
                 .light_buffer = light_buffer,
                 .view_pos_memory = view_pos_data,
+                .transform_memory = transform_data,
                 .texture_sampler = try Sampler.init(device),
                 .diffuse_sampler = try Sampler.init(device),
                 .textures = std.ArrayList(c.VkDescriptorSet).init(allocator),
