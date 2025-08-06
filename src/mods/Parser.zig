@@ -25,6 +25,7 @@ const PAGE_SIZE = 65536;
 
 pub const Error = error{
     OutOfMemory,
+    DivideBy0,
     Overflow,
     invalid_instruction,
     invalid_magic,
