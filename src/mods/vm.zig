@@ -378,8 +378,8 @@ pub const Runtime = struct {
                     try self.stack.append(Value{ .i32 = @intCast(@as(u1, @bitCast(b <= a))) });
                 },
                 .i32_le_u => {
-                    const a = self.stack.pop().?.i32;
-                    const b = self.stack.pop().?.i32;
+                    const a = @as(u32, @intCast(self.stack.pop().?.i32));
+                    const b = @as(u32, @intCast(self.stack.pop().?.i32));
                     try self.stack.append(Value{ .i32 = @intCast(@as(u1, @bitCast(b <= a))) });
                 },
                 .i32_ge_s => {
@@ -388,8 +388,8 @@ pub const Runtime = struct {
                     try self.stack.append(Value{ .i32 = @intCast(@as(u1, @bitCast(b >= a))) });
                 },
                 .i32_ge_u => {
-                    const a = self.stack.pop().?.i32;
-                    const b = self.stack.pop().?.i32;
+                    const a = @as(u32, @intCast(self.stack.pop().?.i32));
+                    const b = @as(u32, @intCast(self.stack.pop().?.i32));
                     try self.stack.append(Value{ .i32 = @intCast(@as(u1, @bitCast(b >= a))) });
                 },
 
@@ -401,8 +401,8 @@ pub const Runtime = struct {
                 .i64_ne => @panic("UNIMPLEMENTED"),
                 .i64_lt_s => @panic("UNIMPLEMENTED"),
                 .i64_lt_u => {
-                    const a = self.stack.pop().?.i64;
-                    const b = self.stack.pop().?.i64;
+                    const a = @as(u64, @intCast(self.stack.pop().?.i64));
+                    const b = @as(u64, @intCast(self.stack.pop().?.i64));
                     try self.stack.append(Value{ .i32 = @intCast(@as(u1, @bitCast(b < a))) });
                 },
                 .i64_gt_s => @panic("UNIMPLEMENTED"),
@@ -457,12 +457,12 @@ pub const Runtime = struct {
                 },
                 .i32_rem_s => @panic("UNIMPLEMENTED"),
                 .i32_rem_u => {
-                    const divisor = self.stack.pop().?.i32;
-                    const dividend = self.stack.pop().?.i32;
+                    const divisor = @as(u32, @intCast(self.stack.pop().?.i32));
+                    const dividend = @as(u32, @intCast(self.stack.pop().?.i32));
                     if (divisor == 0) {
                         std.debug.panic("Divide by 0\n", .{});
                     }
-                    try self.stack.append(Value{ .i32 = dividend - divisor * @divTrunc(dividend, divisor) });
+                    try self.stack.append(Value{ .i32 = @intCast(dividend - divisor * @divTrunc(dividend, divisor)) });
                 },
                 .i32_or => {
                     const a = self.stack.pop().?.i32;
@@ -485,9 +485,9 @@ pub const Runtime = struct {
                     try self.stack.append(Value{ .i32 = (b >> @as(u5, @intCast(a))) });
                 },
                 .i32_shr_u => {
-                    const a = self.stack.pop().?.i32;
-                    const b = self.stack.pop().?.i32;
-                    try self.stack.append(Value{ .i32 = (b >> @as(u5, @intCast(a))) });
+                    const a = @as(u32, @intCast(self.stack.pop().?.i32));
+                    const b = @as(u32, @intCast(self.stack.pop().?.i32));
+                    try self.stack.append(Value{ .i32 = @intCast(b >> @as(u5, @intCast(a))) });
                 },
                 .i32_rotl => @panic("UNIMPLEMENTED"),
                 .i32_rotr => @panic("UNIMPLEMENTED"),
@@ -552,7 +552,7 @@ pub const Runtime = struct {
                 .i32_trunc_f64_u => @panic("UNIMPLEMENTED"),
                 .i64_extend_i32_s => @panic("UNIMPLEMENTED"),
                 .i64_extend_i32_u => {
-                    try self.stack.append(.{ .i64 = self.stack.pop().?.i32 });
+                    try self.stack.append(.{ .i64 = @as(u32, @intCast(self.stack.pop().?.i32)) });
                 },
                 .i64_trunc_f32_s => @panic("UNIMPLEMENTED"),
                 .i64_trunc_f32_u => @panic("UNIMPLEMENTED"),
