@@ -225,7 +225,7 @@ pub fn pick_memory_type(self: Self, type_bits: u32, flags: u32) u32 {
     return memory_type_index;
 }
 
-pub fn createBuffer(self: Self, usage: vk.BufferUsage, flags: vk.BufferFlags, size: usize) !vk.Buffer {
+pub fn initBuffer(self: Self, usage: vk.BufferUsage, flags: vk.BufferFlags, size: usize) !vk.Buffer {
     const family_indices: []const u32 = &.{self.graphics_family};
 
     const create_info: c.VkBufferCreateInfo = .{
@@ -297,7 +297,7 @@ pub fn submit(self: Self, swapchain: vk.Swapchain, image: usize, frame: usize) !
     try vk.mapError(c.vkQueuePresentKHR(self.present_queue, &present_info));
 }
 
-pub fn createShader(self: Self, comptime name: []const u8) !c.VkShaderModule {
+pub fn initShader(self: Self, comptime name: []const u8) !c.VkShaderModule {
     const code = @embedFile(name);
 
     const create_info: c.VkShaderModuleCreateInfo = .{
@@ -313,11 +313,11 @@ pub fn createShader(self: Self, comptime name: []const u8) !c.VkShaderModule {
     return shader_module;
 }
 
-pub fn destroyShader(self: Self, shader: c.VkShaderModule) void {
+pub fn deinitShader(self: Self, shader: c.VkShaderModule) void {
     c.vkDestroyShaderModule(self.handle, shader, null);
 }
 
-pub fn destroy(self: Self) void {
+pub fn deinit(self: Self) void {
     inline for (0..frames_in_flight) |index| {
         c.vkDestroySemaphore(self.handle, self.image_available[index], null);
         c.vkDestroySemaphore(self.handle, self.render_finished[index], null);

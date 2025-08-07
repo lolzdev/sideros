@@ -28,14 +28,14 @@ pub fn init(allocator: Allocator, instance_handle: vk.c.VkInstance, surface_hand
     var physical_device = try vk.PhysicalDevice.pick(allocator, instance);
     const device = try physical_device.create_device(surface, allocator, 2);
 
-    const vertex_shader = try device.createShader("shader_vert");
-    defer device.destroyShader(vertex_shader);
-    const fragment_shader = try device.createShader("shader_frag");
-    defer device.destroyShader(fragment_shader);
+    const vertex_shader = try device.initShader("shader_vert");
+    defer device.deinitShader(vertex_shader);
+    const fragment_shader = try device.initShader("shader_frag");
+    defer device.deinitShader(fragment_shader);
 
-    const render_pass = try vk.RenderPass.create(allocator, device, surface, physical_device);
+    const render_pass = try vk.RenderPass.init(allocator, device, surface, physical_device);
 
-    const swapchain = try vk.Swapchain.create(allocator, surface, device, physical_device, render_pass);
+    const swapchain = try vk.Swapchain.init(allocator, surface, device, physical_device, render_pass);
 
     var graphics_pipeline = try vk.GraphicsPipeline.init(allocator, device, swapchain, render_pass, vertex_shader, fragment_shader);
 
@@ -46,7 +46,7 @@ pub fn init(allocator: Allocator, instance_handle: vk.c.VkInstance, surface_hand
     //    renderer.render(some_other_thing);
     //    ...
     //    renderer.submit()
-    const triangle = try Mesh.create(allocator, device);
+    const triangle = try Mesh.init(allocator, device);
 
     const texture = try Texture.init("assets/textures/container.png", device);
     const diffuse = try Texture.init("assets/textures/container_specular.png", device);
@@ -79,9 +79,9 @@ pub fn deinit(self: Renderer) void {
     self.index_buffer.deinit(self.device.handle);
     self.vertex_buffer.deinit(self.device.handle);
     self.graphics_pipeline.deinit(self.device);
-    self.swapchain.destroy(self.device);
-    self.render_pass.destroy(self.device);
-    self.device.destroy();
+    self.swapchain.deinit(self.device);
+    self.render_pass.deinit(self.device);
+    self.device.deinit();
 }
 
 // TODO: render is maybe a bad name? something like present() or submit() is better?

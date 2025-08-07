@@ -145,7 +145,7 @@ pub const RenderPass = struct {
 
     const Self = @This();
 
-    pub fn create(allocator: Allocator, device: Device, surface: Surface, physical_device: PhysicalDevice) !Self {
+    pub fn init(allocator: Allocator, device: Device, surface: Surface, physical_device: PhysicalDevice) !Self {
         const color_attachment: c.VkAttachmentDescription = .{
             .format = (try Swapchain.pickFormat(allocator, surface, physical_device)).format,
             .samples = c.VK_SAMPLE_COUNT_1_BIT,
@@ -221,7 +221,7 @@ pub const RenderPass = struct {
         c.vkCmdEndRenderPass(device.command_buffers[frame]);
     }
 
-    pub fn destroy(self: Self, device: Device) void {
+    pub fn deinit(self: Self, device: Device) void {
         c.vkDestroyRenderPass(device.handle, self.handle, null);
     }
 };

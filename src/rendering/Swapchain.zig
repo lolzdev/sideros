@@ -36,7 +36,7 @@ pub fn pickFormat(allocator: Allocator, surface: vk.Surface, physical_device: vk
 }
 
 // TODO: Allow to recreate so Window can be resized
-pub fn create(allocator: Allocator, surface: vk.Surface, device: vk.Device, physical_device: vk.PhysicalDevice, render_pass: vk.RenderPass) !Self {
+pub fn init(allocator: Allocator, surface: vk.Surface, device: vk.Device, physical_device: vk.PhysicalDevice, render_pass: vk.RenderPass) !Self {
     const present_modes = try surface.presentModes(allocator, physical_device);
     defer allocator.free(present_modes);
     const capabilities = try surface.capabilities(physical_device);
@@ -167,7 +167,7 @@ pub fn nextImage(self: Self, device: vk.Device, frame: usize) !usize {
     return @intCast(index);
 }
 
-pub fn destroy(self: Self, device: vk.Device) void {
+pub fn deinit(self: Self, device: vk.Device) void {
     for (self.image_views) |view| {
         c.vkDestroyImageView(device.handle, view, null);
     }

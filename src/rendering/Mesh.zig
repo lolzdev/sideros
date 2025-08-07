@@ -11,7 +11,7 @@ pub const Vertex = struct {
     normal: [3]f32,
     uv: [2]f32,
 
-    pub fn create(x: f32, y: f32, z: f32, normal_x: f32, normal_y: f32, normal_z: f32, u: f32, v: f32) Vertex {
+    pub fn init(x: f32, y: f32, z: f32, normal_x: f32, normal_y: f32, normal_z: f32, u: f32, v: f32) Vertex {
         return Vertex{
             .position = .{ x, y, z },
             .normal = .{ normal_x, normal_y, normal_z },
@@ -87,7 +87,7 @@ pub fn createVertexBuffer(allocator: Allocator, device: anytype) !vk.Buffer {
 
     var data: [*c]?*anyopaque = null;
 
-    const buffer = try device.createBuffer(vk.BufferUsage{ .transfer_src = true }, vk.BufferFlags{ .host_visible = true, .host_coherent = true }, @sizeOf([8]f32) * vertices.len);
+    const buffer = try device.initBuffer(vk.BufferUsage{ .transfer_src = true }, vk.BufferFlags{ .host_visible = true, .host_coherent = true }, @sizeOf([8]f32) * vertices.len);
 
     try vk.mapError(vk.c.vkMapMemory(
         device.handle,
@@ -106,7 +106,7 @@ pub fn createVertexBuffer(allocator: Allocator, device: anytype) !vk.Buffer {
 
     vk.c.vkUnmapMemory(device.handle, buffer.memory);
 
-    const vertex_buffer = try device.createBuffer(vk.BufferUsage{ .vertex_buffer = true, .transfer_dst = true }, vk.BufferFlags{ .device_local = true }, @sizeOf(Vertex) * vertices.len);
+    const vertex_buffer = try device.initBuffer(vk.BufferUsage{ .vertex_buffer = true, .transfer_dst = true }, vk.BufferFlags{ .device_local = true }, @sizeOf(Vertex) * vertices.len);
 
     try buffer.copyTo(device, vertex_buffer);
     buffer.deinit(device.handle);
@@ -124,7 +124,7 @@ pub fn createIndexBuffer(allocator: Allocator, device: anytype) !vk.Buffer {
 
     var data: [*c]?*anyopaque = null;
 
-    const buffer = try device.createBuffer(vk.BufferUsage{ .transfer_src = true }, vk.BufferFlags{ .host_visible = true, .host_coherent = true }, @sizeOf(u16) * indices.len);
+    const buffer = try device.initBuffer(vk.BufferUsage{ .transfer_src = true }, vk.BufferFlags{ .host_visible = true, .host_coherent = true }, @sizeOf(u16) * indices.len);
 
     try vk.mapError(vk.c.vkMapMemory(
         device.handle,
@@ -143,7 +143,7 @@ pub fn createIndexBuffer(allocator: Allocator, device: anytype) !vk.Buffer {
 
     vk.c.vkUnmapMemory(device.handle, buffer.memory);
 
-    const index_buffer = try device.createBuffer(vk.BufferUsage{ .index_buffer = true, .transfer_dst = true }, vk.BufferFlags{ .device_local = true }, @sizeOf(u16) * indices.len);
+    const index_buffer = try device.initBuffer(vk.BufferUsage{ .index_buffer = true, .transfer_dst = true }, vk.BufferFlags{ .device_local = true }, @sizeOf(u16) * indices.len);
 
     try buffer.copyTo(device, index_buffer);
     buffer.deinit(device.handle);
@@ -151,7 +151,7 @@ pub fn createIndexBuffer(allocator: Allocator, device: anytype) !vk.Buffer {
     return index_buffer;
 }
 
-pub fn create(allocator: Allocator, device: anytype) !Mesh {
+pub fn init(allocator: Allocator, device: anytype) !Mesh {
     const vertex_buffer = try Mesh.createVertexBuffer(allocator, device);
     const index_buffer = try Mesh.createIndexBuffer(allocator, device);
 

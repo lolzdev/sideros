@@ -263,7 +263,7 @@ pub fn init(allocator: std.mem.Allocator, device: vk.Device, swapchain: vk.Swapc
 
     try vk.mapError(c.vkAllocateDescriptorSets(device.handle, &descriptor_allocate_info, &descriptor_set));
 
-    const projection_buffer = try device.createBuffer(vk.BufferUsage{ .uniform_buffer = true, .transfer_dst = true }, vk.BufferFlags{ .device_local = true }, @sizeOf(math.Matrix));
+    const projection_buffer = try device.initBuffer(vk.BufferUsage{ .uniform_buffer = true, .transfer_dst = true }, vk.BufferFlags{ .device_local = true }, @sizeOf(math.Matrix));
 
     var data: [*c]u8 = undefined;
 
@@ -296,7 +296,7 @@ pub fn init(allocator: std.mem.Allocator, device: vk.Device, swapchain: vk.Swapc
 
     c.vkUpdateDescriptorSets(device.handle, 1, &write_descriptor_set, 0, null);
 
-    const view_buffer = try device.createBuffer(vk.BufferUsage{ .uniform_buffer = true, .transfer_dst = true }, vk.BufferFlags{ .device_local = true }, @sizeOf(math.Matrix));
+    const view_buffer = try device.initBuffer(vk.BufferUsage{ .uniform_buffer = true, .transfer_dst = true }, vk.BufferFlags{ .device_local = true }, @sizeOf(math.Matrix));
 
     var view_data: [*c]u8 = undefined;
 
@@ -327,7 +327,7 @@ pub fn init(allocator: std.mem.Allocator, device: vk.Device, swapchain: vk.Swapc
 
     c.vkUpdateDescriptorSets(device.handle, 1, &write_view_descriptor_set, 0, null);
 
-    const transform_buffer = try device.createBuffer(vk.BufferUsage{ .uniform_buffer = true, .transfer_dst = true }, vk.BufferFlags{ .device_local = true }, @sizeOf(math.Transform) - @sizeOf(math.Quaternion));
+    const transform_buffer = try device.initBuffer(vk.BufferUsage{ .uniform_buffer = true, .transfer_dst = true }, vk.BufferFlags{ .device_local = true }, @sizeOf(math.Transform) - @sizeOf(math.Quaternion));
 
     var transform_data: [*c]u8 = undefined;
 
@@ -358,7 +358,7 @@ pub fn init(allocator: std.mem.Allocator, device: vk.Device, swapchain: vk.Swapc
 
     c.vkUpdateDescriptorSets(device.handle, 1, &write_transform_descriptor_set, 0, null);
 
-    const light_buffer = try device.createBuffer(vk.BufferUsage{ .uniform_buffer = true, .transfer_dst = true }, vk.BufferFlags{ .device_local = true }, @sizeOf([3]f32));
+    const light_buffer = try device.initBuffer(vk.BufferUsage{ .uniform_buffer = true, .transfer_dst = true }, vk.BufferFlags{ .device_local = true }, @sizeOf([3]f32));
 
     var light_data: [*c]u8 = undefined;
 
@@ -391,7 +391,7 @@ pub fn init(allocator: std.mem.Allocator, device: vk.Device, swapchain: vk.Swapc
 
     c.vkUpdateDescriptorSets(device.handle, 1, &write_light_descriptor_set, 0, null);
 
-    const view_pos_buffer = try device.createBuffer(vk.BufferUsage{ .uniform_buffer = true, .transfer_dst = true }, vk.BufferFlags{ .device_local = true }, @sizeOf([3]f32));
+    const view_pos_buffer = try device.initBuffer(vk.BufferUsage{ .uniform_buffer = true, .transfer_dst = true }, vk.BufferFlags{ .device_local = true }, @sizeOf([3]f32));
 
     var view_pos_data: [*c]u8 = undefined;
 

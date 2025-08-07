@@ -18,7 +18,7 @@ pub fn init(path: [:0]const u8, device: anytype) !Texture {
     defer stb.stbi_image_free(pixels);
 
     const size: c.VkDeviceSize  = @as(u64, @intCast(width)) * @as(u64, @intCast(height)) * 4;
-    const image_buffer = try device.createBuffer(vk.BufferUsage{ .transfer_src = true }, vk.BufferFlags{ .host_visible = true, .host_coherent = true }, size);
+    const image_buffer = try device.initBuffer(vk.BufferUsage{ .transfer_src = true }, vk.BufferFlags{ .host_visible = true, .host_coherent = true }, size);
 
     const pixel_bytes: [*]u8 = @ptrCast(pixels);
     var image_data: [*c]u8 = undefined;
