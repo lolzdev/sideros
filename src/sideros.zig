@@ -61,7 +61,7 @@ export fn sideros_init(init: api.GameInit) callconv(.c) void {
     pool.addSystemGroup(&[_]ecs.System{Renderer.render}, true) catch @panic("TODO: Gracefuly handle error");
     pool.resources.renderer = &renderer;
     pool.tick();
-    // init_mods();
+    init_mods();
 }
 
 export fn sideros_update(gameUpdate: api.GameUpdate) callconv(.c) void {
