@@ -1,6 +1,8 @@
 pub const ecs = @import("ecs");
-pub const Renderer = @import("renderer");
+pub const rendering = @import("rendering");
 pub const mods = @import("mods");
+
+const Renderer = rendering.Renderer;
 
 const api = @cImport({
     @cInclude("sideros_api.h");

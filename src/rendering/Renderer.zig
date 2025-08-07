@@ -2,9 +2,9 @@ const math = @import("math");
 const ecs = @import("ecs");
 const std = @import("std");
 const vk = @import("vulkan.zig");
-pub const Mesh = @import("Mesh.zig");
+const Mesh = @import("Mesh.zig");
 const Texture = vk.Texture;
-pub const Camera = @import("Camera.zig");
+const Camera = @import("Camera.zig");
 const Allocator = std.mem.Allocator;
 
 const Renderer = @This();

@@ -24,21 +24,19 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
 
-    const renderer = b.createModule(.{
-        .root_source_file = b.path("src/renderer/Renderer.zig"),
+    const rendering = b.createModule(.{
+        .root_source_file = b.path("src/rendering.zig"),
         .target = target,
         .optimize = optimize,
         .link_libc = true,
     });
-    renderer.addIncludePath(b.path("ext"));
-    renderer.addCSourceFile(.{ .file = b.path("ext/stb_image.c") });
-    //renderer.addImport("sideros", sideros);
-    renderer.addImport("math", math);
-    renderer.addImport("ecs", ecs);
-    // TODO(ernesto): ecs and renderer should be decoupled
-    ecs.addImport("renderer", renderer);
+    rendering.addIncludePath(b.path("ext"));
+    rendering.addCSourceFile(.{ .file = b.path("ext/stb_image.c") });
+    rendering.addImport("math", math);
+    rendering.addImport("ecs", ecs);
+    ecs.addImport("rendering", rendering);
 
-    compileAllShaders(b, renderer);
+    compileAllShaders(b, rendering);
 
     const sideros = b.addLibrary(.{
         .name = "sideros",
@@ -53,7 +51,7 @@ pub fn build(b: *std.Build) void {
 
     sideros.root_module.addImport("mods", mods);
     sideros.root_module.addImport("ecs", ecs);
-    sideros.root_module.addImport("renderer", renderer);
+    sideros.root_module.addImport("rendering", rendering);
 
     b.installArtifact(sideros);
 

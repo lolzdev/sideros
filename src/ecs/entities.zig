@@ -2,8 +2,9 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 const components = @import("components.zig");
 const sparse = @import("sparse.zig");
-const Renderer = @import("renderer");
-const Camera = @import("renderer").Camera;
+const rendering = @import("rendering");
+const Renderer = rendering.Renderer;
+const Camera = rendering.Camera;
 const ecs = @import("ecs.zig");
 const Input = ecs.Input;
 
