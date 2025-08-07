@@ -109,7 +109,7 @@ pub fn createVertexBuffer(allocator: Allocator, device: anytype) !vk.Buffer {
     const vertex_buffer = try device.createBuffer(vk.BufferUsage{ .vertex_buffer = true, .transfer_dst = true }, vk.BufferFlags{ .device_local = true }, @sizeOf(Vertex) * vertices.len);
 
     try buffer.copyTo(device, vertex_buffer);
-    buffer.destroy(device.handle);
+    buffer.deinit(device.handle);
 
     return vertex_buffer;
 }
@@ -146,7 +146,7 @@ pub fn createIndexBuffer(allocator: Allocator, device: anytype) !vk.Buffer {
     const index_buffer = try device.createBuffer(vk.BufferUsage{ .index_buffer = true, .transfer_dst = true }, vk.BufferFlags{ .device_local = true }, @sizeOf(u16) * indices.len);
 
     try buffer.copyTo(device, index_buffer);
-    buffer.destroy(device.handle);
+    buffer.deinit(device.handle);
 
     return index_buffer;
 }

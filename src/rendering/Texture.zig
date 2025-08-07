@@ -78,7 +78,7 @@ pub fn init(path: [:0]const u8, device: anytype) !Texture {
     try device.copyBufferToImage(image_buffer, image, @intCast(width), @intCast(height));
     try device.transitionImageLayout(image, c.VK_FORMAT_R8G8B8A8_SRGB, c.VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, c.VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 
-    image_buffer.destroy(device.handle);
+    image_buffer.deinit(device.handle);
 
     const image_view = try createImageView(device, image, c.VK_FORMAT_R8G8B8A8_SRGB);
 
@@ -89,7 +89,7 @@ pub fn init(path: [:0]const u8, device: anytype) !Texture {
     };
 }
 
-pub fn destroy(self: Texture, device: vk.Device) void {
+pub fn deinit(self: Texture, device: vk.Device) void {
     c.vkDestroyImageView(device.handle, self.image_view, null);
     c.vkDestroyImage(device.handle, self.image, null);
     c.vkFreeMemory(device.handle, self.image_memory, null);

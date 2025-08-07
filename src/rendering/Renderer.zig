@@ -12,10 +12,10 @@ const Renderer = @This();
 instance: vk.Instance,
 surface: vk.Surface,
 physical_device: vk.PhysicalDevice,
-device: vk.Device(2),
-render_pass: vk.RenderPass(2),
-swapchain: vk.Swapchain(2),
-graphics_pipeline: vk.GraphicsPipeline(2),
+device: vk.Device,
+render_pass: vk.RenderPass,
+swapchain: vk.Swapchain,
+graphics_pipeline: vk.GraphicsPipeline,
 current_frame: u32,
 vertex_buffer: vk.Buffer,
 index_buffer: vk.Buffer,
@@ -33,11 +33,11 @@ pub fn init(allocator: Allocator, instance_handle: vk.c.VkInstance, surface_hand
     const fragment_shader = try device.createShader("shader_frag");
     defer device.destroyShader(fragment_shader);
 
-    const render_pass = try vk.RenderPass(2).create(allocator, device, surface, physical_device);
+    const render_pass = try vk.RenderPass.create(allocator, device, surface, physical_device);
 
-    const swapchain = try vk.Swapchain(2).create(allocator, surface, device, physical_device, render_pass);
+    const swapchain = try vk.Swapchain.create(allocator, surface, device, physical_device, render_pass);
 
-    var graphics_pipeline = try vk.GraphicsPipeline(2).create(allocator, device, swapchain, render_pass, vertex_shader, fragment_shader);
+    var graphics_pipeline = try vk.GraphicsPipeline.init(allocator, device, swapchain, render_pass, vertex_shader, fragment_shader);
 
     // TODO: I think the renderer shouldn't have to interact with buffers. I think the API should change to
     // something along the lines of
@@ -76,9 +76,9 @@ pub fn init(allocator: Allocator, instance_handle: vk.c.VkInstance, surface_hand
 
 pub fn deinit(self: Renderer) void {
     self.device.waitIdle();
-    self.index_buffer.destroy(self.device.handle);
-    self.vertex_buffer.destroy(self.device.handle);
-    self.graphics_pipeline.destroy(self.device);
+    self.index_buffer.deinit(self.device.handle);
+    self.vertex_buffer.deinit(self.device.handle);
+    self.graphics_pipeline.deinit(self.device);
     self.swapchain.destroy(self.device);
     self.render_pass.destroy(self.device);
     self.device.destroy();
