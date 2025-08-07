@@ -25,7 +25,7 @@ pub fn build(b: *std.Build) void {
     });
 
     const rendering = b.createModule(.{
-        .root_source_file = b.path("src/rendering.zig"),
+        .root_source_file = b.path("src/rendering/rendering.zig"),
         .target = target,
         .optimize = optimize,
         .link_libc = true,
