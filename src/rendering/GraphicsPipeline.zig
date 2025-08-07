@@ -5,9 +5,13 @@ const vk = @import("vulkan.zig");
 const Texture = vk.Texture;
 const c = vk.c;
 const math = @import("math");
+const gltf = @import("gltf.zig");
+const Allocator = std.mem.Allocator;
 
 layout: c.VkPipelineLayout,
 handle: c.VkPipeline,
+vertex_buffer: vk.Buffer,
+index_buffer: vk.Buffer,
 texture_set_layout: c.VkDescriptorSetLayout,
 descriptor_pool: c.VkDescriptorPool,
 descriptor_set: c.VkDescriptorSet,
@@ -25,7 +29,164 @@ light_pos: [*]f32,
 
 const Self = @This();
 
-pub fn init(allocator: std.mem.Allocator, device: vk.Device, swapchain: vk.Swapchain, render_pass: vk.RenderPass, vertex_shader: c.VkShaderModule, fragment_shader: c.VkShaderModule) !Self {
+pub const Builder = struct {
+    current_vertex: i32 = 0,
+    current_index: u32 = 0,
+    vertex_buffers: std.ArrayList(vk.Buffer),
+    index_buffers: std.ArrayList(vk.Buffer),
+    device: vk.Device,
+    allocator: Allocator,
+
+    pub fn init(allocator: Allocator, device: vk.Device) Builder {
+        return .{
+            .vertex_buffers = std.ArrayList(vk.Buffer).init(allocator),
+            .index_buffers = std.ArrayList(vk.Buffer).init(allocator),
+            .device = device,
+            .allocator = allocator,
+        };
+    }
+
+    pub fn addMesh(self: *Builder, path: []const u8) !Mesh {
+        const gltf_data = try gltf.parseFile(self.allocator, path);
+
+        const vertex_buffer = try createVertexBuffer(self.allocator, self.device, gltf_data);
+        const index_buffer = try createIndexBuffer(self.allocator, self.device, gltf_data);
+        const vertex_cursor = self.current_vertex;
+        const index_cursor = self.current_index;
+        self.current_vertex += @intCast(vertex_buffer.size);
+        self.current_index += @intCast(index_buffer.size);
+        try self.vertex_buffers.append(vertex_buffer);
+        try self.index_buffers.append(index_buffer);
+
+        return .{
+            .vertex_buffer = vertex_cursor,
+            .index_buffer = index_cursor,
+            .index_count = @intCast(index_buffer.size / @sizeOf(u16)),
+        };
+    }
+
+    pub fn build(self: *Builder, swapchain: vk.Swapchain, render_pass: vk.RenderPass, vertex_shader: c.VkShaderModule, fragment_shader: c.VkShaderModule) !Self {
+        const vertex_buffer, const index_buffer = try self.createBuffers();
+        return Self.init(self.allocator, self.device, swapchain, render_pass, vertex_shader, fragment_shader, vertex_buffer, index_buffer);
+    }
+
+    pub fn createBuffers(self: *Builder) !struct { vk.Buffer, vk.Buffer } {
+        const vertex_buffer = try self.device.initBuffer(vk.BufferUsage{ .vertex_buffer = true, .transfer_dst = true }, vk.BufferFlags{ .device_local = true }, @intCast(self.current_vertex));
+
+        var vertex_cursor = @as(usize, 0);
+        for (self.vertex_buffers.items) |buffer| {
+            try buffer.copyTo(self.device, vertex_buffer, vertex_cursor);
+            vertex_cursor += buffer.size;
+            buffer.deinit(self.device.handle);
+        }
+
+        const index_buffer = try self.device.initBuffer(vk.BufferUsage{ .index_buffer = true, .transfer_dst = true }, vk.BufferFlags{ .device_local = true }, self.current_index);
+
+        var index_cursor = @as(usize, 0);
+        for (self.index_buffers.items) |buffer| {
+            try buffer.copyTo(self.device, index_buffer, index_cursor);
+            index_cursor += buffer.size;
+            buffer.deinit(self.device.handle);
+        }
+
+        self.vertex_buffers.deinit();
+        self.index_buffers.deinit();
+
+        return .{
+            vertex_buffer,
+            index_buffer,
+        };
+    }
+
+    fn createVertexBuffer(allocator: Allocator, device: vk.Device, gltf_data: anytype) !vk.Buffer {
+        const vertices = gltf_data.vertices;
+        const normals = gltf_data.normals;
+        const uvs = gltf_data.uvs;
+        defer allocator.free(uvs);
+        defer allocator.free(normals);
+        defer allocator.free(vertices);
+
+        const final_array = try allocator.alloc([8]f32, vertices.len);
+        defer allocator.free(final_array);
+
+        for (vertices, normals, uvs, final_array) |vertex, normal, uv, *final| {
+            final[0] = vertex[0];
+            final[1] = vertex[1];
+            final[2] = vertex[2];
+
+            final[3] = normal[0];
+            final[4] = normal[1];
+            final[5] = normal[2];
+
+            final[6] = uv[0];
+            final[7] = uv[1];
+        }
+
+        var data: [*c]?*anyopaque = null;
+
+        const buffer = try device.initBuffer(vk.BufferUsage{ .transfer_src = true }, vk.BufferFlags{ .host_visible = true, .host_coherent = true }, @sizeOf([8]f32) * vertices.len);
+
+        try vk.mapError(vk.c.vkMapMemory(
+            device.handle,
+            buffer.memory,
+            0,
+            buffer.size,
+            0,
+            @ptrCast(&data),
+        ));
+
+        if (data) |ptr| {
+            const gpu_vertices: [*]Mesh.Vertex = @ptrCast(@alignCast(ptr));
+
+            @memcpy(gpu_vertices, @as([]Mesh.Vertex, @ptrCast(final_array[0..])));
+        }
+
+        vk.c.vkUnmapMemory(device.handle, buffer.memory);
+
+        const vertex_buffer = try device.initBuffer(vk.BufferUsage{ .vertex_buffer = true, .transfer_dst = true, .transfer_src = true }, vk.BufferFlags{ .device_local = true }, @sizeOf(Mesh.Vertex) * vertices.len);
+
+        try buffer.copyTo(device, vertex_buffer, 0);
+        buffer.deinit(device.handle);
+
+        return vertex_buffer;
+    }
+
+    pub fn createIndexBuffer(allocator: Allocator, device: anytype, gltf_data: anytype) !vk.Buffer {
+        const indices = gltf_data.indices;
+        defer allocator.free(indices);
+
+        var data: [*c]?*anyopaque = null;
+
+        const buffer = try device.initBuffer(vk.BufferUsage{ .transfer_src = true }, vk.BufferFlags{ .host_visible = true, .host_coherent = true }, @sizeOf(u16) * indices.len);
+
+        try vk.mapError(vk.c.vkMapMemory(
+            device.handle,
+            buffer.memory,
+            0,
+            buffer.size,
+            0,
+            @ptrCast(&data),
+        ));
+
+        if (data) |ptr| {
+            const gpu_indices: [*]u16 = @ptrCast(@alignCast(ptr));
+
+            @memcpy(gpu_indices, indices[0..]);
+        }
+
+        vk.c.vkUnmapMemory(device.handle, buffer.memory);
+
+        const index_buffer = try device.initBuffer(vk.BufferUsage{ .index_buffer = true, .transfer_dst = true, .transfer_src = true }, vk.BufferFlags{ .device_local = true }, @sizeOf(u16) * indices.len);
+
+        try buffer.copyTo(device, index_buffer, 0);
+        buffer.deinit(device.handle);
+
+        return index_buffer;
+    }
+
+};
+
+pub fn init(allocator: Allocator, device: vk.Device, swapchain: vk.Swapchain, render_pass: vk.RenderPass, vertex_shader: c.VkShaderModule, fragment_shader: c.VkShaderModule, vertex_buffer: vk.Buffer, index_buffer: vk.Buffer) !Self {
     const vertex_shader_stage_info: c.VkPipelineShaderStageCreateInfo = .{
         .sType = c.VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
         .stage = c.VK_SHADER_STAGE_VERTEX_BIT,
@@ -439,6 +600,8 @@ pub fn init(allocator: std.mem.Allocator, device: vk.Device, swapchain: vk.Swapc
         .diffuse_sampler = try vk.Sampler.init(device),
         .textures = std.ArrayList(c.VkDescriptorSet).init(allocator),
         .light_pos = light_pos,
+        .vertex_buffer = vertex_buffer,
+        .index_buffer = index_buffer,
     };
 }
 

@@ -17,8 +17,7 @@ render_pass: vk.RenderPass,
 swapchain: vk.Swapchain,
 graphics_pipeline: vk.GraphicsPipeline,
 current_frame: u32,
-vertex_buffer: vk.Buffer,
-index_buffer: vk.Buffer,
+mesh: Mesh,
 transform: math.Transform,
 previous_time: std.time.Instant,
 
@@ -37,7 +36,9 @@ pub fn init(allocator: Allocator, instance_handle: vk.c.VkInstance, surface_hand
 
     const swapchain = try vk.Swapchain.init(allocator, surface, device, physical_device, render_pass);
 
-    var graphics_pipeline = try vk.GraphicsPipeline.init(allocator, device, swapchain, render_pass, vertex_shader, fragment_shader);
+    var pipeline_builder = vk.GraphicsPipeline.Builder.init(allocator, device);
+    const mesh = try pipeline_builder.addMesh("assets/models/cube.glb");
+    var graphics_pipeline = try pipeline_builder.build(swapchain, render_pass, vertex_shader, fragment_shader);
 
     // TODO: I think the renderer shouldn't have to interact with buffers. I think the API should change to
     // something along the lines of
@@ -46,8 +47,6 @@ pub fn init(allocator: Allocator, instance_handle: vk.c.VkInstance, surface_hand
     //    renderer.render(some_other_thing);
     //    ...
     //    renderer.submit()
-    const triangle = try Mesh.init(allocator, device);
-
     const texture = try Texture.init("assets/textures/container.png", device);
     const diffuse = try Texture.init("assets/textures/container_specular.png", device);
 
@@ -66,18 +65,14 @@ pub fn init(allocator: Allocator, instance_handle: vk.c.VkInstance, surface_hand
         .swapchain = swapchain,
         .graphics_pipeline = graphics_pipeline,
         .current_frame = 0,
-        // TODO: Why are we storing the buffer and not the Mesh?
-        .vertex_buffer = triangle.vertex_buffer,
-        .index_buffer = triangle.index_buffer,
         .transform = math.Transform.init(.{0.0, 0.0, 0.0}, .{1.0, 1.0, 1.0}, .{0.0, 0.0, 0.0}),
         .previous_time = try std.time.Instant.now(),
+        .mesh = mesh,
     };
 }
 
 pub fn deinit(self: Renderer) void {
     self.device.waitIdle();
-    self.index_buffer.deinit(self.device.handle);
-    self.vertex_buffer.deinit(self.device.handle);
     self.graphics_pipeline.deinit(self.device);
     self.swapchain.deinit(self.device);
     self.render_pass.deinit(self.device);
@@ -113,10 +108,10 @@ pub fn render(pool: *ecs.Pool) anyerror!void {
     try renderer.device.beginCommand(renderer.current_frame);
     renderer.render_pass.begin(renderer.swapchain, renderer.device, image, renderer.current_frame);
     renderer.graphics_pipeline.bind(renderer.device, renderer.current_frame);
-    renderer.device.bindVertexBuffer(renderer.vertex_buffer, renderer.current_frame);
-    renderer.device.bindIndexBuffer(renderer.index_buffer, renderer.current_frame);
+    renderer.device.bindVertexBuffer(renderer.graphics_pipeline.vertex_buffer, renderer.current_frame);
+    renderer.device.bindIndexBuffer(renderer.graphics_pipeline.index_buffer, renderer.current_frame);
     renderer.device.bindDescriptorSets(renderer.graphics_pipeline, renderer.current_frame, 0);
-    renderer.device.draw(@intCast(renderer.index_buffer.size / @sizeOf(u16)), renderer.current_frame);
+    renderer.device.draw(renderer.mesh.index_count, renderer.current_frame, renderer.mesh);
     renderer.render_pass.end(renderer.device, renderer.current_frame);
     try renderer.device.endCommand(renderer.current_frame);
 

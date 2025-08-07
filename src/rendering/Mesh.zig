@@ -6,6 +6,10 @@ const c = vk.c;
 
 const Mesh = @This();
 
+vertex_buffer: i32,
+index_buffer: u32,
+index_count: u32,
+
 pub const Vertex = struct {
     position: [3]f32,
     normal: [3]f32,
@@ -54,102 +58,6 @@ pub const Vertex = struct {
         return attributes;
     }
 };
-
-vertex_buffer: vk.Buffer,
-index_buffer: vk.Buffer,
-
-pub fn createVertexBuffer(allocator: Allocator, device: anytype) !vk.Buffer {
-    const gltf_data = try gltf.parseFile(allocator, "assets/models/cube.glb");
-
-    const vertices = gltf_data.vertices;
-    const normals = gltf_data.normals;
-    const uvs = gltf_data.uvs;
-    defer allocator.free(uvs);
-    defer allocator.free(normals);
-    defer allocator.free(vertices);
-    defer allocator.free(gltf_data.indices);
-
-    const final_array = try allocator.alloc([8]f32, vertices.len);
-    defer allocator.free(final_array);
-
-    for (vertices, normals, uvs, final_array) |vertex, normal, uv, *final| {
-        final[0] = vertex[0];
-        final[1] = vertex[1];
-        final[2] = vertex[2];
-
-        final[3] = normal[0];
-        final[4] = normal[1];
-        final[5] = normal[2];
-
-        final[6] = uv[0];
-        final[7] = uv[1];
-    }
-
-    var data: [*c]?*anyopaque = null;
-
-    const buffer = try device.initBuffer(vk.BufferUsage{ .transfer_src = true }, vk.BufferFlags{ .host_visible = true, .host_coherent = true }, @sizeOf([8]f32) * vertices.len);
-
-    try vk.mapError(vk.c.vkMapMemory(
-        device.handle,
-        buffer.memory,
-        0,
-        buffer.size,
-        0,
-        @ptrCast(&data),
-    ));
-
-    if (data) |ptr| {
-        const gpu_vertices: [*]Vertex = @ptrCast(@alignCast(ptr));
-
-        @memcpy(gpu_vertices, @as([]Vertex, @ptrCast(final_array[0..])));
-    }
-
-    vk.c.vkUnmapMemory(device.handle, buffer.memory);
-
-    const vertex_buffer = try device.initBuffer(vk.BufferUsage{ .vertex_buffer = true, .transfer_dst = true }, vk.BufferFlags{ .device_local = true }, @sizeOf(Vertex) * vertices.len);
-
-    try buffer.copyTo(device, vertex_buffer);
-    buffer.deinit(device.handle);
-
-    return vertex_buffer;
-}
-
-pub fn createIndexBuffer(allocator: Allocator, device: anytype) !vk.Buffer {
-    const gltf_data = try gltf.parseFile(allocator, "assets/models/cube.glb");
-    const indices = gltf_data.indices;
-    defer allocator.free(indices);
-    defer allocator.free(gltf_data.vertices);
-    defer allocator.free(gltf_data.normals);
-    defer allocator.free(gltf_data.uvs);
-
-    var data: [*c]?*anyopaque = null;
-
-    const buffer = try device.initBuffer(vk.BufferUsage{ .transfer_src = true }, vk.BufferFlags{ .host_visible = true, .host_coherent = true }, @sizeOf(u16) * indices.len);
-
-    try vk.mapError(vk.c.vkMapMemory(
-        device.handle,
-        buffer.memory,
-        0,
-        buffer.size,
-        0,
-        @ptrCast(&data),
-    ));
-
-    if (data) |ptr| {
-        const gpu_indices: [*]u16 = @ptrCast(@alignCast(ptr));
-
-        @memcpy(gpu_indices, indices[0..]);
-    }
-
-    vk.c.vkUnmapMemory(device.handle, buffer.memory);
-
-    const index_buffer = try device.initBuffer(vk.BufferUsage{ .index_buffer = true, .transfer_dst = true }, vk.BufferFlags{ .device_local = true }, @sizeOf(u16) * indices.len);
-
-    try buffer.copyTo(device, index_buffer);
-    buffer.deinit(device.handle);
-
-    return index_buffer;
-}
 
 pub fn init(allocator: Allocator, device: anytype) !Mesh {
     const vertex_buffer = try Mesh.createVertexBuffer(allocator, device);

@@ -1,5 +1,6 @@
 const std = @import("std");
 const vk = @import("vulkan.zig");
+const Mesh = @import("Mesh.zig");
 const Texture = vk.Texture;
 const c = vk.c;
 const frames_in_flight = vk.frames_in_flight;
@@ -162,9 +163,9 @@ pub fn transitionImageLayout(self: Self, image: c.VkImage, format: c.VkFormat, o
 
 
 
-pub fn draw(self: Self, indices: u32, frame: usize) void {
+pub fn draw(self: Self, indices: u32, frame: usize, mesh: Mesh) void {
     std.debug.assert(frame < frames_in_flight);
-    c.vkCmdDrawIndexed(self.command_buffers[frame], indices, 1, 0, 0, 0);
+    c.vkCmdDrawIndexed(self.command_buffers[frame], indices, 1, mesh.index_buffer, mesh.vertex_buffer, 0);
 }
 
 pub fn findMemoryType(self: Self, filter: u32, properties: c.VkMemoryPropertyFlags) error{NoSuitableMemory}!u32 {

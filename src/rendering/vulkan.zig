@@ -83,12 +83,12 @@ pub const Buffer = struct {
     memory: c.VkDeviceMemory,
     size: usize,
 
-    pub fn copyTo(self: Buffer, device: anytype, dest: Buffer) !void {
+    pub fn copyTo(self: Buffer, device: anytype, dest: Buffer, offset: usize) !void {
         const command_buffer = try device.beginSingleTimeCommands();
 
         const copy_region: c.VkBufferCopy = .{
             .srcOffset = 0,
-            .dstOffset = 0,
+            .dstOffset = offset,
             .size = self.size,
         };
 
