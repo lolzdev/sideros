@@ -19,6 +19,7 @@ graphics_pipeline: vk.GraphicsPipeline,
 current_frame: u32,
 mesh: Mesh,
 transform: math.Transform,
+transform2: math.Transform,
 previous_time: std.time.Instant,
 
 pub fn init(allocator: Allocator, instance_handle: vk.c.VkInstance, surface_handle: vk.c.VkSurfaceKHR) !Renderer {
@@ -52,9 +53,26 @@ pub fn init(allocator: Allocator, instance_handle: vk.c.VkInstance, surface_hand
 
     _ = try graphics_pipeline.addTexture(device, texture, diffuse);
 
-    graphics_pipeline.light_pos[0] = -10.0;
-    graphics_pipeline.light_pos[1] = 0.0;
-    graphics_pipeline.light_pos[2] = 0.0;
+    graphics_pipeline.directional_light.direction = .{-0.2, -1.0, -0.3};
+    graphics_pipeline.directional_light.ambient = .{0.5, 0.5, 0.5};
+    graphics_pipeline.directional_light.diffuse = .{0.5, 0.5, 0.5};
+    graphics_pipeline.directional_light.specular = .{0.5, 0.5, 0.5};
+
+    graphics_pipeline.point_lights[0].position = .{0.0, 3.0, 3.0};
+    graphics_pipeline.point_lights[0].data[0] = 1.0;
+    graphics_pipeline.point_lights[0].data[1] = 0.0014;
+    graphics_pipeline.point_lights[0].data[2] = 0.000007;
+    graphics_pipeline.point_lights[0].ambient = .{0.5, 0.5, 0.5};
+    graphics_pipeline.point_lights[0].diffuse = .{0.5, 0.5, 0.5};
+    graphics_pipeline.point_lights[0].specular = .{1.0, 1.0, 1.0};
+
+    graphics_pipeline.point_lights[1].position = .{-1.0, 0.0, 0.0};
+    graphics_pipeline.point_lights[1].data[0] = 1.0;
+    graphics_pipeline.point_lights[1].data[1] = 0.09;
+    graphics_pipeline.point_lights[1].data[2] = 0.032;
+    graphics_pipeline.point_lights[1].ambient = .{0.5, 0.5, 0.5};
+    graphics_pipeline.point_lights[1].diffuse = .{0.5, 0.5, 0.5};
+    graphics_pipeline.point_lights[1].specular = .{1.0, 1.0, 1.0};
 
     return Renderer{
         .instance = instance,
@@ -66,6 +84,7 @@ pub fn init(allocator: Allocator, instance_handle: vk.c.VkInstance, surface_hand
         .graphics_pipeline = graphics_pipeline,
         .current_frame = 0,
         .transform = math.Transform.init(.{0.0, 0.0, 0.0}, .{1.0, 1.0, 1.0}, .{0.0, 0.0, 0.0}),
+        .transform2 = math.Transform.init(.{0.0, 3.0, 3.0}, .{0.5, 0.5, 0.5}, .{0.0, 0.0, 0.0}),
         .previous_time = try std.time.Instant.now(),
         .mesh = mesh,
     };
@@ -97,7 +116,7 @@ pub fn render(pool: *ecs.Pool) anyerror!void {
     view_pos[1] = camera.position[1];
     view_pos[2] = camera.position[2];
 
-    renderer.transform.rotate(math.rad(10) * delta_time, .{0.0, 1.0, 0.0});
+    renderer.transform.rotate(math.rad(15) * delta_time, .{0.0, 1.0, 0.0});
 
     const transform_memory = renderer.graphics_pipeline.transform_memory;
     @memcpy(transform_memory[0..(@sizeOf(math.Transform)-@sizeOf(math.Quaternion))], std.mem.asBytes(&renderer.transform)[0..(@sizeOf(math.Transform)-@sizeOf(math.Quaternion))]);
@@ -111,6 +130,8 @@ pub fn render(pool: *ecs.Pool) anyerror!void {
     renderer.device.bindVertexBuffer(renderer.graphics_pipeline.vertex_buffer, renderer.current_frame);
     renderer.device.bindIndexBuffer(renderer.graphics_pipeline.index_buffer, renderer.current_frame);
     renderer.device.bindDescriptorSets(renderer.graphics_pipeline, renderer.current_frame, 0);
+    var lights: u32 = 2;
+    renderer.device.pushConstant(renderer.graphics_pipeline, 0, 0, 4, @ptrCast(&lights), renderer.current_frame);
     renderer.device.draw(renderer.mesh.index_count, renderer.current_frame, renderer.mesh);
     renderer.render_pass.end(renderer.device, renderer.current_frame);
     try renderer.device.endCommand(renderer.current_frame);

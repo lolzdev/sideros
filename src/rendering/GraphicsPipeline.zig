@@ -7,6 +7,10 @@ const c = vk.c;
 const math = @import("math");
 const gltf = @import("gltf.zig");
 const Allocator = std.mem.Allocator;
+const rendering = @import("rendering.zig");
+const lights = rendering.lights;
+
+const max_point_lights = 1024;
 
 layout: c.VkPipelineLayout,
 handle: c.VkPipeline,
@@ -17,7 +21,6 @@ descriptor_pool: c.VkDescriptorPool,
 descriptor_set: c.VkDescriptorSet,
 descriptor_set_layout: c.VkDescriptorSetLayout,
 projection_buffer: vk.Buffer,
-light_buffer: vk.Buffer,
 view_buffer: vk.Buffer,
 view_memory: [*c]u8,
 transform_memory: [*c]u8,
@@ -25,7 +28,8 @@ view_pos_memory: [*c]u8,
 texture_sampler: vk.Sampler,
 diffuse_sampler: vk.Sampler,
 textures: std.ArrayList(c.VkDescriptorSet),
-light_pos: [*]f32,
+directional_light: *lights.DirectionalLight,
+point_lights: []lights.PointLight,
 
 const Self = @This();
 
@@ -304,10 +308,17 @@ pub fn init(allocator: Allocator, device: vk.Device, swapchain: vk.Swapchain, re
         .stageFlags = c.VK_SHADER_STAGE_VERTEX_BIT,
     };
 
-    const light_binding = c.VkDescriptorSetLayoutBinding{
+    const directional_light_binding = c.VkDescriptorSetLayoutBinding{
         .binding = 2,
         .descriptorType = c.VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
         .descriptorCount = 1,
+        .stageFlags = c.VK_SHADER_STAGE_FRAGMENT_BIT,
+    };
+
+    const point_lights_binding = c.VkDescriptorSetLayoutBinding{
+        .binding = 5,
+        .descriptorType = c.VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+        .descriptorCount = max_point_lights,
         .stageFlags = c.VK_SHADER_STAGE_FRAGMENT_BIT,
     };
 
@@ -332,7 +343,7 @@ pub fn init(allocator: Allocator, device: vk.Device, swapchain: vk.Swapchain, re
         .stageFlags = c.VK_SHADER_STAGE_FRAGMENT_BIT,
     };
 
-    const bindings = [_]c.VkDescriptorSetLayoutBinding{projection_binding, view_binding, transform_binding, light_binding, view_pos_binding};
+    const bindings = [_]c.VkDescriptorSetLayoutBinding{projection_binding, view_binding, transform_binding, directional_light_binding, point_lights_binding, view_pos_binding};
     const texture_bindings = [_]c.VkDescriptorSetLayoutBinding{texture_sampler_binding, diffuse_sampler_binding};
 
     var descriptor_set_layout: c.VkDescriptorSetLayout = undefined;
@@ -340,7 +351,7 @@ pub fn init(allocator: Allocator, device: vk.Device, swapchain: vk.Swapchain, re
 
     const descriptor_set_layout_info = c.VkDescriptorSetLayoutCreateInfo{
         .sType = c.VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
-        .bindingCount = 5,
+        .bindingCount = 6,
         .pBindings = bindings[0..].ptr,
     };
 
@@ -355,12 +366,18 @@ pub fn init(allocator: Allocator, device: vk.Device, swapchain: vk.Swapchain, re
 
     var set_layouts = [_]c.VkDescriptorSetLayout{descriptor_set_layout, texture_descriptor_set_layout};
 
+    const range: c.VkPushConstantRange = .{
+        .stageFlags = c.VK_SHADER_STAGE_FRAGMENT_BIT,
+        .offset = 0,
+        .size = 4,
+    };
+
     const layout_info: c.VkPipelineLayoutCreateInfo = .{
         .sType = c.VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
         .setLayoutCount = 2,
         .pSetLayouts = set_layouts[0..].ptr,
-        .pushConstantRangeCount = 0,
-        .pPushConstantRanges = null,
+        .pushConstantRangeCount = 1,
+        .pPushConstantRanges = &range,
     };
 
     var layout: c.VkPipelineLayout = undefined;
@@ -392,7 +409,7 @@ pub fn init(allocator: Allocator, device: vk.Device, swapchain: vk.Swapchain, re
 
     const size = c.VkDescriptorPoolSize{
         .type = c.VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-        .descriptorCount = 5,
+        .descriptorCount = 5 + max_point_lights,
     };
 
     const sampler_size = c.VkDescriptorPoolSize{
@@ -519,38 +536,72 @@ pub fn init(allocator: Allocator, device: vk.Device, swapchain: vk.Swapchain, re
 
     c.vkUpdateDescriptorSets(device.handle, 1, &write_transform_descriptor_set, 0, null);
 
-    const light_buffer = try device.initBuffer(vk.BufferUsage{ .uniform_buffer = true, .transfer_dst = true }, vk.BufferFlags{ .device_local = true }, @sizeOf([3]f32));
+    const directional_light_buffer = try device.initBuffer(vk.BufferUsage{ .uniform_buffer = true, .transfer_dst = true }, vk.BufferFlags{ .device_local = true }, @sizeOf(lights.DirectionalLight));
 
-    var light_data: [*c]u8 = undefined;
+    var directional_light_data: [*c]u8 = undefined;
 
     try vk.mapError(c.vkMapMemory(
         device.handle,
-        light_buffer.memory,
+        directional_light_buffer.memory,
         0,
-        light_buffer.size,
+        directional_light_buffer.size,
         0,
-        @ptrCast(&light_data),
+        @ptrCast(&directional_light_data),
     ));
 
-    const light_pos: [*]f32 = @alignCast(@ptrCast(light_data));
+    const directional_light: *lights.DirectionalLight = @alignCast(@ptrCast(directional_light_data));
 
-    const light_descriptor_buffer_info = c.VkDescriptorBufferInfo{
-        .buffer = light_buffer.handle,
+    const directional_light_descriptor_buffer_info = c.VkDescriptorBufferInfo{
+        .buffer = directional_light_buffer.handle,
         .offset = 0,
-        .range = light_buffer.size,
+        .range = directional_light_buffer.size,
     };
 
-    const write_light_descriptor_set = c.VkWriteDescriptorSet{
+    const write_directional_light_descriptor_set = c.VkWriteDescriptorSet{
         .sType = c.VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
         .dstSet = descriptor_set,
         .dstBinding = 2,
         .dstArrayElement = 0,
         .descriptorCount = 1,
         .descriptorType = c.VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-        .pBufferInfo = &light_descriptor_buffer_info,
+        .pBufferInfo = &directional_light_descriptor_buffer_info,
     };
 
-    c.vkUpdateDescriptorSets(device.handle, 1, &write_light_descriptor_set, 0, null);
+    c.vkUpdateDescriptorSets(device.handle, 1, &write_directional_light_descriptor_set, 0, null);
+
+    const point_lights_buffer = try device.initBuffer(vk.BufferUsage{ .uniform_buffer = true, .transfer_dst = true }, vk.BufferFlags{ .device_local = true }, @sizeOf(lights.PointLight) * max_point_lights);
+
+    var point_lights_data: [*c]u8 = undefined;
+
+    try vk.mapError(c.vkMapMemory(
+        device.handle,
+        point_lights_buffer.memory,
+        0,
+        point_lights_buffer.size,
+        0,
+        @ptrCast(&point_lights_data),
+    ));
+
+    const point_lights: []lights.PointLight = @as([*]lights.PointLight, @alignCast(@ptrCast(point_lights_data)))[0..max_point_lights];
+
+    var point_lights_descriptor_buffer_info: [max_point_lights]c.VkDescriptorBufferInfo = undefined;
+    for (0..max_point_lights) |i| {
+        point_lights_descriptor_buffer_info[i].buffer = point_lights_buffer.handle;
+        point_lights_descriptor_buffer_info[i].offset = @sizeOf(lights.PointLight) * i;
+        point_lights_descriptor_buffer_info[i].range = @sizeOf(lights.PointLight);
+    }
+
+    const write_point_lights_descriptor_set = c.VkWriteDescriptorSet{
+        .sType = c.VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+        .dstSet = descriptor_set,
+        .dstBinding = 5,
+        .dstArrayElement = 0,
+        .descriptorCount = max_point_lights,
+        .descriptorType = c.VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+        .pBufferInfo = @ptrCast(point_lights_descriptor_buffer_info[0..].ptr),
+    };
+
+    c.vkUpdateDescriptorSets(device.handle, 1, &write_point_lights_descriptor_set, 0, null);
 
     const view_pos_buffer = try device.initBuffer(vk.BufferUsage{ .uniform_buffer = true, .transfer_dst = true }, vk.BufferFlags{ .device_local = true }, @sizeOf([3]f32));
 
@@ -593,15 +644,15 @@ pub fn init(allocator: Allocator, device: vk.Device, swapchain: vk.Swapchain, re
         .projection_buffer = projection_buffer,
         .view_buffer = view_buffer,
         .view_memory = view_data,
-        .light_buffer = light_buffer,
         .view_pos_memory = view_pos_data,
         .transform_memory = transform_data,
         .texture_sampler = try vk.Sampler.init(device),
         .diffuse_sampler = try vk.Sampler.init(device),
         .textures = std.ArrayList(c.VkDescriptorSet).init(allocator),
-        .light_pos = light_pos,
         .vertex_buffer = vertex_buffer,
         .index_buffer = index_buffer,
+        .directional_light = directional_light,
+        .point_lights = point_lights,
     };
 }
 
