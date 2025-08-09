@@ -3,6 +3,7 @@ pub const GraphicsPipeline = @import("GraphicsPipeline.zig");
 pub const Device = @import("Device.zig");
 pub const Swapchain = @import("Swapchain.zig");
 pub const PhysicalDevice = @import("PhysicalDevice.zig");
+pub const DynamicBuffer = @import("dynamic_buffer.zig").DynamicBuffer;
 
 const std = @import("std");
 pub const c = @cImport({

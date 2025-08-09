@@ -23,7 +23,7 @@ descriptor_set_layout: c.VkDescriptorSetLayout,
 projection_buffer: vk.Buffer,
 view_buffer: vk.Buffer,
 view_memory: [*c]u8,
-transform_memory: [*c]u8,
+transform_buffer: vk.DynamicBuffer(math.Transform),
 view_pos_memory: [*c]u8,
 diffuse_sampler: vk.Sampler,
 specular_sampler: vk.Sampler,
@@ -303,7 +303,7 @@ pub fn init(allocator: Allocator, device: vk.Device, swapchain: vk.Swapchain, re
 
     const transform_binding = c.VkDescriptorSetLayoutBinding{
         .binding = 4,
-        .descriptorType = c.VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+        .descriptorType = c.VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
         .descriptorCount = 1,
         .stageFlags = c.VK_SHADER_STAGE_VERTEX_BIT,
     };
@@ -417,12 +417,17 @@ pub fn init(allocator: Allocator, device: vk.Device, swapchain: vk.Swapchain, re
         .descriptorCount = 2,
     };
 
-    const sizes = [_]c.VkDescriptorPoolSize {size, sampler_size};
+    const transforms_size = c.VkDescriptorPoolSize{
+        .type = c.VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+        .descriptorCount = 1,
+    };
+
+    const sizes = [_]c.VkDescriptorPoolSize {size, sampler_size, transforms_size};
 
     const descriptor_pool_info = c.VkDescriptorPoolCreateInfo{
         .sType = c.VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
         .maxSets = 2,
-        .poolSizeCount = 2,
+        .poolSizeCount = 3,
         .pPoolSizes = sizes[0..].ptr,
     };
 
@@ -505,36 +510,7 @@ pub fn init(allocator: Allocator, device: vk.Device, swapchain: vk.Swapchain, re
 
     c.vkUpdateDescriptorSets(device.handle, 1, &write_view_descriptor_set, 0, null);
 
-    const transform_buffer = try device.initBuffer(vk.BufferUsage{ .uniform_buffer = true, .transfer_dst = true }, vk.BufferFlags{ .device_local = true }, @sizeOf(math.Transform) - @sizeOf(math.Quaternion));
-
-    var transform_data: [*c]u8 = undefined;
-
-    try vk.mapError(c.vkMapMemory(
-        device.handle,
-        transform_buffer.memory,
-        0,
-        transform_buffer.size,
-        0,
-        @ptrCast(&transform_data),
-    ));
-
-    const transform_descriptor_buffer_info = c.VkDescriptorBufferInfo{
-        .buffer = transform_buffer.handle,
-        .offset = 0,
-        .range = transform_buffer.size,
-    };
-
-    const write_transform_descriptor_set = c.VkWriteDescriptorSet{
-        .sType = c.VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-        .dstSet = descriptor_set,
-        .dstBinding = 4,
-        .dstArrayElement = 0,
-        .descriptorCount = 1,
-        .descriptorType = c.VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-        .pBufferInfo = &transform_descriptor_buffer_info,
-    };
-
-    c.vkUpdateDescriptorSets(device.handle, 1, &write_transform_descriptor_set, 0, null);
+    const transform_buffer = try vk.DynamicBuffer(math.Transform).init(allocator, device, vk.BufferUsage{ .storage_buffer = true, .transfer_dst = true }, vk.BufferFlags{ .device_local = true }, descriptor_set, 4);
 
     const directional_light_buffer = try device.initBuffer(vk.BufferUsage{ .uniform_buffer = true, .transfer_dst = true }, vk.BufferFlags{ .device_local = true }, @sizeOf(lights.DirectionalLight));
 
@@ -643,7 +619,7 @@ pub fn init(allocator: Allocator, device: vk.Device, swapchain: vk.Swapchain, re
         .view_buffer = view_buffer,
         .view_memory = view_data,
         .view_pos_memory = view_pos_data,
-        .transform_memory = transform_data,
+        .transform_buffer = transform_buffer,
         .diffuse_sampler = try vk.Sampler.init(device),
         .specular_sampler = try vk.Sampler.init(device),
         .textures = std.ArrayList(c.VkDescriptorSet).init(allocator),

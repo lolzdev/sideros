@@ -118,8 +118,8 @@ pub fn render(pool: *ecs.Pool) anyerror!void {
 
     renderer.transform.rotate(math.rad(15) * delta_time, .{0.0, 1.0, 0.0});
 
-    const transform_memory = renderer.graphics_pipeline.transform_memory;
-    @memcpy(transform_memory[0..(@sizeOf(math.Transform)-@sizeOf(math.Quaternion))], std.mem.asBytes(&renderer.transform)[0..(@sizeOf(math.Transform)-@sizeOf(math.Quaternion))]);
+    const transform_memory = renderer.graphics_pipeline.transform_buffer.mapped_memory;
+    transform_memory[0] = renderer.transform;
 
     try renderer.device.waitFence(renderer.current_frame);
     const image = try renderer.swapchain.nextImage(renderer.device, renderer.current_frame);

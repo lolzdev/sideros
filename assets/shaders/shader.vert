@@ -1,5 +1,11 @@
 #version 450
 
+struct Transform {
+	mat4 translation;
+	mat4 scale;
+	mat4 rotation;
+};
+
 layout(location = 0) in vec3 vertPos;
 layout(location = 1) in vec3 normal;
 layout(location = 2) in vec2 uv;
@@ -12,10 +18,8 @@ layout (binding = 1) uniform ViewUniform {
     mat4 view;
 } view;
 
-layout (binding = 4) uniform TransformUniform {
-    mat4 translation;
-    mat4 scale;
-    mat4 rotation;
+layout (binding = 4) readonly buffer TransformUniform {
+    Transform transforms[];
 } transform;
 
 layout(location = 2) out vec3 Normal;
@@ -23,7 +27,7 @@ layout(location = 3) out vec3 FragPos;
 layout(location = 4) out vec2 TexCoords;
 
 void main() {
-    mat4 transformation = transform.translation * transform.scale * transform.rotation;
+    mat4 transformation = transform.transforms[0].translation * transform.transforms[0].scale * transform.transforms[0].rotation;
     vec4 out_vec = proj.proj * view.view * transformation * vec4(vertPos, 1.0);
     FragPos = vec3(transformation * vec4(vertPos, 1.0));
 
