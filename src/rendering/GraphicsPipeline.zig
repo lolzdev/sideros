@@ -318,7 +318,7 @@ pub fn init(allocator: Allocator, device: vk.Device, swapchain: vk.Swapchain, re
     const point_lights_binding = c.VkDescriptorSetLayoutBinding{
         .binding = 5,
         .descriptorType = c.VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-        .descriptorCount = max_point_lights,
+        .descriptorCount = 1,
         .stageFlags = c.VK_SHADER_STAGE_FRAGMENT_BIT,
     };
 
@@ -409,7 +409,7 @@ pub fn init(allocator: Allocator, device: vk.Device, swapchain: vk.Swapchain, re
 
     const size = c.VkDescriptorPoolSize{
         .type = c.VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-        .descriptorCount = 5 + max_point_lights,
+        .descriptorCount = 6,
     };
 
     const sampler_size = c.VkDescriptorPoolSize{
@@ -584,21 +584,19 @@ pub fn init(allocator: Allocator, device: vk.Device, swapchain: vk.Swapchain, re
 
     const point_lights: []lights.PointLight = @as([*]lights.PointLight, @alignCast(@ptrCast(point_lights_data)))[0..max_point_lights];
 
-    var point_lights_descriptor_buffer_info: [max_point_lights]c.VkDescriptorBufferInfo = undefined;
-    for (0..max_point_lights) |i| {
-        point_lights_descriptor_buffer_info[i].buffer = point_lights_buffer.handle;
-        point_lights_descriptor_buffer_info[i].offset = @sizeOf(lights.PointLight) * i;
-        point_lights_descriptor_buffer_info[i].range = @sizeOf(lights.PointLight);
-    }
+    var point_lights_descriptor_buffer_info: c.VkDescriptorBufferInfo = undefined;
+    point_lights_descriptor_buffer_info.buffer = point_lights_buffer.handle;
+    point_lights_descriptor_buffer_info.offset = 0;
+    point_lights_descriptor_buffer_info.range = @sizeOf(lights.PointLight) * max_point_lights;
 
     const write_point_lights_descriptor_set = c.VkWriteDescriptorSet{
         .sType = c.VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
         .dstSet = descriptor_set,
         .dstBinding = 5,
         .dstArrayElement = 0,
-        .descriptorCount = max_point_lights,
+        .descriptorCount = 1,
         .descriptorType = c.VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-        .pBufferInfo = @ptrCast(point_lights_descriptor_buffer_info[0..].ptr),
+        .pBufferInfo = @ptrCast(&point_lights_descriptor_buffer_info),
     };
 
     c.vkUpdateDescriptorSets(device.handle, 1, &write_point_lights_descriptor_set, 0, null);
