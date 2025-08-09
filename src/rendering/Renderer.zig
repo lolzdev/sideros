@@ -2,6 +2,7 @@ const math = @import("math");
 const ecs = @import("ecs");
 const std = @import("std");
 const vk = @import("vulkan.zig");
+const c = vk.c;
 const Mesh = @import("Mesh.zig");
 const Texture = vk.Texture;
 const Camera = @import("Camera.zig");
@@ -83,8 +84,8 @@ pub fn init(allocator: Allocator, instance_handle: vk.c.VkInstance, surface_hand
         .swapchain = swapchain,
         .graphics_pipeline = graphics_pipeline,
         .current_frame = 0,
-        .transform = math.Transform.init(.{0.0, 0.0, 0.0}, .{1.0, 1.0, 1.0}, .{0.0, 0.0, 0.0}),
-        .transform2 = math.Transform.init(.{0.0, 3.0, 3.0}, .{0.5, 0.5, 0.5}, .{0.0, 0.0, 0.0}),
+        .transform = math.Transform.init(.{0.5, 0.0, 0.0}, .{0.5, 0.5, 0.5}, .{0.0, 0.0, 0.0}),
+        .transform2 = math.Transform.init(.{-1.0, 0.0, 0.0}, .{0.5, 0.5, 0.5}, .{0.0, 0.0, 0.0}),
         .previous_time = try std.time.Instant.now(),
         .mesh = mesh,
     };
@@ -120,6 +121,7 @@ pub fn render(pool: *ecs.Pool) anyerror!void {
 
     const transform_memory = renderer.graphics_pipeline.transform_buffer.mapped_memory;
     transform_memory[0] = renderer.transform;
+    transform_memory[1] = renderer.transform2;
 
     try renderer.device.waitFence(renderer.current_frame);
     const image = try renderer.swapchain.nextImage(renderer.device, renderer.current_frame);
@@ -131,7 +133,12 @@ pub fn render(pool: *ecs.Pool) anyerror!void {
     renderer.device.bindIndexBuffer(renderer.graphics_pipeline.index_buffer, renderer.current_frame);
     renderer.device.bindDescriptorSets(renderer.graphics_pipeline, renderer.current_frame, 0);
     var lights: u32 = 2;
-    renderer.device.pushConstant(renderer.graphics_pipeline, 0, 0, 4, @ptrCast(&lights), renderer.current_frame);
+    renderer.device.pushConstant(renderer.graphics_pipeline, c.VK_SHADER_STAGE_FRAGMENT_BIT, 0, 4, @ptrCast(&lights), renderer.current_frame);
+    var transform: u32 = 0;
+    renderer.device.pushConstant(renderer.graphics_pipeline, c.VK_SHADER_STAGE_VERTEX_BIT, 4, 4, @ptrCast(&transform), renderer.current_frame);
+    renderer.device.draw(renderer.mesh.index_count, renderer.current_frame, renderer.mesh);
+    transform = 1;
+    renderer.device.pushConstant(renderer.graphics_pipeline, c.VK_SHADER_STAGE_VERTEX_BIT, 4, 4, @ptrCast(&transform), renderer.current_frame);
     renderer.device.draw(renderer.mesh.index_count, renderer.current_frame, renderer.mesh);
     renderer.render_pass.end(renderer.device, renderer.current_frame);
     try renderer.device.endCommand(renderer.current_frame);

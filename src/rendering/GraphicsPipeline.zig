@@ -366,18 +366,26 @@ pub fn init(allocator: Allocator, device: vk.Device, swapchain: vk.Swapchain, re
 
     var set_layouts = [_]c.VkDescriptorSetLayout{descriptor_set_layout, texture_descriptor_set_layout};
 
-    const range: c.VkPushConstantRange = .{
+    const lights_range: c.VkPushConstantRange = .{
         .stageFlags = c.VK_SHADER_STAGE_FRAGMENT_BIT,
         .offset = 0,
         .size = 4,
     };
 
+    const transform_range: c.VkPushConstantRange = .{
+        .stageFlags = c.VK_SHADER_STAGE_VERTEX_BIT,
+        .offset = 4,
+        .size = 4,
+    };
+
+    const range: [2]c.VkPushConstantRange = .{lights_range, transform_range};
+
     const layout_info: c.VkPipelineLayoutCreateInfo = .{
         .sType = c.VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
         .setLayoutCount = 2,
         .pSetLayouts = set_layouts[0..].ptr,
-        .pushConstantRangeCount = 1,
-        .pPushConstantRanges = &range,
+        .pushConstantRangeCount = 2,
+        .pPushConstantRanges = range[0..].ptr,
     };
 
     var layout: c.VkPipelineLayout = undefined;

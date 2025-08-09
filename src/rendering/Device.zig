@@ -315,8 +315,7 @@ pub fn initShader(self: Self, comptime name: []const u8) !c.VkShaderModule {
 }
 
 pub fn pushConstant(self: Self, pipeline: vk.GraphicsPipeline, stage: u32, offset: u32, size: u32, data: [*c]u8, frame: usize) void {
-    _ = stage;
-    c.vkCmdPushConstants(self.command_buffers[frame], pipeline.layout, c.VK_SHADER_STAGE_FRAGMENT_BIT, offset, size, data);
+    c.vkCmdPushConstants(self.command_buffers[frame], pipeline.layout, stage, offset, size, data);
 }
 
 pub fn deinitShader(self: Self, shader: c.VkShaderModule) void {
