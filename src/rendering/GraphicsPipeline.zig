@@ -25,8 +25,8 @@ view_buffer: vk.Buffer,
 view_memory: [*c]u8,
 transform_memory: [*c]u8,
 view_pos_memory: [*c]u8,
-texture_sampler: vk.Sampler,
 diffuse_sampler: vk.Sampler,
+specular_sampler: vk.Sampler,
 textures: std.ArrayList(c.VkDescriptorSet),
 directional_light: *lights.DirectionalLight,
 point_lights: []lights.PointLight,
@@ -329,14 +329,14 @@ pub fn init(allocator: Allocator, device: vk.Device, swapchain: vk.Swapchain, re
         .stageFlags = c.VK_SHADER_STAGE_FRAGMENT_BIT,
     };
 
-    const texture_sampler_binding = c.VkDescriptorSetLayoutBinding{
+    const diffuse_sampler_binding = c.VkDescriptorSetLayoutBinding{
         .binding = 0,
         .descriptorType = c.VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
         .descriptorCount = 1,
         .stageFlags = c.VK_SHADER_STAGE_FRAGMENT_BIT,
     };
 
-    const diffuse_sampler_binding = c.VkDescriptorSetLayoutBinding{
+    const specular_sampler_binding = c.VkDescriptorSetLayoutBinding{
         .binding = 1,
         .descriptorType = c.VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
         .descriptorCount = 1,
@@ -344,7 +344,7 @@ pub fn init(allocator: Allocator, device: vk.Device, swapchain: vk.Swapchain, re
     };
 
     const bindings = [_]c.VkDescriptorSetLayoutBinding{projection_binding, view_binding, transform_binding, directional_light_binding, point_lights_binding, view_pos_binding};
-    const texture_bindings = [_]c.VkDescriptorSetLayoutBinding{texture_sampler_binding, diffuse_sampler_binding};
+    const texture_bindings = [_]c.VkDescriptorSetLayoutBinding{diffuse_sampler_binding, specular_sampler_binding};
 
     var descriptor_set_layout: c.VkDescriptorSetLayout = undefined;
     var texture_descriptor_set_layout: c.VkDescriptorSetLayout = undefined;
@@ -644,8 +644,8 @@ pub fn init(allocator: Allocator, device: vk.Device, swapchain: vk.Swapchain, re
         .view_memory = view_data,
         .view_pos_memory = view_pos_data,
         .transform_memory = transform_data,
-        .texture_sampler = try vk.Sampler.init(device),
         .diffuse_sampler = try vk.Sampler.init(device),
+        .specular_sampler = try vk.Sampler.init(device),
         .textures = std.ArrayList(c.VkDescriptorSet).init(allocator),
         .vertex_buffer = vertex_buffer,
         .index_buffer = index_buffer,
@@ -669,13 +669,13 @@ pub fn addTexture(self: *Self, device: anytype, texture: Texture, diffuse: Textu
     const texture_info: c.VkDescriptorImageInfo = .{
         .imageLayout = c.VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
         .imageView = texture.image_view,
-        .sampler = self.texture_sampler.handle,
+        .sampler = self.diffuse_sampler.handle,
     };
 
     const diffuse_info: c.VkDescriptorImageInfo = .{
         .imageLayout = c.VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
         .imageView = diffuse.image_view,
-        .sampler = self.diffuse_sampler.handle,
+        .sampler = self.specular_sampler.handle,
     };
 
     const write_texture_descriptor_set = c.VkWriteDescriptorSet{
@@ -715,8 +715,8 @@ pub fn bind(self: Self, device: vk.Device, frame: usize) void {
 
 pub fn deinit(self: Self, device: vk.Device) void {
     self.textures.deinit();
-    self.texture_sampler.deinit(device);
     self.diffuse_sampler.deinit(device);
+    self.specular_sampler.deinit(device);
     self.projection_buffer.deinit(device.handle);
     c.vkDestroyDescriptorSetLayout(device.handle, self.descriptor_set_layout, null);
     c.vkDestroyDescriptorPool(device.handle, self.descriptor_pool, null);

@@ -35,17 +35,17 @@ layout(push_constant) uniform pc {
     int light_count;
 } pushConstants;
 
-layout (set = 1, binding = 0) uniform sampler2D textureSampler;
-layout (set = 1, binding = 1) uniform sampler2D diffuseSampler;
+layout (set = 1, binding = 0) uniform sampler2D diffuseSampler;
+layout (set = 1, binding = 1) uniform sampler2D specularSampler;
 
 vec3 calc_directional_light(vec3 normal, vec3 viewDir) {
 	vec3 lightDir = normalize(-directional_light.direction);
 	float diff = max(dot(normal, lightDir), 0.0);
 	vec3 reflectDir = reflect(-lightDir, normal);
 	float spec = pow(max(dot(viewDir, reflectDir), 0.0), 2);
-	vec3 ambient  = directional_light.ambient  * vec3(texture(textureSampler, TexCoords));
-	vec3 diffuse  = directional_light.diffuse  * diff * vec3(texture(textureSampler , TexCoords));
-	vec3 specular = directional_light.specular * spec * vec3(texture(diffuseSampler, TexCoords));
+	vec3 ambient  = directional_light.ambient  * vec3(texture(diffuseSampler, TexCoords));
+	vec3 diffuse  = directional_light.diffuse  * diff * vec3(texture(diffuseSampler , TexCoords));
+	vec3 specular = directional_light.specular * spec * vec3(texture(specularSampler, TexCoords));
 	return (ambient + diffuse + specular);
 }
 
@@ -60,9 +60,9 @@ vec3 calc_point_light(int index, vec3 normal, vec3 fragPos, vec3 viewDir) {
 	float spec = pow(max(dot(viewDir, reflectDir), 0.0), 2);
 	float distance    = length(point_lights.point_lights[index].position - fragPos);
 	float attenuation = 1.0 / (constant + linear * distance + quadratic * (distance * distance));
-	vec3 ambient  = point_lights.point_lights[index].ambient  * vec3(texture(textureSampler, TexCoords));
-	vec3 diffuse  = point_lights.point_lights[index].diffuse  * diff * vec3(texture(textureSampler, TexCoords));
-	vec3 specular = point_lights.point_lights[index].specular * spec * vec3(texture(diffuseSampler, TexCoords));
+	vec3 ambient  = point_lights.point_lights[index].ambient  * vec3(texture(diffuseSampler, TexCoords));
+	vec3 diffuse  = point_lights.point_lights[index].diffuse  * diff * vec3(texture(diffuseSampler, TexCoords));
+	vec3 specular = point_lights.point_lights[index].specular * spec * vec3(texture(specularSampler, TexCoords));
 	ambient  *= attenuation;
 	diffuse  *= attenuation;
 	specular *= attenuation;

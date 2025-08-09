@@ -58,10 +58,10 @@ pub fn init(allocator: Allocator, instance_handle: vk.c.VkInstance, surface_hand
     graphics_pipeline.directional_light.diffuse = .{0.5, 0.5, 0.5};
     graphics_pipeline.directional_light.specular = .{0.5, 0.5, 0.5};
 
-    graphics_pipeline.point_lights[0].position = .{0.0, 3.0, 3.0};
+    graphics_pipeline.point_lights[0].position = .{0.0, 6.0, 0.0};
     graphics_pipeline.point_lights[0].data[0] = 1.0;
-    graphics_pipeline.point_lights[0].data[1] = 0.0014;
-    graphics_pipeline.point_lights[0].data[2] = 0.000007;
+    graphics_pipeline.point_lights[0].data[1] = 0.09;
+    graphics_pipeline.point_lights[0].data[2] = 0.032;
     graphics_pipeline.point_lights[0].ambient = .{0.5, 0.5, 0.5};
     graphics_pipeline.point_lights[0].diffuse = .{0.5, 0.5, 0.5};
     graphics_pipeline.point_lights[0].specular = .{1.0, 1.0, 1.0};
