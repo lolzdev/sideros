@@ -21,7 +21,7 @@ globalValues: []vm.Value,
 globalTypes: []Globaltype,
 
 const Parser = @This();
-const PAGE_SIZE = 65536;
+pub const PAGE_SIZE = 65536;
 
 pub const Error = error{
     OutOfMemory,
@@ -93,7 +93,6 @@ pub fn module(self: *Parser) vm.Module {
             .min = self.memory.lim.min,
             .max = self.memory.lim.max,
         },
-        .imported_funcs = self.importCount,
         .exported_memory = self.exported_memory,
         .functions = self.functions,
         .exports = self.exports,
@@ -181,6 +180,14 @@ pub fn parseVector(self: *Parser, parse_fn: anytype) ![]VectorFnResult(parse_fn)
     const ret = try self.allocator.alloc(VectorFnResult(parse_fn), n);
     for (ret) |*i| {
         i.* = try parse_fn(self);
+    }
+    return ret;
+}
+pub fn parseVectorU32(self: *Parser) ![]u32 {
+    const n = try self.readU32();
+    const ret = try self.allocator.alloc(u32, n);
+    for (ret) |*i| {
+        i.* = try self.readU32();
     }
     return ret;
 }
@@ -387,6 +394,8 @@ fn parseImportsec(self: *Parser) !void {
                 } else {
                     std.debug.panic("imported function {s} not supported\n", .{i.name});
                 }
+                self.functions = try self.allocator.realloc(self.functions, index + 1);
+                self.functions[index].typ = .{ .external = index };
                 index += 1;
             },
             .mem => {
@@ -413,10 +422,10 @@ fn parseFuncsec(self: *Parser) !void {
     const types = try self.parseVector(Parser.readU32);
     defer self.allocator.free(types);
 
-    if (self.functions.len != 0) return Error.duplicated_funcsec;
-    self.functions = try self.allocator.alloc(vm.Function, types.len);
+    if (self.functions.len != self.importCount) return Error.duplicated_funcsec;
+    self.functions = try self.allocator.realloc(self.functions, self.importCount + types.len);
 
-    for (types, 0..) |t, i| {
+    for (types, self.importCount..) |t, i| {
         self.functions[i].func_type = .{
             .parameters = try self.allocator.alloc(vm.Valtype, self.types[t].parameters.len),
             .returns = try self.allocator.alloc(vm.Valtype, self.types[t].returns.len),
@@ -426,7 +435,7 @@ fn parseFuncsec(self: *Parser) !void {
     }
 
     // TODO(ernesto): run this check not only in debug
-    std.debug.assert(types.len == self.functions.len);
+    std.debug.assert(types.len + self.importCount == self.functions.len);
 
     // TODO: run this check not only on debug
     std.debug.assert(self.byte_idx == end_idx);
@@ -547,7 +556,7 @@ fn parseExportsec(self: *Parser) !void {
         switch (e.exportdesc) {
             .func => {
                 if (std.mem.eql(u8, e.name, "init")) {
-                    self.exports.init = e.exportdesc.func;
+                    self.exports.init = e.exportdesc.func + self.importCount;
                 } else {
                     std.log.warn("exported function {s} not supported\n", .{e.name});
                 }
@@ -690,9 +699,9 @@ fn parseCodesec(self: *Parser) !void {
     const codes = try self.parseVector(Parser.parseCode);
     defer self.allocator.free(codes);
     // TODO: run this check not only on debug
-    std.debug.assert(codes.len == self.functions.len);
+    std.debug.assert(codes.len == self.functions.len - self.importCount);
 
-    for (codes, self.functions) |code, *f| {
+    for (codes, self.functions[self.importCount..]) |code, *f| {
         f.typ = .{ .internal = .{
             .locals = code.locals,
             .ir = code.ir,

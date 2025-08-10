@@ -603,7 +603,9 @@ const IRParserState = struct {
     parser: *Parser,
     allocator: Allocator,
 
-    branches: std.AutoHashMapUnmanaged(u32, u32),
+    // branches: std.AutoHashMapUnmanaged(u32, u32),
+    branches: std.ArrayListUnmanaged( struct { pc: u32, index: u32, table: bool } ),
+    br_table_vectors: std.ArrayListUnmanaged(u32),
 
     opcodes: std.ArrayListUnmanaged(Opcode),
     indices: std.ArrayListUnmanaged(Index),
@@ -628,7 +630,8 @@ const IRParserState = struct {
             0x02...0x03 => self.parseBlock(b),
             0x04 => self.parseIf(),
             0x0C...0x0D => self.parseBranch(b),
-            0x0E => self.parseTableBranch(b),
+            // 0x0E => self.parseTableBranch(b),
+            0x0E => self.parseBrTable(b),
             0x0F => self.push(@enumFromInt(b), .{ .u64 = 0 }),
             0x10 => self.push(@enumFromInt(b), .{ .u32 = try self.parser.readU32() }),
             0x11 => self.push(@enumFromInt(b), .{ .indirect = .{ .y = try self.parser.readU32(), .x = try self.parser.readU32() } }),
@@ -790,40 +793,44 @@ const IRParserState = struct {
         var todel: std.ArrayListUnmanaged(u32) = .{};
         defer todel.deinit(self.allocator);
 
-        var it = self.branches.iterator();
-        while (it.next()) |branch| {
-            if (start <= branch.key_ptr.* and branch.key_ptr.* < end) {
-                if (branch.value_ptr.* == 0) {
-                    self.indices.items[branch.key_ptr.*].u32 = jump_addr;
-                    try todel.append(self.allocator, branch.key_ptr.*);
+        var idx: u32 = 0;
+        for (self.branches.items) |branch| {
+            if (start <= branch.pc and branch.pc < end) {
+                const ptr = if (branch.table) &self.br_table_vectors.items[branch.index] else &self.indices.items[branch.index].u32;
+                if (ptr.* == 0) {
+                    ptr.* = jump_addr;
+                    try todel.append(self.allocator, @intCast(idx));
+                    idx += 1;
                 } else {
-                    branch.value_ptr.* -= 1;
+                    ptr.* -= 1;
                 }
             }
         }
 
+        // TODO(ernesto): need better way of deleting from the array (this looks ugly)
+        std.mem.sort(u32, todel.items, {}, comptime std.sort.desc(u32));
         for (todel.items) |d| {
             // TODO: Do we need to assert this is true?
-            _ = self.branches.remove(d);
+            _ = self.branches.swapRemove(d);
         }
     }
 
     fn parseBranch(self: *IRParserState, b: u8) !void {
         const idx = try self.parser.readU32();
-        try self.branches.put(self.allocator, @intCast(self.opcodes.items.len), idx);
-        try self.push(@enumFromInt(b), .{ .u64 = 0 });
+        try self.branches.append(self.allocator, .{ .pc = @intCast(self.opcodes.items.len), .index = @intCast(self.indices.items.len), .table = false });
+        try self.push(@enumFromInt(b), .{ .u32 = idx });
     }
 
-    fn parseTableBranch(self: *IRParserState, b: u8) !void {
-        const n = try self.parser.readU32();
-        const idxs = try self.allocator.alloc(u32, n);
-        // defer self.allocator.free(idxs);
-        for (idxs) |*i| {
-            i.* = try self.parser.readU32();
-            try self.branches.put(self.allocator, @intCast(self.opcodes.items.len), i.*);
+    fn parseBrTable(self: *IRParserState, b: u8) !void {
+        const idxs = try self.parser.parseVectorU32();
+        const idxN = try self.parser.readU32();
+        const table_vectors_len = self.br_table_vectors.items.len;
+        try self.br_table_vectors.appendSlice(self.allocator, idxs);
+        try self.br_table_vectors.append(self.allocator, idxN);
+        for (0..idxs.len+1) |i| {
+            try self.branches.append(self.allocator, .{ .pc = @intCast(self.opcodes.items.len), .index = @intCast(table_vectors_len + i), .table = true });
         }
-        try self.branches.put(self.allocator, @intCast(self.opcodes.items.len), try self.parser.readU32());
-        try self.push(@enumFromInt(b), .{ .u64 = 0 });
+        try self.push(@enumFromInt(b), .{ .indirect = .{ .x = @intCast(table_vectors_len), .y = @intCast(idxs.len) }});
     }
 
     fn parseVector(self: *IRParserState) !void {
@@ -848,6 +855,7 @@ const IRParserState = struct {
 
 pub fn parse(parser: *Parser) !IR {
     var state = IRParserState{
+        .br_table_vectors = .{},
         .opcodes = .{},
         .indices = .{},
         .branches = .{},
@@ -855,7 +863,7 @@ pub fn parse(parser: *Parser) !IR {
         .allocator = parser.allocator,
     };
     try state.parseFunction();
-    if (state.branches.count() != 0) return Parser.Error.unresolved_branch;
+    // if (state.branches.count() != 0) return Parser.Error.unresolved_branch;
     return .{
         .opcodes = try state.opcodes.toOwnedSlice(state.allocator),
         .indices = try state.indices.toOwnedSlice(state.allocator),
@@ -865,6 +873,7 @@ pub fn parse(parser: *Parser) !IR {
 
 pub fn parseGlobalExpr(parser: *Parser) !IR {
     var state = IRParserState{
+        .br_table_vectors = .{},
         .opcodes = .{},
         .indices = .{},
         .branches = .{},
@@ -881,6 +890,7 @@ pub fn parseGlobalExpr(parser: *Parser) !IR {
 
 pub fn parseSingleExpr(parser: *Parser) !IR {
     var state = IRParserState{
+        .br_table_vectors = .{},
         .opcodes = .{},
         .indices = .{},
         .branches = .{},

@@ -29,7 +29,7 @@ pub const Function = struct { func_type: Functype, typ: union(enum) {
         locals: []Valtype,
         ir: IR,
     },
-    external: void,
+    external: u32
 } };
 
 pub const ExportFunction = enum {
@@ -55,7 +55,6 @@ pub const Module = struct {
     functions: []Function,
     exports: Exports,
     exported_memory: u32,
-    imported_funcs: u32,
     data: []const u8,
     tables: []Parser.Tabletype,
     elems: [][]u32,
@@ -72,7 +71,7 @@ pub const Module = struct {
                     allocator.free(f.typ.internal.ir.select_valtypes);
                     allocator.free(f.typ.internal.locals);
                 },
-                .external => @panic("UNIMPLEMENTED"),
+                .external => {}
             }
         }
         allocator.free(self.functions);
@@ -142,6 +141,7 @@ pub const Runtime = struct {
                 },
                 .br_table => @panic("UNIMPLEMENTED"),
                 .@"return" => break :loop,
+                // TODO: Move this to callExternal
                 .call => {
                     if (index.u32 == self.module.exports.logDebug) {
                         const size: usize = @intCast(self.stack.pop().?.i64);
@@ -170,24 +170,24 @@ pub const Runtime = struct {
                     } else {
                         var parameters = std.ArrayList(Value).init(allocator);
                         defer parameters.deinit();
-                        for (self.module.functions[index.u32 - self.module.imported_funcs].func_type.parameters) |_| {
+                        for (self.module.functions[index.u32].func_type.parameters) |_| {
                             try parameters.append(self.stack.pop().?);
                         }
-                        try self.call(allocator, index.u32 - self.module.imported_funcs, parameters.items);
+                        try self.call(allocator, index.u32, parameters.items);
                     }
                 },
                 .call_indirect => {
-                    std.debug.panic("call_indirect: {any}\n", .{self.stack.pop().?});
                     if (self.module.tables[index.indirect.x].et != std.wasm.RefType.funcref) {
                         std.debug.panic("Table at index {any} is not a `funcref` table\n", .{index.indirect.x});
                     }
-                    const funcIdx = self.module.elems[index.indirect.x][index.indirect.y];
+                    const j: u32 = @intCast(self.stack.pop().?.i32);
+                    const funcIdx = self.module.elems[index.indirect.x][j];
                     var parameters = std.ArrayList(Value).init(allocator);
                     defer parameters.deinit();
-                    for (self.module.functions[funcIdx - self.module.imported_funcs].func_type.parameters) |_| {
+                    for (self.module.functions[funcIdx].func_type.parameters) |_| {
                         try parameters.append(self.stack.pop().?);
                     }
-                    try self.call(allocator, funcIdx - self.module.imported_funcs, parameters.items);
+                    try self.call(allocator, funcIdx, parameters.items);
                 },
 
                 .refnull => @panic("UNIMPLEMENTED"),
@@ -321,7 +321,12 @@ pub const Runtime = struct {
                 .i64_store32 => @panic("UNIMPLEMENTED"),
 
                 .memorysize => @panic("UNIMPLEMENTED"),
-                .memorygrow => @panic("UNIMPLEMENTED"),
+                .memorygrow => {
+                    const newPages = self.stack.pop().?.i32;
+                    const oldPages: i32 = @intCast(self.memory.len / Parser.PAGE_SIZE);
+                    self.memory = try allocator.realloc(self.memory, self.memory.len + @as(usize, @intCast(newPages * Parser.PAGE_SIZE)));
+                    try self.stack.append(.{ .i32 = oldPages });
+                },
                 .memoryinit => @panic("UNIMPLEMENTED"),
                 .datadrop => @panic("UNIMPLEMENTED"),
                 .memorycopy => {
@@ -426,34 +431,36 @@ pub const Runtime = struct {
                 .f64_le => @panic("UNIMPLEMENTED"),
                 .f64_ge => @panic("UNIMPLEMENTED"),
 
-                .i32_clz => @panic("UNIMPLEMENTED"),
+                .i32_clz => {
+                    try self.stack.append(.{ .i32 = @clz(self.stack.pop().?.i32) });
+                },
                 .i32_ctz => @panic("UNIMPLEMENTED"),
                 .i32_popcnt => @panic("UNIMPLEMENTED"),
                 .i32_add => {
                     const a = self.stack.pop().?.i32;
                     const b = self.stack.pop().?.i32;
-                    try self.stack.append(Value{ .i32 = a + b });
+                    try self.stack.append(.{ .i32 = a + b });
                 },
                 .i32_sub => {
                     const a = self.stack.pop().?.i32;
                     const b = self.stack.pop().?.i32;
-                    try self.stack.append(Value{ .i32 = b - a });
+                    try self.stack.append(.{ .i32 = b - a });
                 },
                 .i32_and => {
                     const a = self.stack.pop().?.i32;
                     const b = self.stack.pop().?.i32;
-                    try self.stack.append(Value{ .i32 = a & b });
+                    try self.stack.append(.{ .i32 = a & b });
                 },
                 .i32_mul => {
                     const a = self.stack.pop().?.i32;
                     const b = self.stack.pop().?.i32;
-                    try self.stack.append(Value{ .i32 = a * b });
+                    try self.stack.append(.{ .i32 = a * b });
                 },
                 .i32_div_s => @panic("UNIMPLEMENTED"),
                 .i32_div_u => {
                     const a_unsigned = @as(u32, @bitCast(self.stack.pop().?.i32));
                     const b_unsigned = @as(u32, @bitCast(self.stack.pop().?.i32));
-                    try self.stack.append(Value{ .i32 = @bitCast(b_unsigned / a_unsigned) });
+                    try self.stack.append(.{ .i32 = @bitCast(b_unsigned / a_unsigned) });
                 },
                 .i32_rem_s => @panic("UNIMPLEMENTED"),
                 .i32_rem_u => {
@@ -462,32 +469,32 @@ pub const Runtime = struct {
                     if (divisor == 0) {
                         std.debug.panic("Divide by 0\n", .{});
                     }
-                    try self.stack.append(Value{ .i32 = @intCast(dividend - divisor * @divTrunc(dividend, divisor)) });
+                    try self.stack.append(.{ .i32 = @intCast(dividend - divisor * @divTrunc(dividend, divisor)) });
                 },
                 .i32_or => {
                     const a = self.stack.pop().?.i32;
                     const b = self.stack.pop().?.i32;
-                    try self.stack.append(Value{ .i32 = a | b });
+                    try self.stack.append(.{ .i32 = a | b });
                 },
                 .i32_xor => {
                     const a = self.stack.pop().?.i32;
                     const b = self.stack.pop().?.i32;
-                    try self.stack.append(Value{ .i32 = a ^ b });
+                    try self.stack.append(.{ .i32 = a ^ b });
                 },
                 .i32_shl => {
                     const a = self.stack.pop().?.i32;
                     const b = self.stack.pop().?.i32;
-                    try self.stack.append(Value{ .i32 = (b << @as(u5, @intCast(a))) });
+                    try self.stack.append(.{ .i32 = (b << @as(u5, @intCast(a))) });
                 },
                 .i32_shr_s => {
                     const a = self.stack.pop().?.i32;
                     const b = self.stack.pop().?.i32;
-                    try self.stack.append(Value{ .i32 = (b >> @as(u5, @intCast(a))) });
+                    try self.stack.append(.{ .i32 = (b >> @as(u5, @intCast(a))) });
                 },
                 .i32_shr_u => {
                     const a = @as(u32, @intCast(self.stack.pop().?.i32));
                     const b = @as(u32, @intCast(self.stack.pop().?.i32));
-                    try self.stack.append(Value{ .i32 = @intCast(b >> @as(u5, @intCast(a))) });
+                    try self.stack.append(.{ .i32 = @intCast(b >> @as(u5, @intCast(a))) });
                 },
                 .i32_rotl => @panic("UNIMPLEMENTED"),
                 .i32_rotr => @panic("UNIMPLEMENTED"),
@@ -498,20 +505,40 @@ pub const Runtime = struct {
                 .i64_add => {
                     const a = self.stack.pop().?.i64;
                     const b = self.stack.pop().?.i64;
-                    try self.stack.append(Value{ .i64 = a + b });
+                    try self.stack.append(.{ .i64 = a + b });
                 },
-                .i64_sub => @panic("UNIMPLEMENTED"),
-                .i64_mul => @panic("UNIMPLEMENTED"),
+                .i64_sub => {
+                    const a = self.stack.pop().?.i64;
+                    const b = self.stack.pop().?.i64;
+                    try self.stack.append(.{ .i64 = b - a });
+                },
+                .i64_mul => {
+                    const a = self.stack.pop().?.i64;
+                    const b = self.stack.pop().?.i64;
+                    try self.stack.append(.{ .i64 = a * b });
+                },
                 .i64_div_s => @panic("UNIMPLEMENTED"),
                 .i64_div_u => @panic("UNIMPLEMENTED"),
                 .i64_rem_s => @panic("UNIMPLEMENTED"),
                 .i64_rem_u => @panic("UNIMPLEMENTED"),
-                .i64_and => @panic("UNIMPLEMENTED"),
+                .i64_and => {
+                    const a = self.stack.pop().?.i64;
+                    const b = self.stack.pop().?.i64;
+                    try self.stack.append(.{ .i64 = a & b });
+                },
                 .i64_or => @panic("UNIMPLEMENTED"),
                 .i64_xor => @panic("UNIMPLEMENTED"),
-                .i64_shl => @panic("UNIMPLEMENTED"),
+                .i64_shl => {
+                    const a = self.stack.pop().?.i64;
+                    const b = self.stack.pop().?.i64;
+                    try self.stack.append(.{ .i64 = (b << @as(u6, @intCast(a))) });
+                },
                 .i64_shr_s => @panic("UNIMPLEMENTED"),
-                .i64_shr_u => @panic("UNIMPLEMENTED"),
+                .i64_shr_u => {
+                    const a = @as(u64, @intCast(self.stack.pop().?.i64));
+                    const b = @as(u64, @intCast(self.stack.pop().?.i64));
+                    try self.stack.append(.{ .i64 = @intCast(b >> @as(u6, @intCast(a))) });
+                },
                 .i64_rotl => @panic("UNIMPLEMENTED"),
                 .i64_rotr => @panic("UNIMPLEMENTED"),
 
@@ -545,14 +572,16 @@ pub const Runtime = struct {
                 .f64_max => @panic("UNIMPLEMENTED"),
                 .f64_copysign => @panic("UNIMPLEMENTED"),
 
-                .i32_wrap_i64 => @panic("UNIMPLEMENTED"),
+                .i32_wrap_i64 => {
+                    try self.stack.append(.{ .i32 = @truncate(self.stack.pop().?.i64) });
+                },
                 .i32_trunc_f32_s => @panic("UNIMPLEMENTED"),
                 .i32_trunc_f32_u => @panic("UNIMPLEMENTED"),
                 .i32_trunc_f64_s => @panic("UNIMPLEMENTED"),
                 .i32_trunc_f64_u => @panic("UNIMPLEMENTED"),
                 .i64_extend_i32_s => @panic("UNIMPLEMENTED"),
                 .i64_extend_i32_u => {
-                    try self.stack.append(.{ .i64 = @as(u32, @intCast(self.stack.pop().?.i32)) });
+                    try self.stack.append(.{ .i64 = @intCast(self.stack.pop().?.i32) });
                 },
                 .i64_trunc_f32_s => @panic("UNIMPLEMENTED"),
                 .i64_trunc_f32_u => @panic("UNIMPLEMENTED"),
@@ -595,7 +624,7 @@ pub const Runtime = struct {
     }
 
     // TODO: Do name resolution at parseTime
-    pub fn callExternal(self: *Runtime, allocator: Allocator, name: ExportFunction, parameters: []Value) !void {
+    pub fn externalCall(self: *Runtime, allocator: Allocator, name: ExportFunction, parameters: []Value) !void {
         switch (name) {
             .init => {
                 if (self.module.exports.init) |func| {
@@ -657,7 +686,7 @@ pub const Runtime = struct {
                 allocator.free(frame.locals);
             },
             .external => {
-                std.debug.panic("TODO: Handle external function {any}\n", .{function});
+                std.debug.panic("TODO: Handle external function {any} {any}\n", .{f.typ.external, self.module.exports});
                 // TODO(ernesto): handle external functions
                 // const name = self.module.imports[f.external].name;
                 // if (self.global_runtime.functions.get(name)) |external| {
