@@ -123,7 +123,7 @@ pub const Runtime = struct {
         loop: while (frame.program_counter < frame.code.opcodes.len) {
             const opcode: IR.Opcode = frame.code.opcodes[frame.program_counter];
             const index = frame.code.indices[frame.program_counter];
-            std.debug.print("Executing at {X} {any} {X}\n", .{frame.program_counter, opcode, if (opcode == IR.Opcode.br_if) @as(i64, @intCast(index.u32)) else -1});
+            // std.debug.print("Executing at {X} {any} {X}\n", .{frame.program_counter, opcode, if (opcode == IR.Opcode.br_if) @as(i64, @intCast(index.u32)) else -1});
             switch (opcode) {
                 .@"unreachable" => {
                     std.debug.panic("Reached unreachable statement at IR counter {any}\n", .{frame.program_counter});
@@ -656,7 +656,7 @@ pub const Runtime = struct {
         }
         switch (f.typ) {
             .internal => {
-                std.debug.print("Calling {d}\n", .{function});
+                // std.debug.print("Calling {d}\n", .{function});
                 const ir: IR = f.typ.internal.ir;
                 const function_type = f.func_type;
                 var frame = CallFrame{
