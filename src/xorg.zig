@@ -4,6 +4,7 @@ const sideros = @cImport({
 });
 const c = @cImport({
     @cInclude("xcb/xcb.h");
+    @cInclude("xcb/xcb_keysyms.h");
     @cInclude("vulkan/vulkan.h");
     @cInclude("vulkan/vulkan_xcb.h");
     @cInclude("xcb/xcb_icccm.h");
@@ -138,13 +139,15 @@ fn vulkan_cleanup(gameInit: sideros.GameInit) void {
 pub fn main() !void {
     const connection = c.xcb_connect(null, null);
     defer c.xcb_disconnect(connection);
+    const keysyms = c.xcb_key_symbols_alloc(connection);
+    defer c.xcb_key_symbols_free(keysyms);
 
     const setup = c.xcb_get_setup(connection);
     const iter = c.xcb_setup_roots_iterator(setup);
     const screen = iter.data;
 
     const mask = c.XCB_CW_EVENT_MASK;
-    const value = c.XCB_EVENT_MASK_EXPOSURE;
+    const value = c.XCB_EVENT_MASK_EXPOSURE | c.XCB_EVENT_MASK_KEY_PRESS | c.XCB_EVENT_MASK_KEY_RELEASE;
 
     const window = c.xcb_generate_id(connection);
     _ = c.xcb_create_window(connection, c.XCB_COPY_FROM_PARENT, window, screen.*.root, 0, 0, 800, 600, 10, c.XCB_WINDOW_CLASS_INPUT_OUTPUT, screen.*.root_visual, mask, &value);
@@ -170,6 +173,16 @@ pub fn main() !void {
     while (true) {
         if (c.xcb_poll_for_event(connection)) |e| {
             switch (e.*.response_type & ~@as(u32, 0x80)) {
+                c.XCB_KEY_PRESS => {
+                    const ev: *c.xcb_key_press_event_t = @ptrCast(e);
+                    const key = c.xcb_key_symbols_get_keysym(keysyms, ev.detail, 0);
+                    sideros.sideros_key_callback(key, false);
+                },
+                c.XCB_KEY_RELEASE => {
+                    const ev: *c.xcb_key_release_event_t = @ptrCast(e);
+                    const key = c.xcb_key_symbols_get_keysym(keysyms, ev.detail, 0);
+                    sideros.sideros_key_callback(key, false);
+                },
                 else => {},
             }
             std.c.free(e);

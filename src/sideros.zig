@@ -14,6 +14,10 @@ var gpa = std.heap.GeneralPurposeAllocator(.{}){};
 const allocator = gpa.allocator();
 var pool: ecs.Pool = undefined;
 var renderer: Renderer = undefined;
+var camera: rendering.Camera = .{
+    .position = .{ 0.0, 0.0, 5.0 },
+};
+var input: ecs.Input = .{ .key_pressed = .{false} ** @intFromEnum(ecs.Input.KeyCode.menu) };
 var resources: ecs.Resources = undefined;
 
 fn init_mods() void {
@@ -47,18 +51,15 @@ fn init_mods() void {
 
 export fn sideros_init(init: api.GameInit) callconv(.c) void {
     resources = .{
-        .camera = .{
-            .position = .{ 0.0, 5.0, -5.0 },
-            .target = .{ 0.0, 0.0, 0.0 },
-        },
+        .camera = &camera,
         .renderer = undefined,
-        .input = .{ .key_pressed = .{false} ** @intFromEnum(ecs.Input.KeyCode.menu) },
+        .input = &input,
     };
 
     pool = ecs.Pool.init(allocator, &resources) catch @panic("TODO: Gracefully handle error");
     // TODO(ernesto): I think this @ptrCast are unavoidable but maybe not?
     renderer = Renderer.init(allocator, @ptrCast(init.instance), @ptrCast(init.surface)) catch @panic("TODO: Gracefully handle error");
-    pool.addSystemGroup(&[_]ecs.System{Renderer.render}, true) catch @panic("TODO: Gracefuly handle error");
+    pool.addSystemGroup(&[_]ecs.System{Renderer.render, rendering.Camera.moveCamera}, true) catch @panic("TODO: Gracefuly handle error");
     pool.resources.renderer = &renderer;
     pool.tick();
     init_mods();
@@ -73,4 +74,14 @@ export fn sideros_cleanup() callconv(.c) void {
     renderer.deinit();
     pool.deinit();
     if (gpa.deinit() != .ok) @panic("Memory leaked");
+}
+
+export fn sideros_key_callback(key: u32, release: bool) callconv(.c) void {
+    if (key <= @intFromEnum(ecs.Input.KeyCode.menu) and key >= @intFromEnum(ecs.Input.KeyCode.space)) {
+        if (release) {
+            input.key_pressed[key] = false;
+        } else {
+            input.key_pressed[key] = true;
+        }
+    }
 }

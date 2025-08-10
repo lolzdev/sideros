@@ -13,10 +13,10 @@ pub const SystemGroup = []const System;
 pub const SyncGroup = []const System;
 
 pub const Resources = struct {
-    camera: Camera,
+    camera: *Camera,
     renderer: *Renderer,
-    input: Input,
-    delta_time: f64 = 0.0,
+    input: *Input,
+    delta_time: f32 = 0.0,
 };
 
 pub const Human = struct {

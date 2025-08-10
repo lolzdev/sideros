@@ -109,18 +109,18 @@ pub fn render(pool: *ecs.Pool) anyerror!void {
 
     const now = try std.time.Instant.now();
     const delta_time: f32 = @as(f32, @floatFromInt(now.since(renderer.previous_time))) / @as(f32, 1_000_000_000.0);
+    pool.resources.delta_time = delta_time;
     renderer.previous_time = now;
 
+    const view = camera.getView();
     const view_memory = renderer.graphics_pipeline.view_memory;
-    @memcpy(view_memory[0..@sizeOf(math.Matrix)], std.mem.asBytes(&camera.getView()));
+    @memcpy(view_memory[0..@sizeOf(math.Matrix)], std.mem.asBytes(&view));
 
     const view_pos_memory = renderer.graphics_pipeline.view_pos_memory;
     const view_pos: [*]f32 = @alignCast(@ptrCast(view_pos_memory));
     view_pos[0] = camera.position[0];
     view_pos[1] = camera.position[1];
     view_pos[2] = camera.position[2];
-
-    _ = delta_time;
 
     const transform_memory = renderer.graphics_pipeline.transform_buffer.mapped_memory;
 

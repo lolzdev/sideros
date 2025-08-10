@@ -47,8 +47,7 @@ pub const Matrix = extern struct {
 
     pub fn lookAt(eye: [3]f32, target: [3]f32, arbitrary_up: [3]f32) Matrix {
         const t: @Vector(3, f32) = target;
-        var e: @Vector(3, f32) = eye;
-        e = -e;
+        const e: @Vector(3, f32) = eye;
         const u: @Vector(3, f32) = arbitrary_up;
         const forward = normalize(t - e);
         const right = normalize(cross(forward, u));

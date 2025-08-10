@@ -2,6 +2,7 @@ const std = @import("std");
 const c = @cImport({
     @cInclude("wayland-client.h");
     @cInclude("xdg-shell.h");
+    @cInclude("xkbcommon/xkbcommon.h");
     @cInclude("vulkan/vulkan.h");
     @cInclude("vulkan/vulkan_wayland.h");
 });
@@ -16,11 +17,22 @@ var quit = false;
 var new_width: u32 = 0;
 var new_height: u32 = 0;
 
+fn mapKeysym(keysym: u32) u32 {
+    return switch (keysym) {
+        0xffe1 => 340,
+        else => keysym,
+    };
+}
+
 const State = struct {
     compositor: ?*c.wl_compositor = null,
     shell: ?*c.xdg_wm_base = null,
     surface: ?*c.wl_surface = null,
+    seat: ?*c.wl_seat = null,
     configured: bool = false,
+    xkb_context: ?*c.xkb_context = null,
+    xkb_state: ?*c.xkb_state = null,
+    allocator: std.mem.Allocator,
 };
 
 const validation_layers: []const [*c]const u8 = if (!debug) &[0][*c]const u8{} else &[_][*c]const u8{
@@ -156,6 +168,8 @@ fn registryHandleGlobal(data: ?*anyopaque, registry: ?*c.wl_registry, name: u32,
     } else if (std.mem.eql(u8, @as([:0]const u8, std.mem.span(interface)), std.mem.span(c.xdg_wm_base_interface.name))) {
         state.shell = @ptrCast(c.wl_registry_bind(registry.?, name, &c.xdg_wm_base_interface, 4));
         _ = c.xdg_wm_base_add_listener(state.shell, &shell_listener, null);
+    } else if (std.mem.eql(u8, @as([:0]const u8, std.mem.span(interface)), std.mem.span(c.wl_seat_interface.name))) {
+        state.seat = @ptrCast(c.wl_registry_bind(registry.?, name, &c.wl_seat_interface, 4));
     }
 }
 
@@ -216,6 +230,62 @@ fn frameHandleDone(data: ?*anyopaque, callback: ?*c.wl_callback, time: u32) call
     _ = c.wl_surface_commit(state.surface);
 }
 
+fn keyboardHandleKeymap(data: ?*anyopaque, keyboard: ?*c.wl_keyboard, format: u32, fd: i32, size: u32) callconv(.c) void {
+    _ = keyboard;
+    _ = format;
+
+    const state: *State = @alignCast(@ptrCast(data));
+
+    const addr = std.posix.mmap(null, size, std.posix.PROT.READ, std.os.linux.MAP { .TYPE = .PRIVATE }, fd, 0) catch @panic("Can't mmap keymap data");
+    const mapped: []u8 = @as([*]u8, @ptrCast(addr))[0..size];
+
+    const keymap = c.xkb_keymap_new_from_string(state.xkb_context, @ptrCast(mapped), c.XKB_KEYMAP_FORMAT_TEXT_V1, c.XKB_KEYMAP_COMPILE_NO_FLAGS);
+    state.xkb_state = c.xkb_state_new(keymap);
+}
+
+fn keyboardHandleEnter(data: ?*anyopaque, keyboard: ?*c.wl_keyboard, serial: u32, surface: ?*c.wl_surface, keys: ?*c.wl_array) callconv(.c) void {
+    _ = data;
+    _ = keyboard;
+    _ = serial;
+    _ = surface;
+    _ = keys;
+}
+
+fn keyboardHandleLeave(data: ?*anyopaque, keyboard: ?*c.wl_keyboard, serial: u32, surface: ?*c.wl_surface) callconv(.c) void {
+    _ = data;
+    _ = keyboard;
+    _ = serial;
+    _ = surface;
+}
+
+fn keyboardHandleKey(data: ?*anyopaque, keyboard: ?*c.wl_keyboard, serial: u32, time: u32, key: u32, s: u32) callconv(.c) void {
+    _ = keyboard;
+    _ = serial;
+    _ = time;
+
+    const state: *State = @alignCast(@ptrCast(data));
+
+    const keysym = c.xkb_state_key_get_one_sym(state.xkb_state, key+8);
+    sideros.sideros_key_callback(mapKeysym(keysym), s == 0);
+}
+
+fn keyboardHandleModifiers(data: ?*anyopaque, keyboard: ?*c.wl_keyboard, serial: u32, mods_depressed: u32, mods_latched: u32, mods_locked: u32, group: u32) callconv(.c) void {
+    _ = data;
+    _ = keyboard;
+    _ = serial;
+    _ = mods_depressed;
+    _ = mods_latched;
+    _ = mods_locked;
+    _ = group;
+}
+
+fn keyboardHandleRepeatInfo(data: ?*anyopaque, keyboard: ?*c.wl_keyboard, rate: i32, delay: i32) callconv(.c) void {
+    _ = data;
+    _ = keyboard;
+    _ = rate;
+    _ = delay;
+}
+
 const frame_listener: c.wl_callback_listener = .{
     .done = frameHandleDone,
 };
@@ -239,8 +309,22 @@ const registry_listener: c.wl_registry_listener = .{
     .global_remove = registryHandleGlobalRemove,
 };
 
+const keyboard_listener: c.wl_keyboard_listener = .{
+    .keymap = keyboardHandleKeymap,
+    .enter = keyboardHandleEnter,
+    .leave = keyboardHandleLeave,
+    .key = keyboardHandleKey,
+    .modifiers = keyboardHandleModifiers,
+    .repeat_info = keyboardHandleRepeatInfo,
+};
+
 pub fn main() !void {
-    var state: State = .{};
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    const allocator = gpa.allocator();
+    defer if (gpa.deinit() != .ok) @panic("Platform memory leaked");
+
+    var state: State = .{ .allocator = allocator };
+    state.xkb_context = c.xkb_context_new(c.XKB_CONTEXT_NO_FLAGS);
     const display = c.wl_display_connect(null);
     defer c.wl_display_disconnect(display);
     if (display == null) {
@@ -250,6 +334,9 @@ pub fn main() !void {
     const registry = c.wl_display_get_registry(display);
     _ = c.wl_registry_add_listener(registry, &registry_listener, @ptrCast(&state));
     _ = c.wl_display_roundtrip(display);
+
+    const keyboard = c.wl_seat_get_keyboard(state.seat);
+    _ = c.wl_keyboard_add_listener(keyboard, &keyboard_listener, @ptrCast(&state));
 
     const surface = c.wl_compositor_create_surface(state.compositor);
     const xdg_surface = c.xdg_wm_base_get_xdg_surface(state.shell, surface);
@@ -272,9 +359,6 @@ pub fn main() !void {
     }
 
 
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    const allocator = gpa.allocator();
-    defer if (gpa.deinit() != .ok) @panic("Platform memory leaked");
 
     const gameInit = try vulkan_init(allocator, display, surface);
     defer vulkan_cleanup(gameInit);

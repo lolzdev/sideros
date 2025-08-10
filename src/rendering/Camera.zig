@@ -12,32 +12,39 @@ pub const Uniform = struct {
 };
 
 position: @Vector(3, f32),
-target: @Vector(3, f32) = .{ 0.0, 0.0, 0.0 },
-front: @Vector(3, f32) = .{ 0.0, 0.0, 1.0 },
+target: @Vector(3, f32) = .{ 0.0, 0.0, -1.0 },
 up: @Vector(3, f32) = .{ 0.0, 1.0, 0.0 },
-speed: f32 = 2.5,
+speed: f32 = 5,
 
 pub fn getProjection(width: usize, height: usize) math.Matrix {
     return math.Matrix.perspective(math.rad(45.0), (@as(f32, @floatFromInt(width)) / @as(f32, @floatFromInt(height))), 0.1, 100.0);
 }
 
-pub fn getView(self: Camera) math.Matrix {
-    return math.Matrix.lookAt(self.position, self.target, self.up);
+pub fn getView(self: *Camera) math.Matrix {
+    return math.Matrix.lookAt(self.position, self.position + self.target, self.up);
 }
 
-pub fn moveCamera(pool: *ecs.Pool) void {
+pub fn moveCamera(pool: *ecs.Pool) !void {
     const input = pool.resources.input;
-    const camera = pool.resources.camera;
+    var camera = pool.resources.camera;
+    const mul = @as(@Vector(3, f32), @splat(camera.speed * pool.resources.delta_time));
+
     if (input.isKeyDown(.w)) {
-        camera.position += (camera.front * (camera.speed * pool.resources.delta_time));
+        camera.position += camera.target * mul;
     }
     if (input.isKeyDown(.s)) {
-        camera.position -= (camera.front * (camera.speed * pool.resources.delta_time));
+        camera.position -= camera.target * mul;
     }
     if (input.isKeyDown(.a)) {
-        camera.position -= math.normalize(math.cross(camera.front, camera.up)) * (camera.speed * pool.resources.delta_time);
+        camera.position -= math.normalize(math.cross(camera.target, camera.up)) * mul;
     }
     if (input.isKeyDown(.d)) {
-        camera.position += math.normalize(math.cross(camera.front, camera.up)) * (camera.speed * pool.resources.delta_time);
+        camera.position += math.normalize(math.cross(camera.target, camera.up)) * mul;
+    }
+    if (input.isKeyDown(.space)) {
+        camera.position += camera.up * mul;
+    }
+    if (input.isKeyDown(.left_shift)) {
+        camera.position -= camera.up * mul;
     }
 }

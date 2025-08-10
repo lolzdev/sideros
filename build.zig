@@ -77,9 +77,11 @@ pub fn build(b: *std.Build) void {
             if (wayland) {
                 exe.root_module.addIncludePath(b.path("ext"));
                 exe.linkSystemLibrary("wayland-client");
+                exe.linkSystemLibrary("xkbcommon");
                 exe.root_module.addCSourceFile(.{ .file = b.path("ext/xdg-shell.c") });
             } else {
                 exe.linkSystemLibrary("xcb");
+                exe.linkSystemLibrary("xcb-keysyms");
                 exe.linkSystemLibrary("xcb-icccm");
             }
             b.installArtifact(exe);

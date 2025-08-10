@@ -185,6 +185,7 @@ pub fn create_device(self: *PhysicalDevice, surface: vk.Surface, allocator: Allo
         samples = 2;
     }
 
+
     std.debug.print("Using {} samples for MSAA\n", .{samples});
 
     return .{
