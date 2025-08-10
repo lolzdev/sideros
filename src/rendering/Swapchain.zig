@@ -11,6 +11,9 @@ image_views: []c.VkImageView,
 format: c.VkSurfaceFormatKHR,
 extent: c.VkExtent2D,
 framebuffers: []c.VkFramebuffer,
+color_image: c.VkImage,
+color_image_memory: c.VkDeviceMemory,
+color_image_view: c.VkImageView,
 
 allocator: Allocator,
 
@@ -133,13 +136,15 @@ pub fn init(allocator: Allocator, surface: vk.Surface, device: vk.Device, physic
         try vk.mapError(c.vkCreateImageView(device.handle, &view_create_info, null, &(image_views[index])));
     }
 
+    const color_image, const color_image_view, const color_image_memory = try createColorResources(device, device.msaa_samples, format.format);
+
     const framebuffers = try allocator.alloc(c.VkFramebuffer, image_count);
     for (image_views, 0..) |view, index| {
-        const attachments = &[_]c.VkImageView { view, render_pass.depth_view };
+        const attachments = &[_]c.VkImageView {color_image_view, render_pass.depth_view, view};
         const framebuffer_info: c.VkFramebufferCreateInfo = .{
             .sType = c.VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO,
             .renderPass = render_pass.handle,
-            .attachmentCount = 2,
+            .attachmentCount = 3,
             .pAttachments = attachments[0..].ptr,
             .width = extent.width,
             .height = extent.height,
@@ -157,6 +162,9 @@ pub fn init(allocator: Allocator, surface: vk.Surface, device: vk.Device, physic
         .image_views = image_views[0..image_count],
         .framebuffers = framebuffers,
         .allocator = allocator,
+        .color_image = color_image,
+        .color_image_view = color_image_view,
+        .color_image_memory = color_image_memory,
     };
 }
 
@@ -166,6 +174,63 @@ pub fn nextImage(self: Self, device: vk.Device, frame: usize) !usize {
     try vk.mapError(c.vkAcquireNextImageKHR(device.handle, self.handle, std.math.maxInt(u64), device.image_available[frame], null, &index));
 
     return @intCast(index);
+}
+
+fn createColorResources(device: vk.Device, samples: c.VkSampleCountFlags, format: c.VkFormat) !struct { c.VkImage, c.VkImageView, c.VkDeviceMemory } {
+    const create_info: c.VkImageCreateInfo = .{
+        .sType = c.VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
+        .imageType = c.VK_IMAGE_TYPE_2D,
+        .extent = .{
+            .width = @intCast(800),
+            .height = @intCast(600),
+            .depth = 1,
+        },
+        .mipLevels = 1,
+        .arrayLayers = 1,
+        .format = format,
+        .tiling = c.VK_IMAGE_TILING_OPTIMAL,
+        .initialLayout = c.VK_IMAGE_LAYOUT_UNDEFINED,
+        .usage = c.VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT | c.VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
+        .sharingMode = c.VK_SHARING_MODE_EXCLUSIVE,
+        .samples = samples,
+        .flags = 0,
+    };
+
+    var image: c.VkImage = undefined;
+    var image_memory: c.VkDeviceMemory = undefined;
+    try vk.mapError(c.vkCreateImage(device.handle, &create_info, null, &image));
+
+    var memory_requirements: c.VkMemoryRequirements = undefined;
+    c.vkGetImageMemoryRequirements(device.handle, image, &memory_requirements);
+
+    const alloc_info: c.VkMemoryAllocateInfo = .{
+        .sType = c.VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
+        .allocationSize = memory_requirements.size,
+        .memoryTypeIndex = try device.findMemoryType(memory_requirements.memoryTypeBits, c.VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT),
+    };
+
+    try vk.mapError(c.vkAllocateMemory(device.handle, &alloc_info, null, &image_memory));
+    try vk.mapError(c.vkBindImageMemory(device.handle, image, image_memory, 0));
+
+    const view_create_info: c.VkImageViewCreateInfo = .{
+        .sType = c.VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
+        .image = image,
+        .viewType = c.VK_IMAGE_VIEW_TYPE_2D,
+        .format = format,
+        .subresourceRange = .{
+            .aspectMask = c.VK_IMAGE_ASPECT_COLOR_BIT,
+            .baseMipLevel = 0,
+            .levelCount = 1,
+            .baseArrayLayer = 0,
+            .layerCount = 1,
+        },
+    };
+
+    var image_view: c.VkImageView = undefined;
+
+    try vk.mapError(c.vkCreateImageView(device.handle, &view_create_info, null, &image_view));
+
+    return .{ image, image_view, image_memory };
 }
 
 pub fn deinit(self: Self, device: vk.Device) void {

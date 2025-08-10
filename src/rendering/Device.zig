@@ -17,6 +17,7 @@ graphics_family: u32,
 present_family: u32,
 device_properties: c.VkPhysicalDeviceProperties,
 memory_properties: c.VkPhysicalDeviceMemoryProperties,
+msaa_samples: c.VkSampleCountFlags,
 
 const Self = @This();
 

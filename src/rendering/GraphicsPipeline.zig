@@ -264,7 +264,7 @@ pub fn init(allocator: Allocator, device: vk.Device, swapchain: vk.Swapchain, re
     const multisampling_info: c.VkPipelineMultisampleStateCreateInfo = .{
         .sType = c.VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO,
         .sampleShadingEnable = c.VK_FALSE,
-        .rasterizationSamples = c.VK_SAMPLE_COUNT_1_BIT,
+        .rasterizationSamples = device.msaa_samples,
     };
 
     const color_blend_attachment: c.VkPipelineColorBlendAttachmentState = .{

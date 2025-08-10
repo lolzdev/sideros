@@ -19,8 +19,7 @@ swapchain: vk.Swapchain,
 graphics_pipeline: vk.GraphicsPipeline,
 current_frame: u32,
 mesh: Mesh,
-transform: math.Transform,
-transform2: math.Transform,
+transforms: std.ArrayList(math.Transform),
 previous_time: std.time.Instant,
 
 pub fn init(allocator: Allocator, instance_handle: vk.c.VkInstance, surface_handle: vk.c.VkSurfaceKHR) !Renderer {
@@ -67,13 +66,18 @@ pub fn init(allocator: Allocator, instance_handle: vk.c.VkInstance, surface_hand
     graphics_pipeline.point_lights[0].diffuse = .{0.5, 0.5, 0.5};
     graphics_pipeline.point_lights[0].specular = .{1.0, 1.0, 1.0};
 
-    graphics_pipeline.point_lights[1].position = .{-1.0, 1.0, 0.0};
+    graphics_pipeline.point_lights[1].position = .{1.0, 1.0, 0.0};
     graphics_pipeline.point_lights[1].data[0] = 1.0;
     graphics_pipeline.point_lights[1].data[1] = 0.9;
     graphics_pipeline.point_lights[1].data[2] = 0.8;
     graphics_pipeline.point_lights[1].ambient = .{0.2, 0.2, 0.2};
     graphics_pipeline.point_lights[1].diffuse = .{0.5, 0.5, 0.5};
     graphics_pipeline.point_lights[1].specular = .{1.0, 1.0, 1.0};
+
+    var transforms = std.ArrayList(math.Transform).init(allocator);
+
+    try transforms.append(math.Transform.init(.{0.0, 0.0, -1.0}, .{0.5, 0.5, 0.5}, .{0.0, 0.0, 0.0}));
+    try transforms.append(math.Transform.init(.{0.0, 0.0, 0.0}, .{0.5, 0.5, 0.5}, .{0.0, 0.0, 0.0}));
 
     return Renderer{
         .instance = instance,
@@ -84,8 +88,7 @@ pub fn init(allocator: Allocator, instance_handle: vk.c.VkInstance, surface_hand
         .swapchain = swapchain,
         .graphics_pipeline = graphics_pipeline,
         .current_frame = 0,
-        .transform = math.Transform.init(.{0.0, 0.0, -1.0}, .{0.5, 0.5, 0.5}, .{0.0, 0.0, 0.0}),
-        .transform2 = math.Transform.init(.{0.0, 0.0, 0.0}, .{0.5, 0.5, 0.5}, .{0.0, 0.0, 0.0}),
+        .transforms = transforms,
         .previous_time = try std.time.Instant.now(),
         .mesh = mesh,
     };
@@ -118,15 +121,8 @@ pub fn render(pool: *ecs.Pool) anyerror!void {
     view_pos[2] = camera.position[2];
 
     _ = delta_time;
-    //renderer.transform.rotate(math.rad(15) * delta_time, .{0.0, 1.0, 0.0});
-    //renderer.transform2.rotate(math.rad(-15) * delta_time, .{0.0, 1.0, 0.0});
-
-    //renderer.transform.rotate(math.rad(15) * delta_time, .{1.0, 0.0, 0.0});
-    //renderer.transform2.rotate(math.rad(-15) * delta_time, .{1.0, 0.0, 0.0});
 
     const transform_memory = renderer.graphics_pipeline.transform_buffer.mapped_memory;
-    transform_memory[0] = renderer.transform;
-    transform_memory[1] = renderer.transform2;
 
     try renderer.device.waitFence(renderer.current_frame);
     const image = try renderer.swapchain.nextImage(renderer.device, renderer.current_frame);
@@ -138,13 +134,16 @@ pub fn render(pool: *ecs.Pool) anyerror!void {
     renderer.device.bindIndexBuffer(renderer.graphics_pipeline.index_buffer, renderer.current_frame);
     renderer.device.bindDescriptorSets(renderer.graphics_pipeline, renderer.current_frame, 0);
     var lights: u32 = 2;
-    renderer.device.pushConstant(renderer.graphics_pipeline, c.VK_SHADER_STAGE_FRAGMENT_BIT, 0, 4, @ptrCast(&lights), renderer.current_frame);
-    var transform: u32 = 0;
-    renderer.device.pushConstant(renderer.graphics_pipeline, c.VK_SHADER_STAGE_VERTEX_BIT, 4, 4, @ptrCast(&transform), renderer.current_frame);
-    renderer.device.draw(renderer.mesh.index_count, renderer.current_frame, renderer.mesh);
-    transform = 1;
-    renderer.device.pushConstant(renderer.graphics_pipeline, c.VK_SHADER_STAGE_VERTEX_BIT, 4, 4, @ptrCast(&transform), renderer.current_frame);
-    renderer.device.draw(renderer.mesh.index_count, renderer.current_frame, renderer.mesh);
+
+    for (renderer.transforms.items, 0..) |transform, i| {
+        transform_memory[i] = transform;
+        var index = i;
+
+        renderer.device.pushConstant(renderer.graphics_pipeline, c.VK_SHADER_STAGE_FRAGMENT_BIT, 0, 4, @ptrCast(&lights), renderer.current_frame);
+        renderer.device.pushConstant(renderer.graphics_pipeline, c.VK_SHADER_STAGE_VERTEX_BIT, 4, 4, @ptrCast(&index), renderer.current_frame);
+        renderer.device.draw(renderer.mesh.index_count, renderer.current_frame, renderer.mesh);
+    }
+    
     renderer.render_pass.end(renderer.device, renderer.current_frame);
     try renderer.device.endCommand(renderer.current_frame);
 

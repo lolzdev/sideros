@@ -162,6 +162,14 @@ pub fn create_device(self: *PhysicalDevice, surface: vk.Surface, allocator: Allo
     var device_properties: c.VkPhysicalDeviceProperties = undefined;
     c.vkGetPhysicalDeviceProperties(self.handle, &device_properties);
 
+    const counts = device_properties.limits.framebufferColorSampleCounts & device_properties.limits.framebufferDepthSampleCounts;
+    var msaa_samples = c.VK_SAMPLE_COUNT_1_BIT;
+    if ((counts & c.VK_SAMPLE_COUNT_64_BIT) != 0) { msaa_samples = c.VK_SAMPLE_COUNT_64_BIT; }
+    if ((counts & c.VK_SAMPLE_COUNT_32_BIT) != 0) { msaa_samples = c.VK_SAMPLE_COUNT_32_BIT; }
+    if ((counts & c.VK_SAMPLE_COUNT_16_BIT) != 0) { msaa_samples = c.VK_SAMPLE_COUNT_16_BIT; }
+    if ((counts & c.VK_SAMPLE_COUNT_8_BIT) != 0) { msaa_samples = c.VK_SAMPLE_COUNT_8_BIT; }
+    if ((counts & c.VK_SAMPLE_COUNT_4_BIT) != 0) { msaa_samples = c.VK_SAMPLE_COUNT_4_BIT; }
+    if ((counts & c.VK_SAMPLE_COUNT_2_BIT) != 0) { msaa_samples = c.VK_SAMPLE_COUNT_2_BIT; }
 
     return .{
         .handle = device,
@@ -176,5 +184,6 @@ pub fn create_device(self: *PhysicalDevice, surface: vk.Surface, allocator: Allo
         .present_family = present_queue_index,
         .memory_properties = memory_properties,
         .device_properties = device_properties,
+        .msaa_samples = @bitCast(msaa_samples),
     };
 }
