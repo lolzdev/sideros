@@ -46,7 +46,7 @@ fn init_mods() void {
     defer runtime.deinit(allocator);
 
     var parameters = [_]mods.VM.Value{.{ .i32 = 17 }};
-    runtime.callExternal(allocator, .init, &parameters) catch @panic("Failed to call to init");
+    runtime.externalCall(allocator, .init, &parameters) catch @panic("Failed to call to init");
     const result = runtime.stack.pop().?;
     std.debug.print("Result of init: {any}\n", .{result});
 }
