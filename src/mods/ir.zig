@@ -630,7 +630,6 @@ const IRParserState = struct {
             0x02...0x03 => self.parseBlock(b),
             0x04 => self.parseIf(),
             0x0C...0x0D => self.parseBranch(b),
-            // 0x0E => self.parseTableBranch(b),
             0x0E => self.parseBrTable(b),
             0x0F => self.push(@enumFromInt(b), .{ .u64 = 0 }),
             0x10 => self.push(@enumFromInt(b), .{ .u32 = try self.parser.readU32() }),
@@ -793,14 +792,12 @@ const IRParserState = struct {
         var todel: std.ArrayListUnmanaged(u32) = .{};
         defer todel.deinit(self.allocator);
 
-        var idx: u32 = 0;
-        for (self.branches.items) |branch| {
+        for (self.branches.items, 0..) |branch, idx| {
             if (start <= branch.pc and branch.pc < end) {
                 const ptr = if (branch.table) &self.br_table_vectors.items[branch.index] else &self.indices.items[branch.index].u32;
                 if (ptr.* == 0) {
                     ptr.* = jump_addr;
                     try todel.append(self.allocator, @intCast(idx));
-                    idx += 1;
                 } else {
                     ptr.* -= 1;
                 }
@@ -863,7 +860,8 @@ pub fn parse(parser: *Parser) !IR {
         .allocator = parser.allocator,
     };
     try state.parseFunction();
-    // if (state.branches.count() != 0) return Parser.Error.unresolved_branch;
+    std.debug.print("Br length: {d}\n", .{state.branches.items.len});
+    if (state.branches.items.len != 0) return Parser.Error.unresolved_branch;
     return .{
         .opcodes = try state.opcodes.toOwnedSlice(state.allocator),
         .indices = try state.indices.toOwnedSlice(state.allocator),

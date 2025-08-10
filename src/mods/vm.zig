@@ -123,7 +123,7 @@ pub const Runtime = struct {
         loop: while (frame.program_counter < frame.code.opcodes.len) {
             const opcode: IR.Opcode = frame.code.opcodes[frame.program_counter];
             const index = frame.code.indices[frame.program_counter];
-            // std.debug.print("Executing at {X} {any} \n", .{frame.program_counter, opcode});
+            std.debug.print("Executing at {X} {any} {X}\n", .{frame.program_counter, opcode, if (opcode == IR.Opcode.br_if) @as(i64, @intCast(index.u32)) else -1});
             switch (opcode) {
                 .@"unreachable" => {
                     std.debug.panic("Reached unreachable statement at IR counter {any}\n", .{frame.program_counter});
@@ -134,7 +134,7 @@ pub const Runtime = struct {
                     continue;
                 },
                 .br_if => {
-                    if (self.stack.items[self.stack.items.len - 1].i32 != 0) {
+                    if (self.stack.pop().?.i32 != 0) {
                         frame.program_counter = index.u32;
                         continue;
                     }
@@ -408,7 +408,7 @@ pub const Runtime = struct {
                 .i64_lt_u => {
                     const a = @as(u64, @intCast(self.stack.pop().?.i64));
                     const b = @as(u64, @intCast(self.stack.pop().?.i64));
-                    try self.stack.append(Value{ .i32 = @intCast(@as(u1, @bitCast(b < a))) });
+                    try self.stack.append(Value{ .i64 = @intCast(@as(u1, @bitCast(b < a))) });
                 },
                 .i64_gt_s => @panic("UNIMPLEMENTED"),
                 .i64_gt_u => @panic("UNIMPLEMENTED"),
@@ -531,7 +531,7 @@ pub const Runtime = struct {
                 .i64_shl => {
                     const a = self.stack.pop().?.i64;
                     const b = self.stack.pop().?.i64;
-                    try self.stack.append(.{ .i64 = (b << @as(u6, @intCast(a))) });
+                    try self.stack.append(.{ .i64 = @intCast(b << @as(u6, @intCast(a))) });
                 },
                 .i64_shr_s => @panic("UNIMPLEMENTED"),
                 .i64_shr_u => {
@@ -656,6 +656,7 @@ pub const Runtime = struct {
         }
         switch (f.typ) {
             .internal => {
+                std.debug.print("Calling {d}\n", .{function});
                 const ir: IR = f.typ.internal.ir;
                 const function_type = f.func_type;
                 var frame = CallFrame{
