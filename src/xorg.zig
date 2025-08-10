@@ -34,6 +34,13 @@ fn mapError(result: c_int) !void {
     };
 }
 
+fn mapKeysym(keysym: u32) u32 {
+    return switch (keysym) {
+        0xffe1 => 340,
+        else => keysym,
+    };
+}
+
 fn vulkan_init_instance(allocator: std.mem.Allocator, handle: *c.VkInstance) !void {
     const extensions = [_][*c]const u8{ c.VK_KHR_XCB_SURFACE_EXTENSION_NAME, c.VK_KHR_SURFACE_EXTENSION_NAME };
 
@@ -176,12 +183,12 @@ pub fn main() !void {
                 c.XCB_KEY_PRESS => {
                     const ev: *c.xcb_key_press_event_t = @ptrCast(e);
                     const key = c.xcb_key_symbols_get_keysym(keysyms, ev.detail, 0);
-                    sideros.sideros_key_callback(key, false);
+                    sideros.sideros_key_callback(mapKeysym(key), false);
                 },
                 c.XCB_KEY_RELEASE => {
                     const ev: *c.xcb_key_release_event_t = @ptrCast(e);
                     const key = c.xcb_key_symbols_get_keysym(keysyms, ev.detail, 0);
-                    sideros.sideros_key_callback(key, false);
+                    sideros.sideros_key_callback(mapKeysym(key), true);
                 },
                 else => {},
             }
