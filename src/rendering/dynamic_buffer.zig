@@ -86,7 +86,7 @@ pub fn DynamicBuffer(comptime T: type) type {
 
             var free_indices = std.ArrayList(usize).init(allocator);
             for (0..10) |i| {
-                free_indices.append(i);
+                try free_indices.append(i);
             }
 
             return .{

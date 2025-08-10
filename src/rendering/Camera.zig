@@ -24,27 +24,4 @@ pub fn getView(self: *Camera) math.Matrix {
     return math.Matrix.lookAt(self.position, self.position + self.target, self.up);
 }
 
-pub fn moveCamera(pool: *ecs.Pool) !void {
-    const input = pool.resources.input;
-    var camera = pool.resources.camera;
-    const mul = @as(@Vector(3, f32), @splat(camera.speed * pool.resources.delta_time));
 
-    if (input.isKeyDown(.w)) {
-        camera.position += camera.target * mul;
-    }
-    if (input.isKeyDown(.s)) {
-        camera.position -= camera.target * mul;
-    }
-    if (input.isKeyDown(.a)) {
-        camera.position -= math.normalize(math.cross(camera.target, camera.up)) * mul;
-    }
-    if (input.isKeyDown(.d)) {
-        camera.position += math.normalize(math.cross(camera.target, camera.up)) * mul;
-    }
-    if (input.isKeyDown(.space)) {
-        camera.position += camera.up * mul;
-    }
-    if (input.isKeyDown(.left_shift)) {
-        camera.position -= camera.up * mul;
-    }
-}

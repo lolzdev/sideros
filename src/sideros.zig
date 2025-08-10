@@ -10,6 +10,8 @@ const api = @cImport({
 
 const std = @import("std");
 
+const systems = @import("systems.zig");
+
 var gpa = std.heap.GeneralPurposeAllocator(.{}){};
 const allocator = gpa.allocator();
 var pool: ecs.Pool = undefined;
@@ -59,7 +61,7 @@ export fn sideros_init(init: api.GameInit) callconv(.c) void {
     pool = ecs.Pool.init(allocator, &resources) catch @panic("TODO: Gracefully handle error");
     // TODO(ernesto): I think this @ptrCast are unavoidable but maybe not?
     renderer = Renderer.init(allocator, @ptrCast(init.instance), @ptrCast(init.surface)) catch @panic("TODO: Gracefully handle error");
-    pool.addSystemGroup(&[_]ecs.System{Renderer.render, rendering.Camera.moveCamera}, true) catch @panic("TODO: Gracefuly handle error");
+    pool.addSystemGroup(&[_]ecs.System{systems.render, systems.moveCamera}, true) catch @panic("TODO: Gracefuly handle error");
     pool.resources.renderer = &renderer;
     pool.tick();
     init_mods();

@@ -1,5 +1,4 @@
 const math = @import("math");
-const ecs = @import("ecs");
 const std = @import("std");
 const vk = @import("vulkan.zig");
 const c = vk.c;
@@ -8,7 +7,7 @@ const Texture = vk.Texture;
 const Camera = @import("Camera.zig");
 const Allocator = std.mem.Allocator;
 
-const Renderer = @This();
+const Self = @This();
 
 instance: vk.Instance,
 surface: vk.Surface,
@@ -21,8 +20,9 @@ current_frame: u32,
 mesh: Mesh,
 transforms: std.ArrayList(math.Transform),
 previous_time: std.time.Instant,
+current_image: usize,
 
-pub fn init(allocator: Allocator, instance_handle: vk.c.VkInstance, surface_handle: vk.c.VkSurfaceKHR) !Renderer {
+pub fn init(allocator: Allocator, instance_handle: vk.c.VkInstance, surface_handle: vk.c.VkSurfaceKHR) !Self {
     const instance: vk.Instance = .{ .handle = instance_handle };
     const surface: vk.Surface = .{ .handle = surface_handle };
     var physical_device = try vk.PhysicalDevice.pick(allocator, instance);
@@ -79,7 +79,7 @@ pub fn init(allocator: Allocator, instance_handle: vk.c.VkInstance, surface_hand
     try transforms.append(math.Transform.init(.{0.0, 0.0, -1.0}, .{0.5, 0.5, 0.5}, .{0.0, 0.0, 0.0}));
     try transforms.append(math.Transform.init(.{0.0, 0.0, 0.0}, .{0.5, 0.5, 0.5}, .{0.0, 0.0, 0.0}));
 
-    return Renderer{
+    return .{
         .instance = instance,
         .surface = surface,
         .physical_device = physical_device,
@@ -91,10 +91,11 @@ pub fn init(allocator: Allocator, instance_handle: vk.c.VkInstance, surface_hand
         .transforms = transforms,
         .previous_time = try std.time.Instant.now(),
         .mesh = mesh,
+        .current_image = undefined,
     };
 }
 
-pub fn deinit(self: Renderer) void {
+pub fn deinit(self: Self) void {
     self.device.waitIdle();
     self.graphics_pipeline.deinit(self.device);
     self.swapchain.deinit(self.device);
@@ -102,54 +103,48 @@ pub fn deinit(self: Renderer) void {
     self.device.deinit();
 }
 
-// TODO: render is maybe a bad name? something like present() or submit() is better?
-pub fn render(pool: *ecs.Pool) anyerror!void {
-    var renderer = pool.resources.renderer;
-    var camera = pool.resources.camera;
-
-    const now = try std.time.Instant.now();
-    const delta_time: f32 = @as(f32, @floatFromInt(now.since(renderer.previous_time))) / @as(f32, 1_000_000_000.0);
-    pool.resources.delta_time = delta_time;
-    renderer.previous_time = now;
-
+pub fn setCamera(self: *Self, camera: *Camera) void {
     const view = camera.getView();
-    const view_memory = renderer.graphics_pipeline.view_memory;
+    const view_memory = self.graphics_pipeline.view_memory;
     @memcpy(view_memory[0..@sizeOf(math.Matrix)], std.mem.asBytes(&view));
 
-    const view_pos_memory = renderer.graphics_pipeline.view_pos_memory;
+    const view_pos_memory = self.graphics_pipeline.view_pos_memory;
     const view_pos: [*]f32 = @alignCast(@ptrCast(view_pos_memory));
     view_pos[0] = camera.position[0];
     view_pos[1] = camera.position[1];
     view_pos[2] = camera.position[2];
-
-    const transform_memory = renderer.graphics_pipeline.transform_buffer.mapped_memory;
-
-    try renderer.device.waitFence(renderer.current_frame);
-    const image = try renderer.swapchain.nextImage(renderer.device, renderer.current_frame);
-    try renderer.device.resetCommand(renderer.current_frame);
-    try renderer.device.beginCommand(renderer.current_frame);
-    renderer.render_pass.begin(renderer.swapchain, renderer.device, image, renderer.current_frame);
-    renderer.graphics_pipeline.bind(renderer.device, renderer.current_frame);
-    renderer.device.bindVertexBuffer(renderer.graphics_pipeline.vertex_buffer, renderer.current_frame);
-    renderer.device.bindIndexBuffer(renderer.graphics_pipeline.index_buffer, renderer.current_frame);
-    renderer.device.bindDescriptorSets(renderer.graphics_pipeline, renderer.current_frame, 0);
-    var lights: u32 = 2;
-
-    for (renderer.transforms.items, 0..) |transform, i| {
-        transform_memory[i] = transform;
-        var index = i;
-
-        renderer.device.pushConstant(renderer.graphics_pipeline, c.VK_SHADER_STAGE_FRAGMENT_BIT, 0, 4, @ptrCast(&lights), renderer.current_frame);
-        renderer.device.pushConstant(renderer.graphics_pipeline, c.VK_SHADER_STAGE_VERTEX_BIT, 4, 4, @ptrCast(&index), renderer.current_frame);
-        renderer.device.draw(renderer.mesh.index_count, renderer.current_frame, renderer.mesh);
-    }
-    
-    renderer.render_pass.end(renderer.device, renderer.current_frame);
-    try renderer.device.endCommand(renderer.current_frame);
-
-    try renderer.device.submit(renderer.swapchain, image, renderer.current_frame);
-
-    renderer.current_frame = (renderer.current_frame + 1) % 2;
-
-    renderer.device.waitIdle();
 }
+
+pub fn begin(self: *Self) !void {
+    try self.device.waitFence(self.current_frame);
+    const image = try self.swapchain.nextImage(self.device, self.current_frame);
+    try self.device.resetCommand(self.current_frame);
+    try self.device.beginCommand(self.current_frame);
+    self.render_pass.begin(self.swapchain, self.device, image, self.current_frame);
+    self.graphics_pipeline.bind(self.device, self.current_frame);
+    self.device.bindVertexBuffer(self.graphics_pipeline.vertex_buffer, self.current_frame);
+    self.device.bindIndexBuffer(self.graphics_pipeline.index_buffer, self.current_frame);
+    self.device.bindDescriptorSets(self.graphics_pipeline, self.current_frame, 0);
+    self.current_image = image;
+}
+
+pub fn setLightCount(self: *Self, count: u32) void {
+    self.device.pushConstant(self.graphics_pipeline, c.VK_SHADER_STAGE_FRAGMENT_BIT, 0, 4, @constCast(@ptrCast(&count)), self.current_frame);
+}
+
+pub fn setTransform(self: *Self, transform: u32) void {
+    self.device.pushConstant(self.graphics_pipeline, c.VK_SHADER_STAGE_VERTEX_BIT, 4, 4, @constCast(@ptrCast(&transform)), self.current_frame);
+}
+
+pub fn end(self: *Self) !void {
+    self.render_pass.end(self.device, self.current_frame);
+    try self.device.endCommand(self.current_frame);
+
+    try self.device.submit(self.swapchain, self.current_image, self.current_frame);
+
+    self.current_frame = (self.current_frame + 1) % 2;
+
+    self.device.waitIdle();
+}
+
+

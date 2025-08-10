@@ -18,12 +18,6 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
 
-    const ecs = b.createModule(.{
-        .root_source_file = b.path("src/ecs/ecs.zig"),
-        .target = target,
-        .optimize = optimize,
-    });
-
     const rendering = b.createModule(.{
         .root_source_file = b.path("src/rendering/rendering.zig"),
         .target = target,
@@ -33,7 +27,12 @@ pub fn build(b: *std.Build) void {
     rendering.addIncludePath(b.path("ext"));
     rendering.addCSourceFile(.{ .file = b.path("ext/stb_image.c") });
     rendering.addImport("math", math);
-    rendering.addImport("ecs", ecs);
+
+    const ecs = b.createModule(.{
+        .root_source_file = b.path("src/ecs/ecs.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
     ecs.addImport("rendering", rendering);
 
     compileAllShaders(b, rendering);
@@ -52,6 +51,7 @@ pub fn build(b: *std.Build) void {
     sideros.root_module.addImport("mods", mods);
     sideros.root_module.addImport("ecs", ecs);
     sideros.root_module.addImport("rendering", rendering);
+    sideros.root_module.addImport("math", math);
 
     b.installArtifact(sideros);
 
