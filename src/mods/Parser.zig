@@ -81,6 +81,8 @@ pub fn deinit(self: Parser) void {
         self.allocator.free(t.returns);
     }
     self.allocator.free(self.types);
+    self.allocator.free(self.globalValues);
+    self.allocator.free(self.globalTypes);
 }
 
 pub fn module(self: *Parser) vm.Module {

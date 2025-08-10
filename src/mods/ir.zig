@@ -48,6 +48,8 @@ indices: []Index,
 // TODO: this could be a byte array and v128.const and i8x16.shuffle could live here too
 select_valtypes: []vm.Valtype,
 
+br_table_vectors: []u32,
+
 pub fn print(self: IR, writer: anytype) !void {
     for (self.opcodes, 0..) |op, i| {
         try writer.print("{x:3} {s}", .{ i, @tagName(op) });
@@ -860,12 +862,12 @@ pub fn parse(parser: *Parser) !IR {
         .allocator = parser.allocator,
     };
     try state.parseFunction();
-    std.debug.print("Br length: {d}\n", .{state.branches.items.len});
     if (state.branches.items.len != 0) return Parser.Error.unresolved_branch;
     return .{
         .opcodes = try state.opcodes.toOwnedSlice(state.allocator),
         .indices = try state.indices.toOwnedSlice(state.allocator),
         .select_valtypes = &.{},
+        .br_table_vectors = state.br_table_vectors.items
     };
 }
 
@@ -883,6 +885,7 @@ pub fn parseGlobalExpr(parser: *Parser) !IR {
         .opcodes = try state.opcodes.toOwnedSlice(state.allocator),
         .indices = try state.indices.toOwnedSlice(state.allocator),
         .select_valtypes = &.{},
+        .br_table_vectors = state.br_table_vectors.items
     };
 }
 
@@ -900,5 +903,6 @@ pub fn parseSingleExpr(parser: *Parser) !IR {
         .opcodes = try state.opcodes.toOwnedSlice(state.allocator),
         .indices = try state.indices.toOwnedSlice(state.allocator),
         .select_valtypes = &.{},
+        .br_table_vectors = state.br_table_vectors.items
     };
 }

@@ -60,10 +60,7 @@ pub const Module = struct {
     elems: [][]u32,
 
     pub fn deinit(self: Module, allocator: Allocator) void {
-        // self.exports.deinit(allocator);
         for (self.functions) |f| {
-            allocator.free(f.func_type.parameters);
-            allocator.free(f.func_type.returns);
             switch (f.typ) {
                 .internal => {
                     allocator.free(f.typ.internal.ir.opcodes);
@@ -75,6 +72,12 @@ pub const Module = struct {
             }
         }
         allocator.free(self.functions);
+        allocator.free(self.data);
+        allocator.free(self.tables);
+        for (self.elems) |elem| {
+            allocator.free(elem);
+        }
+        allocator.free(self.elems);
     }
 };
 
@@ -116,6 +119,8 @@ pub const Runtime = struct {
 
     pub fn deinit(self: *Runtime, allocator: Allocator) void {
         self.stack.deinit();
+        self.module.deinit(allocator);
+        self.global_runtime.deinit();
         allocator.free(self.memory);
     }
 
@@ -139,7 +144,15 @@ pub const Runtime = struct {
                         continue;
                     }
                 },
-                .br_table => @panic("UNIMPLEMENTED"),
+                .br_table => {
+                    const idx = self.stack.pop().?.i32;
+                    if (idx < index.indirect.y){
+                        frame.program_counter = frame.code.br_table_vectors[index.indirect.x + @as(u32, @intCast(idx))];
+                    } else {
+                        frame.program_counter = frame.code.br_table_vectors[index.indirect.y];
+                    }
+                    continue;
+                },
                 .@"return" => break :loop,
                 // TODO: Move this to callExternal
                 .call => {

@@ -24,7 +24,6 @@ var resources: ecs.Resources = undefined;
 
 fn init_mods() void {
     var global_runtime = mods.GlobalRuntime.init(allocator);
-    defer global_runtime.deinit();
 
     const file = std.fs.cwd().openFile("assets/mods/core.wasm", .{}) catch @panic("Couldn't open assets/mods/core.wasm");
     // const file = std.fs.cwd().openFile("./test.wasm", .{}) catch @panic("Couldn't open test.wasm");
@@ -36,7 +35,6 @@ fn init_mods() void {
        std.debug.panic("[ERROR]: error {any} at byte {x}(0x{x})\n", .{ err, parser.byte_idx, parser.bytes[parser.byte_idx] });
     };
     const module = parser.module();
-    defer module.deinit(allocator);
 
     for (0..parser.globalTypes.len) |i| {
         global_runtime.addGlobal(@intCast(i), parser.globalTypes[i], parser.globalValues[i]) catch @panic("Failed to add runtime global");
