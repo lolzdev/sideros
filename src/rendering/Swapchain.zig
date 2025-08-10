@@ -135,11 +135,12 @@ pub fn init(allocator: Allocator, surface: vk.Surface, device: vk.Device, physic
 
     const framebuffers = try allocator.alloc(c.VkFramebuffer, image_count);
     for (image_views, 0..) |view, index| {
+        const attachments = &[_]c.VkImageView { view, render_pass.depth_view };
         const framebuffer_info: c.VkFramebufferCreateInfo = .{
             .sType = c.VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO,
             .renderPass = render_pass.handle,
-            .attachmentCount = 1,
-            .pAttachments = &view,
+            .attachmentCount = 2,
+            .pAttachments = attachments[0..].ptr,
             .width = extent.width,
             .height = extent.height,
             .layers = 1,

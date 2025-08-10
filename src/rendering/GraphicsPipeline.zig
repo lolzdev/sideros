@@ -392,6 +392,17 @@ pub fn init(allocator: Allocator, device: vk.Device, swapchain: vk.Swapchain, re
 
     try vk.mapError(c.vkCreatePipelineLayout(device.handle, &layout_info, null, @ptrCast(&layout)));
 
+    const depth_stencil: c.VkPipelineDepthStencilStateCreateInfo = .{
+        .sType = c.VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO,
+        .depthTestEnable = c.VK_TRUE,
+        .depthWriteEnable = c.VK_TRUE,
+        .depthCompareOp = c.VK_COMPARE_OP_LESS,
+        .depthBoundsTestEnable = c.VK_FALSE,
+        .minDepthBounds = 0.0,
+        .maxDepthBounds = 1.0,
+        .stencilTestEnable = c.VK_FALSE,
+    };
+
     const pipeline_info: c.VkGraphicsPipelineCreateInfo = .{
         .sType = c.VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,
         .stageCount = 2,
@@ -401,7 +412,7 @@ pub fn init(allocator: Allocator, device: vk.Device, swapchain: vk.Swapchain, re
         .pViewportState = &viewport_state_info,
         .pRasterizationState = &rasterizer_info,
         .pMultisampleState = &multisampling_info,
-        .pDepthStencilState = null,
+        .pDepthStencilState = &depth_stencil,
         .pColorBlendState = &color_blend_info,
         .pDynamicState = null,
         .layout = layout,

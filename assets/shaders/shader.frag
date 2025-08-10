@@ -73,8 +73,8 @@ void main() {
 	vec3 norm = normalize(Normal);
 	vec3 viewDir = normalize(viewPos.pos - FragPos);
 
-	//vec3 result = calc_directional_light(norm, viewDir);
-	vec3 result = vec3(0.0, 0.0, 0.0);
+	vec3 result = calc_directional_light(norm, viewDir);
+	//vec3 result = vec3(0.0, 0.0, 0.0);
 	for(int i = 0; i < pushConstants.light_count; i++)
 		result += calc_point_light(i, norm, FragPos, viewDir);    
 

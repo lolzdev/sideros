@@ -162,6 +162,7 @@ pub fn create_device(self: *PhysicalDevice, surface: vk.Surface, allocator: Allo
     var device_properties: c.VkPhysicalDeviceProperties = undefined;
     c.vkGetPhysicalDeviceProperties(self.handle, &device_properties);
 
+
     return .{
         .handle = device,
         .graphics_queue = graphics_queue,
