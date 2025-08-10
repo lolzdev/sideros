@@ -164,12 +164,28 @@ pub fn create_device(self: *PhysicalDevice, surface: vk.Surface, allocator: Allo
 
     const counts = device_properties.limits.framebufferColorSampleCounts & device_properties.limits.framebufferDepthSampleCounts;
     var msaa_samples = c.VK_SAMPLE_COUNT_1_BIT;
-    if ((counts & c.VK_SAMPLE_COUNT_64_BIT) != 0) { msaa_samples = c.VK_SAMPLE_COUNT_64_BIT; }
-    if ((counts & c.VK_SAMPLE_COUNT_32_BIT) != 0) { msaa_samples = c.VK_SAMPLE_COUNT_32_BIT; }
-    if ((counts & c.VK_SAMPLE_COUNT_16_BIT) != 0) { msaa_samples = c.VK_SAMPLE_COUNT_16_BIT; }
-    if ((counts & c.VK_SAMPLE_COUNT_8_BIT) != 0) { msaa_samples = c.VK_SAMPLE_COUNT_8_BIT; }
-    if ((counts & c.VK_SAMPLE_COUNT_4_BIT) != 0) { msaa_samples = c.VK_SAMPLE_COUNT_4_BIT; }
-    if ((counts & c.VK_SAMPLE_COUNT_2_BIT) != 0) { msaa_samples = c.VK_SAMPLE_COUNT_2_BIT; }
+    var samples = @as(usize, 1);
+    if ((counts & c.VK_SAMPLE_COUNT_64_BIT) != 0) {
+        msaa_samples = c.VK_SAMPLE_COUNT_64_BIT;
+        samples = 64;
+    } else if ((counts & c.VK_SAMPLE_COUNT_32_BIT) != 0) {
+        msaa_samples = c.VK_SAMPLE_COUNT_32_BIT;
+        samples = 32;
+    } else if ((counts & c.VK_SAMPLE_COUNT_16_BIT) != 0) {
+        msaa_samples = c.VK_SAMPLE_COUNT_16_BIT;
+        samples = 16;
+    } else if ((counts & c.VK_SAMPLE_COUNT_8_BIT) != 0) {
+        msaa_samples = c.VK_SAMPLE_COUNT_8_BIT;
+        samples = 8;
+    } else if ((counts & c.VK_SAMPLE_COUNT_4_BIT) != 0) {
+        msaa_samples = c.VK_SAMPLE_COUNT_4_BIT;
+        samples = 4;
+    } else if ((counts & c.VK_SAMPLE_COUNT_2_BIT) != 0) {
+        msaa_samples = c.VK_SAMPLE_COUNT_2_BIT;
+        samples = 2;
+    }
+
+    std.debug.print("Using {} samples for MSAA\n", .{samples});
 
     return .{
         .handle = device,
