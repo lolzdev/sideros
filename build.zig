@@ -86,6 +86,26 @@ pub fn build(b: *std.Build) void {
             }
             b.installArtifact(exe);
         },
+        .macos => {
+            const exe = b.addExecutable(.{
+                .name = "sideros",
+                .root_module = b.createModule(.{
+                    .root_source_file = b.path("src/macos.zig"),
+                    .target = target,
+                    .optimize = optimize,
+                }),
+            });
+            exe.root_module.addIncludePath(b.path("src"));
+            exe.linkSystemLibrary("vulkan");
+            exe.root_module.addSystemIncludePath(.{ .cwd_relative = "/usr/local/include" });
+            exe.root_module.addLibraryPath(.{ .cwd_relative = "/usr/local/lib" });
+            exe.root_module.addCSourceFile(.{.file = b.path("src/window.m")});
+            exe.root_module.linkFramework("Cocoa", .{});
+            exe.root_module.linkFramework("Metal", .{});
+            exe.root_module.linkFramework("QuartzCore", .{});
+            exe.linkLibrary(sideros);
+            b.installArtifact(exe);
+        },
         else => {
             std.debug.panic("Compilation not implemented for OS: {any}\n", .{target.result.os.tag});
         },
