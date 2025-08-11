@@ -263,25 +263,60 @@ pub const Runtime = struct {
                     const end = start + @sizeOf(f64);
                     try self.stack.append(.{ .f64 = std.mem.littleToNative(f64, std.mem.bytesAsValue(f64, self.memory[start..end]).*) });
                 },
-                .i32_load8_s => @panic("UNIMPLEMENTED"),
+                .i32_load8_s => {
+                    const start = index.memarg.offset + @as(u32, @intCast(self.stack.pop().?.i32));
+                    const end = start + @sizeOf(i8);
+                    const raw_value = std.mem.readInt(i8, @as(*const [1]u8, @ptrCast(self.memory[start..end])), std.builtin.Endian.little);
+                    try self.stack.append(.{ .i32 = @intCast(@as(i32, raw_value)) });
+                },
                 .i32_load8_u => {
                     const start = index.memarg.offset + @as(u32, @intCast(self.stack.pop().?.i32));
                     const end = start + @sizeOf(u8);
                     const raw_value = std.mem.readInt(u8, @as(*const [1]u8, @ptrCast(self.memory[start..end])), std.builtin.Endian.little);
                     try self.stack.append(.{ .i32 = @intCast(@as(u32, raw_value)) });
                 },
-                .i32_load16_s => @panic("UNIMPLEMENTED"),
+                .i32_load16_s => {
+                    const start = index.memarg.offset + @as(u32, @intCast(self.stack.pop().?.i32));
+                    const end = start + @sizeOf(i16);
+                    const raw_value = std.mem.readInt(i16, @as(*const [2]u8, @ptrCast(self.memory[start..end])), std.builtin.Endian.little);
+                    try self.stack.append(.{ .i32 = @intCast(@as(i32, raw_value)) });
+                },
                 .i32_load16_u => {
                     const start = index.memarg.offset + @as(u32, @intCast(self.stack.pop().?.i32));
                     const end = start + @sizeOf(u16);
                     const raw_value = std.mem.readInt(u16, @as(*const [2]u8, @ptrCast(self.memory[start..end])), std.builtin.Endian.little);
                     try self.stack.append(.{ .i32 = @intCast(@as(u32, raw_value)) });
                 },
-                .i64_load8_s => @panic("UNIMPLEMENTED"),
-                .i64_load8_u => @panic("UNIMPLEMENTED"),
-                .i64_load16_s => @panic("UNIMPLEMENTED"),
-                .i64_load16_u => @panic("UNIMPLEMENTED"),
-                .i64_load32_s => @panic("UNIMPLEMENTED"),
+                .i64_load8_s => {
+                    const start = index.memarg.offset + @as(u32, @intCast(self.stack.pop().?.i32));
+                    const end = start + @sizeOf(i8);
+                    const raw_value = std.mem.readInt(i8, @as(*const [1]u8, @ptrCast(self.memory[start..end])), std.builtin.Endian.little);
+                    try self.stack.append(.{ .i64 = @intCast(@as(i64, raw_value)) });
+                },
+                .i64_load8_u => {
+                    const start = index.memarg.offset + @as(u32, @intCast(self.stack.pop().?.i32));
+                    const end = start + @sizeOf(u8);
+                    const raw_value = std.mem.readInt(u8, @as(*const [1]u8, @ptrCast(self.memory[start..end])), std.builtin.Endian.little);
+                    try self.stack.append(.{ .i64 = @intCast(@as(u64, raw_value)) });
+                },
+                .i64_load16_s => {
+                    const start = index.memarg.offset + @as(u32, @intCast(self.stack.pop().?.i32));
+                    const end = start + @sizeOf(i16);
+                    const raw_value = std.mem.readInt(i16, @as(*const [2]u8, @ptrCast(self.memory[start..end])), std.builtin.Endian.little);
+                    try self.stack.append(.{ .i64 = @intCast(@as(i64, raw_value)) });
+                },
+                .i64_load16_u => {
+                    const start = index.memarg.offset + @as(u32, @intCast(self.stack.pop().?.i32));
+                    const end = start + @sizeOf(u16);
+                    const raw_value = std.mem.readInt(u16, @as(*const [2]u8, @ptrCast(self.memory[start..end])), std.builtin.Endian.little);
+                    try self.stack.append(.{ .i64 = @intCast(@as(u64, raw_value)) });
+                },
+                .i64_load32_s => {
+                    const start = index.memarg.offset + @as(u32, @intCast(self.stack.pop().?.i32));
+                    const end = start + @sizeOf(i32);
+                    const raw_value = std.mem.readInt(i32, @as(*const [4]u8, @ptrCast(self.memory[start..end])), std.builtin.Endian.little);
+                    try self.stack.append(.{ .i64 = @intCast(@as(i64, raw_value)) });
+                },
                 .i64_load32_u => {
                     const start = index.memarg.offset + @as(u32, @intCast(self.stack.pop().?.i32));
                     const end = start + @sizeOf(u32);
@@ -334,9 +369,39 @@ pub const Runtime = struct {
                     const end = start + @sizeOf(u16);
                     @memcpy(self.memory[start..end], std.mem.asBytes(&val));
                 },
-                .i64_store8 => @panic("UNIMPLEMENTED"),
-                .i64_store16 => @panic("UNIMPLEMENTED"),
-                .i64_store32 => @panic("UNIMPLEMENTED"),
+                .i64_store8 => {
+                    const val = std.mem.nativeToLittle(i8, @as(i8, @intCast(self.stack.pop().?.i64)));
+                    const offsetVal = self.stack.pop().?.i32;
+                    if (offsetVal < 0) {
+                        std.debug.panic("offsetVal is negative (val: {any})\n", .{offsetVal});
+                    }
+                    const offset: u64 = @intCast(offsetVal);
+                    const start: usize = @intCast(@as(u64, index.memarg.offset) + offset);
+                    const end = start + @sizeOf(u8);
+                    @memcpy(self.memory[start..end], std.mem.asBytes(&val));
+                },
+                .i64_store16 => {
+                    const val = std.mem.nativeToLittle(i16, @as(i16, @intCast(self.stack.pop().?.i64)));
+                    const offsetVal = self.stack.pop().?.i32;
+                    if (offsetVal < 0) {
+                        std.debug.panic("offsetVal is negative (val: {any})\n", .{offsetVal});
+                    }
+                    const offset: u64 = @intCast(offsetVal);
+                    const start: usize = @intCast(@as(u64, index.memarg.offset) + offset);
+                    const end = start + @sizeOf(u16);
+                    @memcpy(self.memory[start..end], std.mem.asBytes(&val));
+                },
+                .i64_store32 => {
+                    const val = std.mem.nativeToLittle(i32, @as(i32, @intCast(self.stack.pop().?.i64)));
+                    const offsetVal = self.stack.pop().?.i32;
+                    if (offsetVal < 0) {
+                        std.debug.panic("offsetVal is negative (val: {any})\n", .{offsetVal});
+                    }
+                    const offset: u64 = @intCast(offsetVal);
+                    const start: usize = @intCast(@as(u64, index.memarg.offset) + offset);
+                    const end = start + @sizeOf(u32);
+                    @memcpy(self.memory[start..end], std.mem.asBytes(&val));
+                },
 
                 .memorysize => @panic("UNIMPLEMENTED"),
                 .memorygrow => {
