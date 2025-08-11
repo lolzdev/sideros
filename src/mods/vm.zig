@@ -103,9 +103,6 @@ pub const Runtime = struct {
     pub fn init(allocator: Allocator, module: Module, global_runtime: *wasm.GlobalRuntime) !Runtime {
         // if memory max is not set the memory is allowed to grow but it is not supported at the moment
         const max = module.memory.max orelse module.memory.min;
-        if (module.memory.max == null) {
-            std.log.warn("Growing memory is not yet supported, usign the minimum memory\n", .{});
-        }
         const memory = try allocator.alloc(u8, max);
         @memset(memory, 0);
         @memcpy(memory[0..module.data.len], module.data);
@@ -336,8 +333,12 @@ pub const Runtime = struct {
                 .memorysize => @panic("UNIMPLEMENTED"),
                 .memorygrow => {
                     const newPages = self.stack.pop().?.i32;
+                    const newSize = (self.memory.len / Parser.PAGE_SIZE) + @as(usize, @intCast(newPages));
+                    if (self.module.memory.max != null and newSize > self.module.memory.max.?){
+                        std.debug.panic("Mod failed to stay within memory range\n", .{});
+                    }
                     const oldPages: i32 = @intCast(self.memory.len / Parser.PAGE_SIZE);
-                    self.memory = try allocator.realloc(self.memory, self.memory.len + @as(usize, @intCast(newPages * Parser.PAGE_SIZE)));
+                    self.memory = try allocator.realloc(self.memory, newSize * Parser.PAGE_SIZE);
                     try self.stack.append(.{ .i32 = oldPages });
                 },
                 .memoryinit => @panic("UNIMPLEMENTED"),
