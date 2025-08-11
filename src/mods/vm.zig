@@ -348,7 +348,7 @@ pub const Runtime = struct {
                 .f32_store => @panic("UNIMPLEMENTED"),
                 .f64_store => @panic("UNIMPLEMENTED"),
                 .i32_store8 => {
-                    const val = std.mem.nativeToLittle(i8, @as(i8, @intCast(self.stack.pop().?.i32)));
+                    const val = std.mem.nativeToLittle(i8, @as(i8, @truncate(self.stack.pop().?.i32)));
                     const offsetVal = self.stack.pop().?.i32;
                     if (offsetVal < 0) {
                         std.debug.panic("offsetVal is negative (val: {any})\n", .{offsetVal});
@@ -359,7 +359,7 @@ pub const Runtime = struct {
                     @memcpy(self.memory[start..end], std.mem.asBytes(&val));
                 },
                 .i32_store16 => {
-                    const val = std.mem.nativeToLittle(i16, @as(i16, @intCast(self.stack.pop().?.i32)));
+                    const val = std.mem.nativeToLittle(i16, @as(i16, @truncate(self.stack.pop().?.i32)));
                     const offsetVal = self.stack.pop().?.i32;
                     if (offsetVal < 0) {
                         std.debug.panic("offsetVal is negative (val: {any})\n", .{offsetVal});
@@ -370,7 +370,7 @@ pub const Runtime = struct {
                     @memcpy(self.memory[start..end], std.mem.asBytes(&val));
                 },
                 .i64_store8 => {
-                    const val = std.mem.nativeToLittle(i8, @as(i8, @intCast(self.stack.pop().?.i64)));
+                    const val = std.mem.nativeToLittle(i8, @as(i8, @truncate(self.stack.pop().?.i64)));
                     const offsetVal = self.stack.pop().?.i32;
                     if (offsetVal < 0) {
                         std.debug.panic("offsetVal is negative (val: {any})\n", .{offsetVal});
@@ -381,7 +381,7 @@ pub const Runtime = struct {
                     @memcpy(self.memory[start..end], std.mem.asBytes(&val));
                 },
                 .i64_store16 => {
-                    const val = std.mem.nativeToLittle(i16, @as(i16, @intCast(self.stack.pop().?.i64)));
+                    const val = std.mem.nativeToLittle(i16, @as(i16, @truncate(self.stack.pop().?.i64)));
                     const offsetVal = self.stack.pop().?.i32;
                     if (offsetVal < 0) {
                         std.debug.panic("offsetVal is negative (val: {any})\n", .{offsetVal});
@@ -392,7 +392,7 @@ pub const Runtime = struct {
                     @memcpy(self.memory[start..end], std.mem.asBytes(&val));
                 },
                 .i64_store32 => {
-                    const val = std.mem.nativeToLittle(i32, @as(i32, @intCast(self.stack.pop().?.i64)));
+                    const val = std.mem.nativeToLittle(i32, @as(i32, @truncate(self.stack.pop().?.i64)));
                     const offsetVal = self.stack.pop().?.i32;
                     if (offsetVal < 0) {
                         std.debug.panic("offsetVal is negative (val: {any})\n", .{offsetVal});
@@ -924,6 +924,7 @@ pub const Runtime = struct {
                 }
 
                 try self.executeFrame(allocator, &frame);
+                // std.debug.print("Returning from {d}\n", .{function});
 
                 allocator.free(frame.locals);
             },
