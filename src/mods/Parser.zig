@@ -401,6 +401,12 @@ fn parseImportsec(self: *Parser) !void {
                 }
                 self.functions = try self.allocator.realloc(self.functions, index + 1);
                 self.functions[index].typ = .{ .external = index };
+                self.functions[index].func_type = .{
+                    .parameters = try self.allocator.alloc(vm.Valtype, self.types[i.importdesc.func].parameters.len),
+                    .returns = try self.allocator.alloc(vm.Valtype, self.types[i.importdesc.func].returns.len),
+                };
+                @memcpy(self.functions[index].func_type.parameters, self.types[i.importdesc.func].parameters);
+                @memcpy(self.functions[index].func_type.returns, self.types[i.importdesc.func].returns);
                 index += 1;
             },
             .mem => {

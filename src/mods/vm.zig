@@ -2,6 +2,7 @@ const std = @import("std");
 const wasm = @import("wasm.zig");
 const Parser = @import("Parser.zig");
 const IR = @import("ir.zig");
+const External = @import("external.zig");
 const Allocator = std.mem.Allocator;
 const AllocationError = error{OutOfMemory};
 
@@ -72,6 +73,7 @@ pub const Module = struct {
                 },
                 .external => {}
             }
+            f.func_type.deinit(allocator);
         }
         allocator.free(self.functions);
         allocator.free(self.data);
@@ -101,6 +103,11 @@ pub const Runtime = struct {
     stack: std.ArrayList(Value),
     memory: []u8,
     global_runtime: *wasm.GlobalRuntime,
+    externalFuncs: std.AutoHashMapUnmanaged(u32, ExternalFuncWrapper),
+    const ExternalFuncWrapper = struct {
+        func: *const fn (self: *Runtime, params: []Value) ?Value,
+    };
+
 
     pub fn init(allocator: Allocator, module: Module, global_runtime: *wasm.GlobalRuntime) !Runtime {
         // if memory max is not set the memory is allowed to grow but it is not supported at the moment
@@ -108,7 +115,21 @@ pub const Runtime = struct {
         const memory = try allocator.alloc(u8, max);
         @memset(memory, 0);
         @memcpy(memory[0..module.data.len], module.data);
+        var externalFuncs: std.AutoHashMapUnmanaged(u32, ExternalFuncWrapper) = .{};
+        if (module.exports.logDebug != null){
+            try externalFuncs.put(allocator, module.exports.logDebug.?, .{.func = External.logDebug});
+        }
+        if (module.exports.logInfo != null){
+            try externalFuncs.put(allocator, module.exports.logInfo.?, .{.func = External.logInfo});
+        }
+        if (module.exports.logWarn != null){
+            try externalFuncs.put(allocator, module.exports.logWarn.?, .{.func = External.logWarn});
+        }
+        if (module.exports.logErr != null){
+            try externalFuncs.put(allocator, module.exports.logErr.?, .{.func = External.logErr});
+        }
         return Runtime{
+            .externalFuncs = externalFuncs,
             .module = module,
             .stack = try std.ArrayList(Value).initCapacity(allocator, 10),
             .memory = memory,
@@ -118,8 +139,9 @@ pub const Runtime = struct {
 
     pub fn deinit(self: *Runtime, allocator: Allocator) void {
         self.stack.deinit();
-        self.module.deinit(allocator);
         self.global_runtime.deinit();
+        self.module.deinit(allocator);
+        self.externalFuncs.deinit(allocator);
         allocator.free(self.memory);
     }
 
@@ -153,40 +175,13 @@ pub const Runtime = struct {
                     continue;
                 },
                 .@"return" => break :loop,
-                // TODO: Move this to callExternal
                 .call => {
-                    if (index.u32 == self.module.exports.logDebug) {
-                        const size: usize = @intCast(self.stack.pop().?.i64);
-                        const offset: usize = @intCast(self.stack.pop().?.i32);
-                        const ptr: []u8 = self.memory[offset .. offset + size];
-                        const extra: u8 = if (ptr.len > 0 and ptr[ptr.len - 1] != '\n') 0x0a else 0;
-                        std.debug.print("[DEBUG]: {s}{c}", .{ptr, extra});
-                    } else if (index.u32 == self.module.exports.logInfo) {
-                        const size: usize = @intCast(self.stack.pop().?.i64);
-                        const offset: usize = @intCast(self.stack.pop().?.i32);
-                        const ptr: []u8 = self.memory[offset .. offset + size];
-                        const extra: u8 = if (ptr.len > 0 and ptr[ptr.len - 1] != '\n') 0x0a else 0;
-                        std.debug.print("[INFO]: {s}{c}", .{ptr, extra});
-                    } else if (index.u32 == self.module.exports.logWarn) {
-                        const size: usize = @intCast(self.stack.pop().?.i64);
-                        const offset: usize = @intCast(self.stack.pop().?.i32);
-                        const ptr: []u8 = self.memory[offset .. offset + size];
-                        const extra: u8 = if (ptr.len > 0 and ptr[ptr.len - 1] != '\n') 0x0a else 0;
-                        std.debug.print("[WARN]: {s}{c}", .{ptr, extra});
-                    } else if (index.u32 == self.module.exports.logErr) {
-                        const size: usize = @intCast(self.stack.pop().?.i64);
-                        const offset: usize = @intCast(self.stack.pop().?.i32);
-                        const ptr: []u8 = self.memory[offset .. offset + size];
-                        const extra: u8 = if (ptr.len > 0 and ptr[ptr.len - 1] != '\n') 0x0a else 0;
-                        std.debug.print("[ERROR]: {s}{c}", .{ptr, extra});
-                    } else {
-                        var parameters = std.ArrayList(Value).init(allocator);
-                        defer parameters.deinit();
-                        for (self.module.functions[index.u32].func_type.parameters) |_| {
-                            try parameters.append(self.stack.pop().?);
-                        }
-                        try self.call(allocator, index.u32, parameters.items);
+                    var parameters = std.ArrayList(Value).init(allocator);
+                    defer parameters.deinit();
+                    for (self.module.functions[index.u32].func_type.parameters) |_| {
+                        try parameters.append(self.stack.pop().?);
                     }
+                    try self.call(allocator, index.u32, parameters.items);
                 },
                 .call_indirect => {
                     if (self.module.tables[index.indirect.x].et != std.wasm.RefType.funcref) {
@@ -710,12 +705,14 @@ pub const Runtime = struct {
                 allocator.free(frame.locals);
             },
             .external => {
-                std.debug.panic("TODO: Handle external function {any} {any}\n", .{f.typ.external, self.module.exports});
-                // TODO(ernesto): handle external functions
-                // const name = self.module.imports[f.external].name;
-                // if (self.global_runtime.functions.get(name)) |external| {
-                //     external(&self.stack);
-                // }
+                const func = self.externalFuncs.get(@intCast(function));
+                if (func == null){
+                    std.debug.panic("ERROR: WASM tried calling out of bounds external function\n", .{});
+                }
+                const ret = func.?.func(self, parameters);
+                if (ret != null){
+                    try self.stack.append(ret.?);
+                }
             },
         }
     }
