@@ -85,6 +85,16 @@ pub fn build(b: *std.Build) void {
                 exe.linkSystemLibrary("xcb-icccm");
             }
             b.installArtifact(exe);
+
+            const run_cmd = b.addRunArtifact(exe);
+            run_cmd.step.dependOn(b.getInstallStep());
+
+            if (b.args) |args| {
+                run_cmd.addArgs(args);
+            }
+
+            const run_step = b.step("run", "Run Sideros");
+            run_step.dependOn(&run_cmd.step);
         },
         .macos => {
             const exe = b.addExecutable(.{
@@ -105,6 +115,16 @@ pub fn build(b: *std.Build) void {
             exe.root_module.linkFramework("QuartzCore", .{});
             exe.linkLibrary(sideros);
             b.installArtifact(exe);
+
+            const run_cmd = b.addRunArtifact(exe);
+            run_cmd.step.dependOn(b.getInstallStep());
+
+            if (b.args) |args| {
+                run_cmd.addArgs(args);
+            }
+
+            const run_step = b.step("run", "Run Sideros");
+            run_step.dependOn(&run_cmd.step);
         },
         else => {
             std.debug.panic("Compilation not implemented for OS: {any}\n", .{target.result.os.tag});
@@ -119,15 +139,7 @@ pub fn build(b: *std.Build) void {
     const docs_step = b.step("docs", "Generate documentation");
     docs_step.dependOn(&install_docs.step);
 
-    //const run_cmd = b.addRunArtifact(exe);
-    //run_cmd.step.dependOn(b.getInstallStep());
-
-    //if (b.args) |args| {
-    //run_cmd.addArgs(args);
-    //}
-
-    //const run_step = b.step("run", "Run the app");
-    //run_step.dependOn(&run_cmd.step);
+    
 
     const exe_unit_tests = b.addTest(.{
         .root_module = b.createModule(.{
