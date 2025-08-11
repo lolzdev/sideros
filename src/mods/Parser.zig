@@ -330,6 +330,9 @@ pub fn parseModule(self: *Parser) !void {
     if (self.exports.init != null and self.exports.init.? != 0){
         self.exports.init.? -= self.importCount;
     }
+    if (self.exports.deinit != null and self.exports.deinit.? != 0){
+        self.exports.deinit.? -= self.importCount;
+    }
 }
 
 fn parseCustomsec(self: *Parser) !void {
@@ -559,6 +562,8 @@ fn parseExportsec(self: *Parser) !void {
             .func => {
                 if (std.mem.eql(u8, e.name, "init")) {
                     self.exports.init = e.exportdesc.func + self.importCount;
+                } else if (std.mem.eql(u8, e.name, "deinit")) {
+                    self.exports.deinit = e.exportdesc.func + self.importCount;
                 } else {
                     std.log.warn("exported function {s} not supported\n", .{e.name});
                 }

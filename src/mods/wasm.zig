@@ -12,26 +12,19 @@ pub const Type = enum(u8) {
 };
 
 pub const GlobalRuntime = struct {
-    functions: std.StringHashMap(*const fn (stack: *std.ArrayList(vm.Value)) void),
     globals: std.AutoHashMap(u32, Parser.Globaltype),
     globalExprs: std.AutoHashMap(u32, vm.Value),
 
     pub fn init(allocator: Allocator) GlobalRuntime {
         return GlobalRuntime{
-            .functions = std.StringHashMap(*const fn (stack: *std.ArrayList(vm.Value)) void).init(allocator),
             .globals = std.AutoHashMap(u32, Parser.Globaltype).init(allocator),
             .globalExprs = std.AutoHashMap(u32, vm.Value).init(allocator)
         };
     }
 
     pub fn deinit(self: *GlobalRuntime) void {
-        self.functions.deinit();
         self.globals.deinit();
         self.globalExprs.deinit();
-    }
-
-    pub fn addFunction(self: *GlobalRuntime, name: []const u8, function: *const fn (stack: *std.ArrayList(vm.Value)) void) !void {
-        try self.functions.put(name, function);
     }
 
     pub fn addGlobal(self: *GlobalRuntime, index: u32, @"type": Parser.Globaltype, initValue: vm.Value) !void {

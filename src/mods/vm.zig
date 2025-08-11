@@ -34,6 +34,7 @@ pub const Function = struct { func_type: Functype, typ: union(enum) {
 
 pub const ExportFunction = enum {
     init,
+    deinit,
     logErr,
     logWarn,
     logInfo,
@@ -41,6 +42,7 @@ pub const ExportFunction = enum {
 };
 pub const Exports = struct {
     init: ?u32 = null,
+    deinit: ?u32 = null,
     logErr: ?u32 = null,
     logWarn: ?u32 = null,
     logInfo: ?u32 = null,
@@ -645,6 +647,13 @@ pub const Runtime = struct {
                     try self.call(allocator, func, parameters);
                 } else {
                     std.debug.panic("Function init unavailable\n", .{});
+                }
+            },
+            .deinit => {
+                if (self.module.exports.deinit) |func| {
+                    try self.call(allocator, func, parameters);
+                } else {
+                    std.debug.panic("Function deinit unavailable\n", .{});
                 }
             },
             else => {
