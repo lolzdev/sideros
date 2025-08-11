@@ -113,6 +113,12 @@ fn init_mods() void {
 
     var modsDirIter = modsDir.iterate();
     while (modsDirIter.next() catch @panic("Failed to get next iteration of mods directory")) |entry| {
+        if (std.mem.indexOf(u8, entry.name, "siderosmod") != null){
+            std.fs.cwd().deleteTree(entry.name) catch |err| {
+                std.debug.panic("Failed to delete {s} (reason: {any})", .{entry.name, err});
+            };
+            continue;
+        }
         if (entry.kind != std.fs.File.Kind.file){
             std.debug.panic("TODO: Search recursively for mods\n", .{});
         }
