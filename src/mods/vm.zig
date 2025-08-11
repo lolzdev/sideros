@@ -96,6 +96,11 @@ pub const Value = union(enum) {
     i64: i64,
     f32: f32,
     f64: f64,
+    ref: struct {
+        type: ?std.wasm.RefType,
+        val: u32,
+    }
+
 };
 
 pub const Runtime = struct {
@@ -197,9 +202,15 @@ pub const Runtime = struct {
                     try self.call(allocator, funcIdx, parameters.items);
                 },
 
-                .refnull => @panic("UNIMPLEMENTED"),
-                .refisnull => @panic("UNIMPLEMENTED"),
-                .reffunc => @panic("UNIMPLEMENTED"),
+                .refnull => {
+                    try self.stack.append(.{.ref = .{.type = null, .val = 0}});
+                },
+                .refisnull => {
+                    try self.stack.append(.{ .i32 = @intCast(@as(i1, @bitCast(self.stack.pop().?.ref.type == null))) });
+                },
+                .reffunc => {
+                    try self.stack.append(.{.ref = .{.type = std.wasm.RefType.funcref, .val = index.u32}});
+                },
 
                 .drop => {
                     _ = self.stack.pop();
