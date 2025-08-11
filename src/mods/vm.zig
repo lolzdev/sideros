@@ -498,57 +498,57 @@ pub const Runtime = struct {
 
                 .i64_eqz => {
                     const val = self.stack.pop().?.i64;
-                    try self.stack.append(Value{ .i64 = @intFromBool(val == 0) });
+                    try self.stack.append(Value{ .i32 = @intFromBool(val == 0) });
                 },
                 .i64_eq => {
                     const a = self.stack.pop().?.i64;
                     const b = self.stack.pop().?.i64;
-                    try self.stack.append(Value{ .i64 = @intFromBool(a == b) });
+                    try self.stack.append(Value{ .i32 = @intFromBool(a == b) });
                 },
                 .i64_ne => {
                     const a = self.stack.pop().?.i64;
                     const b = self.stack.pop().?.i64;
-                    try self.stack.append(Value{ .i64 = @intFromBool(a != b) });
+                    try self.stack.append(Value{ .i32 = @intFromBool(a != b) });
                 },
                 .i64_lt_s => {
                     const a = self.stack.pop().?.i64;
                     const b = self.stack.pop().?.i64;
-                    try self.stack.append(Value{ .i64 = @intFromBool(b < a) });
+                    try self.stack.append(Value{ .i32 = @intFromBool(b < a) });
                 },
                 .i64_lt_u => {
                     const a = @as(u64, @bitCast(self.stack.pop().?.i64));
                     const b = @as(u64, @bitCast(self.stack.pop().?.i64));
-                    try self.stack.append(Value{ .i64 = @intFromBool(b < a) });
+                    try self.stack.append(Value{ .i32 = @intFromBool(b < a) });
                 },
                 .i64_gt_s => {
                     const a = self.stack.pop().?.i64;
                     const b = self.stack.pop().?.i64;
-                    try self.stack.append(Value{ .i64 = @intFromBool(b > a) });
+                    try self.stack.append(Value{ .i32 = @intFromBool(b > a) });
                 },
                 .i64_gt_u => {
                     const a = @as(u64, @bitCast(self.stack.pop().?.i64));
                     const b = @as(u64, @bitCast(self.stack.pop().?.i64));
-                    try self.stack.append(Value{ .i64 = @intFromBool(b > a) });
+                    try self.stack.append(Value{ .i32 = @intFromBool(b > a) });
                 },
                 .i64_le_s => {
                     const a = self.stack.pop().?.i64;
                     const b = self.stack.pop().?.i64;
-                    try self.stack.append(Value{ .i64 = @intFromBool(b <= a) });
+                    try self.stack.append(Value{ .i32 = @intFromBool(b <= a) });
                 },
                 .i64_le_u => {
                     const a = @as(u64, @bitCast(self.stack.pop().?.i64));
                     const b = @as(u64, @bitCast(self.stack.pop().?.i64));
-                    try self.stack.append(Value{ .i64 = @intFromBool(b <= a) });
+                    try self.stack.append(Value{ .i32 = @intFromBool(b <= a) });
                 },
                 .i64_ge_s => {
                     const a = self.stack.pop().?.i64;
                     const b = self.stack.pop().?.i64;
-                    try self.stack.append(Value{ .i64 = @intFromBool(b >= a) });
+                    try self.stack.append(Value{ .i32 = @intFromBool(b >= a) });
                 },
                 .i64_ge_u => {
                     const a = @as(u64, @bitCast(self.stack.pop().?.i64));
                     const b = @as(u64, @bitCast(self.stack.pop().?.i64));
-                    try self.stack.append(Value{ .i64 = @intFromBool(b >= a) });
+                    try self.stack.append(Value{ .i32 = @intFromBool(b >= a) });
                 },
 
                 .f32_eq => @panic("UNIMPLEMENTED"),
