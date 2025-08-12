@@ -831,9 +831,11 @@ pub const Runtime = struct {
                     try self.stack.append(.{ .i64 = @intCast(std.math.rotr(u64, b, a)) });
                 },
 
+                // The value 0x7FFFFFFF here represents the bitmask that masks everything except for the IEEE754 32 bit precision sign bit
                 .f32_abs => {
                     try self.stack.append(.{ .f32 = @bitCast(@as(u32, @bitCast(self.stack.pop().?.f32)) & 0x7FFFFFFF) });
                 },
+                // The value 0x80000000 here represents the bitmask that only masks the IEEE754 32 bit precision sign bit
                 .f32_neg => {
                     try self.stack.append(.{ .f32 = @bitCast(@as(u32, @bitCast(self.stack.pop().?.f32)) ^ 0x80000000) });
                 },
@@ -885,15 +887,18 @@ pub const Runtime = struct {
                     const b = self.stack.pop().?.f32;
                     try self.stack.append(.{ .f32 = @max(a, b) });
                 },
+                // See f32_abs and f32_neg for explainations behind these magic values
                 .f32_copysign => {
                     const a = self.stack.pop().?.f32;
                     const b = self.stack.pop().?.f32;
                     try self.stack.append(.{ .f32 = @bitCast((@as(u32, @bitCast(b)) & 0x7FFFFFFF) | (@as(u32, @bitCast(a)) & 0x80000000)) });
                 },
 
+                // The value 0x7FFFFFFFFFFFFFFF here represents the bitmask that masks everything except for the IEEE754 64 bit precision sign bit
                 .f64_abs => {
                     try self.stack.append(.{ .f64 = @bitCast(@as(u64, @bitCast(self.stack.pop().?.f64)) & 0x7FFFFFFFFFFFFFFF) });
                 },
+                // The value 0x8000000000000000 here represents the bitmask that only masks the IEEE754 64 bit precision sign bit
                 .f64_neg => {
                     try self.stack.append(.{ .f64 = @bitCast(@as(u64, @bitCast(self.stack.pop().?.f64)) ^ 0x8000000000000000) });
                 },
@@ -942,6 +947,7 @@ pub const Runtime = struct {
                     const b = self.stack.pop().?.f64;
                     try self.stack.append(.{ .f64 = @max(a, b) });
                 },
+                // See f64_abs and f64_neg for explainations behind these magic values
                 .f64_copysign => {
                     const a = self.stack.pop().?.f64;
                     const b = self.stack.pop().?.f64;
