@@ -345,8 +345,28 @@ pub const Runtime = struct {
                     const end = start + @sizeOf(u64);
                     @memcpy(self.memory[start..end], std.mem.asBytes(&val));
                 },
-                .f32_store => @panic("UNIMPLEMENTED"),
-                .f64_store => @panic("UNIMPLEMENTED"),
+                .f32_store => {
+                    const val = std.mem.nativeToLittle(i32, @bitCast(self.stack.pop().?.f32));
+                    const offsetVal = self.stack.pop().?.i32;
+                    if (offsetVal < 0) {
+                        std.debug.panic("offsetVal is negative (val: {any})\n", .{offsetVal});
+                    }
+                    const offset: u64 = @intCast(offsetVal);
+                    const start: usize = @intCast(@as(u64, index.memarg.offset) + offset);
+                    const end = start + @sizeOf(u32);
+                    @memcpy(self.memory[start..end], std.mem.asBytes(&val));
+                },
+                .f64_store => {
+                    const val = std.mem.nativeToLittle(i64, @bitCast(self.stack.pop().?.f64));
+                    const offsetVal = self.stack.pop().?.i32;
+                    if (offsetVal < 0) {
+                        std.debug.panic("offsetVal is negative (val: {any})\n", .{offsetVal});
+                    }
+                    const offset: u64 = @intCast(offsetVal);
+                    const start: usize = @intCast(@as(u64, index.memarg.offset) + offset);
+                    const end = start + @sizeOf(u64);
+                    @memcpy(self.memory[start..end], std.mem.asBytes(&val));
+                },
                 .i32_store8 => {
                     const val = std.mem.nativeToLittle(i8, @as(i8, @truncate(self.stack.pop().?.i32)));
                     const offsetVal = self.stack.pop().?.i32;
@@ -931,40 +951,78 @@ pub const Runtime = struct {
                 .i32_wrap_i64 => {
                     try self.stack.append(.{ .i32 = @truncate(self.stack.pop().?.i64) });
                 },
-                .i32_trunc_f32_s => @panic("UNIMPLEMENTED"),
-                .i32_trunc_f32_u => @panic("UNIMPLEMENTED"),
-                .i32_trunc_f64_s => @panic("UNIMPLEMENTED"),
-                .i32_trunc_f64_u => @panic("UNIMPLEMENTED"),
+                .i32_trunc_f32_s => {
+                    try self.stack.append(.{ .i32 = @intFromFloat(self.stack.pop().?.f32) });
+                },
+                .i32_trunc_f32_u => {
+                    try self.stack.append(.{ .i32 = @bitCast(@as(u32, @intFromFloat(self.stack.pop().?.f32))) });
+                },
+                .i32_trunc_f64_s => {
+                    try self.stack.append(.{ .i32 = @intFromFloat(self.stack.pop().?.f64) });
+                },
+                .i32_trunc_f64_u => {
+                    try self.stack.append(.{ .i32 = @bitCast(@as(u32, @intFromFloat(self.stack.pop().?.f64))) });
+                },
                 .i64_extend_i32_s => {
                     try self.stack.append(.{ .i64 = @as(i64, self.stack.pop().?.i32) });
                 },
                 .i64_extend_i32_u => {
                     try self.stack.append(.{ .i64 = @as(i64, @as(u32, @bitCast(self.stack.pop().?.i32))) });
                 },
-                .i64_trunc_f32_s => @panic("UNIMPLEMENTED"),
-                .i64_trunc_f32_u => @panic("UNIMPLEMENTED"),
-                .i64_trunc_f64_s => @panic("UNIMPLEMENTED"),
-                .i64_trunc_f64_u => @panic("UNIMPLEMENTED"),
+                .i64_trunc_f32_s => {
+                    try self.stack.append(.{ .i64 = @intFromFloat(self.stack.pop().?.f32) });
+                },
+                .i64_trunc_f32_u => {
+                    try self.stack.append(.{ .i64 = @bitCast(@as(u64, @intFromFloat(self.stack.pop().?.f32))) });
+                },
+                .i64_trunc_f64_s => {
+                    try self.stack.append(.{ .i64 = @intFromFloat(self.stack.pop().?.f64) });
+                },
+                .i64_trunc_f64_u => {
+                    try self.stack.append(.{ .i64 = @bitCast(@as(u64, @intFromFloat(self.stack.pop().?.f64))) });
+                },
                 .f32_convert_i32_s => {
                     try self.stack.append(.{ .f32 = @floatFromInt(self.stack.pop().?.i32) });
                 },
                 .f32_convert_i32_u => {
                     try self.stack.append(.{ .f32 = @floatFromInt(@as(u32, @bitCast(self.stack.pop().?.i32))) });
                 },
-                .f32_convert_i64_s => @panic("UNIMPLEMENTED"),
-                .f32_convert_i64_u => @panic("UNIMPLEMENTED"),
-                .f32_demote_f64 => @panic("UNIMPLEMENTED"),
-                .f64_convert_i32_s => @panic("UNIMPLEMENTED"),
-                .f64_convert_i32_u => @panic("UNIMPLEMENTED"),
-                .f64_convert_i64_s => @panic("UNIMPLEMENTED"),
-                .f64_convert_i64_u => @panic("UNIMPLEMENTED"),
-                .f64_promote_f32 => @panic("UNIMPLEMENTED"),
+                .f32_convert_i64_s => {
+                    try self.stack.append(.{ .f32 = @floatFromInt(self.stack.pop().?.i64) });
+                },
+                .f32_convert_i64_u => {
+                    try self.stack.append(.{ .f32 = @floatFromInt(@as(u64, @bitCast(self.stack.pop().?.i64))) });
+                },
+                .f32_demote_f64 => {
+                    try self.stack.append(.{ .f32 = @floatCast(self.stack.pop().?.f64) });
+                },
+                .f64_convert_i32_s => {
+                    try self.stack.append(.{ .f64 = @floatFromInt(self.stack.pop().?.i32) });
+                },
+                .f64_convert_i32_u => {
+                    try self.stack.append(.{ .f64 = @floatFromInt(@as(u32, @bitCast(self.stack.pop().?.i32))) });
+                },
+                .f64_convert_i64_s => {
+                    try self.stack.append(.{ .f64 = @floatFromInt(self.stack.pop().?.i64) });
+                },
+                .f64_convert_i64_u => {
+                    try self.stack.append(.{ .f64 = @floatFromInt(@as(u64, @bitCast(self.stack.pop().?.i64))) });
+                },
+                .f64_promote_f32 => {
+                    try self.stack.append(.{ .f64 = @floatCast(self.stack.pop().?.f32) });
+                },
                 .i32_reinterpret_f32 => {
                     try self.stack.append(.{ .i32 = @bitCast(self.stack.pop().?.f32) });
                 },
-                .i64_reinterpret_f64 => @panic("UNIMPLEMENTED"),
-                .f32_reinterpret_i32 => @panic("UNIMPLEMENTED"),
-                .f64_reinterpret_i64 => @panic("UNIMPLEMENTED"),
+                .i64_reinterpret_f64 => {
+                    try self.stack.append(.{ .i64 = @bitCast(self.stack.pop().?.f64) });
+                },
+                .f32_reinterpret_i32 => {
+                    try self.stack.append(.{ .f32 = @bitCast(self.stack.pop().?.i32) });
+                },
+                .f64_reinterpret_i64 => {
+                    try self.stack.append(.{ .f64 = @bitCast(self.stack.pop().?.i64) });
+                },
 
                 .i32_extend8_s => {
                     const val = self.stack.pop().?.i32;
@@ -987,14 +1045,30 @@ pub const Runtime = struct {
                     try self.stack.append(.{ .i64 = @as(i64, @as(i32, @truncate(val))) });
                 },
 
-                .i32_trunc_sat_f32_s => @panic("UNIMPLEMENTED"),
-                .i32_trunc_sat_f32_u => @panic("UNIMPLEMENTED"),
-                .i32_trunc_sat_f64_s => @panic("UNIMPLEMENTED"),
-                .i32_trunc_sat_f64_u => @panic("UNIMPLEMENTED"),
-                .i64_trunc_sat_f32_s => @panic("UNIMPLEMENTED"),
-                .i64_trunc_sat_f32_u => @panic("UNIMPLEMENTED"),
-                .i64_trunc_sat_f64_s => @panic("UNIMPLEMENTED"),
-                .i64_trunc_sat_f64_u => @panic("UNIMPLEMENTED"),
+                .i32_trunc_sat_f32_s => {
+                    try self.stack.append(.{ .i32 = @intFromFloat(self.stack.pop().?.f32) });
+                },
+                .i32_trunc_sat_f32_u => {
+                    try self.stack.append(.{ .i32 = @bitCast(@as(u32, @intFromFloat(self.stack.pop().?.f32))) });
+                },
+                .i32_trunc_sat_f64_s => {
+                    try self.stack.append(.{ .i32 = @intFromFloat(self.stack.pop().?.f64) });
+                },
+                .i32_trunc_sat_f64_u => {
+                    try self.stack.append(.{ .i32 = @bitCast(@as(u32, @intFromFloat(self.stack.pop().?.f64))) });
+                },
+                .i64_trunc_sat_f32_s => {
+                    try self.stack.append(.{ .i64 = @intFromFloat(self.stack.pop().?.f32) });
+                },
+                .i64_trunc_sat_f32_u => {
+                    try self.stack.append(.{ .i64 = @bitCast(@as(u64, @intFromFloat(self.stack.pop().?.f32))) });
+                },
+                .i64_trunc_sat_f64_s => {
+                    try self.stack.append(.{ .i64 = @intFromFloat(self.stack.pop().?.f64) });
+                },
+                .i64_trunc_sat_f64_u => {
+                    try self.stack.append(.{ .i64 = @bitCast(@as(u64, @intFromFloat(self.stack.pop().?.f64))) });
+                },
 
                 .vecinst => @panic("UNIMPLEMENTED"),
             }
