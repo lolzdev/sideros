@@ -45,24 +45,33 @@ pub const Transform = extern struct {
 pub const Matrix = extern struct {
     rows: [4][4]f32,
 
-    pub fn lookAt(eye: [3]f32, target: [3]f32, arbitrary_up: [3]f32) Matrix {
-        const t: @Vector(3, f32) = target;
-        const e: @Vector(3, f32) = eye;
-        const u: @Vector(3, f32) = arbitrary_up;
-        const forward = normalize(t - e);
-        const right = normalize(cross(forward, u));
-        const up = cross(right, forward);
+    //pub fn lookAt(eye: [3]f32, target: [3]f32, arbitrary_up: [3]f32) Matrix {
+    //    const t: @Vector(3, f32) = target;
+    //    const e: @Vector(3, f32) = eye;
+    //    const u: @Vector(3, f32) = arbitrary_up;
+    //    const forward = normalize(t - e);
+    //    const right = normalize(cross(forward, u));
+    //    const up = cross(right, forward);
 
-        const view = [4][4]f32{
-            [4]f32{ right[0], up[0], -forward[0], 0.0 },
-            [4]f32{ right[1], up[1], -forward[1], 0.0 },
-            [4]f32{ right[2], up[2], -forward[2], 0.0 },
-            [4]f32{ -dot(e, right), -dot(e, up), -dot(e, forward), 1.0 },
-        };
+    //    const view = [4][4]f32{
+    //        [4]f32{ right[0], up[0], -forward[0], 0.0 },
+    //        [4]f32{ right[1], up[1], -forward[1], 0.0 },
+    //        [4]f32{ right[2], up[2], -forward[2], 0.0 },
+    //        [4]f32{ -dot(e, right), -dot(e, up), -dot(e, forward), 1.0 },
+    //    };
 
-        return .{
-            .rows = view,
-        };
+    //    return .{
+    //        .rows = view,
+    //    };
+    //}
+
+    pub fn lookAt(eye: [3]f32, yaw: f32, pitch: f32) Matrix {
+        var translation = Matrix.identity();
+        translation.translate(.{ -eye[0], -eye[1], -eye[2] });
+        const yaw_rotation = Quaternion.fromAxisAngle(.{0.0, 1.0, 0.0}, -yaw);
+        const pitch_rotation = Quaternion.fromAxisAngle(.{1.0, 0.0, 0.0}, -pitch);
+        
+        return translation.mul(yaw_rotation.matrix()).mul(pitch_rotation.matrix());
     }
 
     pub fn perspective(fov: f32, aspect: f32, near: f32, far: f32) Matrix {

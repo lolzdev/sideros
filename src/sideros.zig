@@ -17,7 +17,7 @@ const allocator = gpa.allocator();
 var pool: ecs.Pool = undefined;
 var renderer: Renderer = undefined;
 var camera: rendering.Camera = .{
-    .position = .{ 0.0, 0.0, 5.0 },
+    .position = .{ 0.0, 5.0, -5.0 },
 };
 var input: ecs.Input = .{ .key_pressed = .{false} ** @intFromEnum(ecs.Input.KeyCode.menu) };
 var resources: ecs.Resources = undefined;

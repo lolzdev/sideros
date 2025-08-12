@@ -66,7 +66,7 @@ pub fn init(allocator: Allocator, instance_handle: vk.c.VkInstance, surface_hand
     graphics_pipeline.point_lights[0].diffuse = .{0.5, 0.5, 0.5};
     graphics_pipeline.point_lights[0].specular = .{1.0, 1.0, 1.0};
 
-    graphics_pipeline.point_lights[1].position = .{1.0, 1.0, 0.0};
+    graphics_pipeline.point_lights[1].position = .{0.0, 2.0, 0.5};
     graphics_pipeline.point_lights[1].data[0] = 1.0;
     graphics_pipeline.point_lights[1].data[1] = 0.9;
     graphics_pipeline.point_lights[1].data[2] = 0.8;
@@ -76,7 +76,7 @@ pub fn init(allocator: Allocator, instance_handle: vk.c.VkInstance, surface_hand
 
     var transforms = std.ArrayList(math.Transform).init(allocator);
 
-    try transforms.append(math.Transform.init(.{0.0, 0.0, -1.0}, .{0.5, 0.5, 0.5}, .{0.0, 0.0, 0.0}));
+    try transforms.append(math.Transform.init(.{0.0, 0.5, 1.0}, .{0.5, 0.5, 0.5}, .{0.0, 0.0, 0.0}));
     try transforms.append(math.Transform.init(.{0.0, 0.0, 0.0}, .{0.5, 0.5, 0.5}, .{0.0, 0.0, 0.0}));
 
     return .{

@@ -34,21 +34,15 @@ pub fn moveCamera(pool: *ecs.Pool) !void {
     const mul = @as(@Vector(3, f32), @splat(camera.speed * pool.resources.delta_time));
 
     if (input.isKeyDown(.w)) {
-        camera.position += camera.target * mul;
+        camera.position += @as(@Vector(3, f32), .{0.0, 0.0, 1.0}) * mul;
     }
     if (input.isKeyDown(.s)) {
-        camera.position -= camera.target * mul;
+        camera.position += @as(@Vector(3, f32), .{0.0, 0.0, -1.0}) * mul;
     }
     if (input.isKeyDown(.a)) {
-        camera.position -= math.normalize(math.cross(camera.target, camera.up)) * mul;
+        camera.position -= @as(@Vector(3, f32), .{1.0, 0.0, 0.0}) * mul;
     }
     if (input.isKeyDown(.d)) {
-        camera.position += math.normalize(math.cross(camera.target, camera.up)) * mul;
-    }
-    if (input.isKeyDown(.space)) {
-        camera.position += camera.up * mul;
-    }
-    if (input.isKeyDown(.left_shift)) {
-        camera.position -= camera.up * mul;
+        camera.position += @as(@Vector(3, f32), .{1.0, 0.0, 0.0}) * mul;
     }
 }
