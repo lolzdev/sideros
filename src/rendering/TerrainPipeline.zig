@@ -14,190 +14,26 @@ const max_point_lights = 1024;
 
 layout: c.VkPipelineLayout,
 handle: c.VkPipeline,
-vertex_buffer: vk.Buffer,
-index_buffer: vk.Buffer,
+//vertex_buffer: vk.Buffer,
+//index_buffer: vk.Buffer,
 texture_set_layout: c.VkDescriptorSetLayout,
 descriptor_pool: c.VkDescriptorPool,
 descriptor_set: c.VkDescriptorSet,
 descriptor_set_layout: c.VkDescriptorSetLayout,
-projection_buffer: vk.Buffer,
-view_buffer: vk.Buffer,
-view_memory: [*c]u8,
-transform_buffer: vk.DynamicBuffer(math.Transform),
-view_pos_memory: [*c]u8,
-view_pos_buffer: vk.Buffer,
-diffuse_sampler: vk.Sampler,
-specular_sampler: vk.Sampler,
-textures: std.ArrayList(c.VkDescriptorSet),
-directional_light: *lights.DirectionalLight,
-directional_light_buffer: vk.Buffer,
-point_lights: []lights.PointLight,
-point_lights_buffer: vk.Buffer,
-
-device: vk.Device,
-render_pass: vk.RenderPass,
-swapchain: vk.Swapchain,
+heightmap_sampler: vk.Sampler,
+heightmap: c.VkDescriptorSet,
 
 const Self = @This();
 
-pub const Builder = struct {
-    current_vertex: i32 = 0,
-    current_index: u32 = 0,
-    vertex_buffers: std.ArrayList(vk.Buffer),
-    index_buffers: std.ArrayList(vk.Buffer),
-    device: vk.Device,
-    allocator: Allocator,
+pub fn init(
+    graphics_pipeline: vk.GraphicsPipeline,
+    vertex_shader: c.VkShaderModule,
+    fragment_shader: c.VkShaderModule) !Self {
 
-    pub fn init(allocator: Allocator, device: vk.Device) Builder {
-        return .{
-            .vertex_buffers = std.ArrayList(vk.Buffer).init(allocator),
-            .index_buffers = std.ArrayList(vk.Buffer).init(allocator),
-            .device = device,
-            .allocator = allocator,
-        };
-    }
+    const device = graphics_pipeline.device;
+    const swapchain = graphics_pipeline.swapchain;
+    const render_pass = graphics_pipeline.render_pass;
 
-    pub fn addMesh(self: *Builder, path: []const u8) !Mesh {
-        const gltf_data = try gltf.parseFile(self.allocator, path);
-
-        const vertex_buffer = try createVertexBuffer(self.allocator, self.device, gltf_data);
-        const index_buffer = try createIndexBuffer(self.allocator, self.device, gltf_data);
-        const vertex_cursor = self.current_vertex;
-        const index_cursor = self.current_index;
-        self.current_vertex += @intCast(vertex_buffer.size);
-        self.current_index += @intCast(index_buffer.size);
-        try self.vertex_buffers.append(vertex_buffer);
-        try self.index_buffers.append(index_buffer);
-
-        return .{
-            .vertex_buffer = vertex_cursor,
-            .index_buffer = index_cursor,
-            .index_count = @intCast(index_buffer.size / @sizeOf(u16)),
-        };
-    }
-
-    pub fn build(self: *Builder, swapchain: vk.Swapchain, render_pass: vk.RenderPass, vertex_shader: c.VkShaderModule, fragment_shader: c.VkShaderModule) !Self {
-        const vertex_buffer, const index_buffer = try self.createBuffers();
-        return Self.init(self.allocator, self.device, swapchain, render_pass, vertex_shader, fragment_shader, vertex_buffer, index_buffer);
-    }
-
-    pub fn createBuffers(self: *Builder) !struct { vk.Buffer, vk.Buffer } {
-        const vertex_buffer = try self.device.initBuffer(vk.BufferUsage{ .vertex_buffer = true, .transfer_dst = true }, vk.BufferFlags{ .device_local = true }, @intCast(self.current_vertex));
-
-        var vertex_cursor = @as(usize, 0);
-        for (self.vertex_buffers.items) |buffer| {
-            try buffer.copyTo(self.device, vertex_buffer, vertex_cursor);
-            vertex_cursor += buffer.size;
-            buffer.deinit(self.device.handle);
-        }
-
-        const index_buffer = try self.device.initBuffer(vk.BufferUsage{ .index_buffer = true, .transfer_dst = true }, vk.BufferFlags{ .device_local = true }, self.current_index);
-
-        var index_cursor = @as(usize, 0);
-        for (self.index_buffers.items) |buffer| {
-            try buffer.copyTo(self.device, index_buffer, index_cursor);
-            index_cursor += buffer.size;
-            buffer.deinit(self.device.handle);
-        }
-
-        self.vertex_buffers.deinit();
-        self.index_buffers.deinit();
-
-        return .{
-            vertex_buffer,
-            index_buffer,
-        };
-    }
-
-    fn createVertexBuffer(allocator: Allocator, device: vk.Device, gltf_data: anytype) !vk.Buffer {
-        const vertices = gltf_data.vertices;
-        const normals = gltf_data.normals;
-        const uvs = gltf_data.uvs;
-        defer allocator.free(uvs);
-        defer allocator.free(normals);
-        defer allocator.free(vertices);
-
-        const final_array = try allocator.alloc([8]f32, vertices.len);
-        defer allocator.free(final_array);
-
-        for (vertices, normals, uvs, final_array) |vertex, normal, uv, *final| {
-            final[0] = vertex[0];
-            final[1] = vertex[1];
-            final[2] = vertex[2];
-
-            final[3] = normal[0];
-            final[4] = normal[1];
-            final[5] = normal[2];
-
-            final[6] = uv[0];
-            final[7] = uv[1];
-        }
-
-        var data: [*c]?*anyopaque = null;
-
-        const buffer = try device.initBuffer(vk.BufferUsage{ .transfer_src = true }, vk.BufferFlags{ .host_visible = true, .host_coherent = true }, @sizeOf([8]f32) * vertices.len);
-
-        try vk.mapError(vk.c.vkMapMemory(
-            device.handle,
-            buffer.memory,
-            0,
-            buffer.size,
-            0,
-            @ptrCast(&data),
-        ));
-
-        if (data) |ptr| {
-            const gpu_vertices: [*]Mesh.Vertex = @ptrCast(@alignCast(ptr));
-
-            @memcpy(gpu_vertices, @as([]Mesh.Vertex, @ptrCast(final_array[0..])));
-        }
-
-        vk.c.vkUnmapMemory(device.handle, buffer.memory);
-
-        const vertex_buffer = try device.initBuffer(vk.BufferUsage{ .vertex_buffer = true, .transfer_dst = true, .transfer_src = true }, vk.BufferFlags{ .device_local = true }, @sizeOf(Mesh.Vertex) * vertices.len);
-
-        try buffer.copyTo(device, vertex_buffer, 0);
-        buffer.deinit(device.handle);
-
-        return vertex_buffer;
-    }
-
-    pub fn createIndexBuffer(allocator: Allocator, device: anytype, gltf_data: anytype) !vk.Buffer {
-        const indices = gltf_data.indices;
-        defer allocator.free(indices);
-
-        var data: [*c]?*anyopaque = null;
-
-        const buffer = try device.initBuffer(vk.BufferUsage{ .transfer_src = true }, vk.BufferFlags{ .host_visible = true, .host_coherent = true }, @sizeOf(u16) * indices.len);
-
-        try vk.mapError(vk.c.vkMapMemory(
-            device.handle,
-            buffer.memory,
-            0,
-            buffer.size,
-            0,
-            @ptrCast(&data),
-        ));
-
-        if (data) |ptr| {
-            const gpu_indices: [*]u16 = @ptrCast(@alignCast(ptr));
-
-            @memcpy(gpu_indices, indices[0..]);
-        }
-
-        vk.c.vkUnmapMemory(device.handle, buffer.memory);
-
-        const index_buffer = try device.initBuffer(vk.BufferUsage{ .index_buffer = true, .transfer_dst = true, .transfer_src = true }, vk.BufferFlags{ .device_local = true }, @sizeOf(u16) * indices.len);
-
-        try buffer.copyTo(device, index_buffer, 0);
-        buffer.deinit(device.handle);
-
-        return index_buffer;
-    }
-
-};
-
-pub fn init(allocator: Allocator, device: vk.Device, swapchain: vk.Swapchain, render_pass: vk.RenderPass, vertex_shader: c.VkShaderModule, fragment_shader: c.VkShaderModule, vertex_buffer: vk.Buffer, index_buffer: vk.Buffer) !Self {
     const vertex_shader_stage_info: c.VkPipelineShaderStageCreateInfo = .{
         .sType = c.VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
         .stage = c.VK_SHADER_STAGE_VERTEX_BIT,
@@ -308,13 +144,6 @@ pub fn init(allocator: Allocator, device: vk.Device, swapchain: vk.Swapchain, re
         .stageFlags = c.VK_SHADER_STAGE_VERTEX_BIT,
     };
 
-    const transform_binding = c.VkDescriptorSetLayoutBinding{
-        .binding = 4,
-        .descriptorType = c.VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
-        .descriptorCount = 1,
-        .stageFlags = c.VK_SHADER_STAGE_VERTEX_BIT,
-    };
-
     const directional_light_binding = c.VkDescriptorSetLayoutBinding{
         .binding = 2,
         .descriptorType = c.VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
@@ -336,35 +165,28 @@ pub fn init(allocator: Allocator, device: vk.Device, swapchain: vk.Swapchain, re
         .stageFlags = c.VK_SHADER_STAGE_FRAGMENT_BIT,
     };
 
-    const diffuse_sampler_binding = c.VkDescriptorSetLayoutBinding{
+    const heightmap_sampler_binding = c.VkDescriptorSetLayoutBinding{
         .binding = 0,
         .descriptorType = c.VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
         .descriptorCount = 1,
-        .stageFlags = c.VK_SHADER_STAGE_FRAGMENT_BIT,
+        .stageFlags = c.VK_SHADER_STAGE_VERTEX_BIT,
     };
 
-    const specular_sampler_binding = c.VkDescriptorSetLayoutBinding{
-        .binding = 1,
-        .descriptorType = c.VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-        .descriptorCount = 1,
-        .stageFlags = c.VK_SHADER_STAGE_FRAGMENT_BIT,
-    };
-
-    const bindings = [_]c.VkDescriptorSetLayoutBinding{projection_binding, view_binding, transform_binding, directional_light_binding, point_lights_binding, view_pos_binding};
-    const texture_bindings = [_]c.VkDescriptorSetLayoutBinding{diffuse_sampler_binding, specular_sampler_binding};
+    const bindings = [_]c.VkDescriptorSetLayoutBinding{projection_binding, view_binding, directional_light_binding, point_lights_binding, view_pos_binding};
+    const texture_bindings = [_]c.VkDescriptorSetLayoutBinding{heightmap_sampler_binding};
 
     var descriptor_set_layout: c.VkDescriptorSetLayout = undefined;
     var texture_descriptor_set_layout: c.VkDescriptorSetLayout = undefined;
 
     const descriptor_set_layout_info = c.VkDescriptorSetLayoutCreateInfo{
         .sType = c.VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
-        .bindingCount = 6,
+        .bindingCount = 5,
         .pBindings = bindings[0..].ptr,
     };
 
     const texture_descriptor_set_layout_info = c.VkDescriptorSetLayoutCreateInfo{
         .sType = c.VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
-        .bindingCount = 2,
+        .bindingCount = 1,
         .pBindings = texture_bindings[0..].ptr,
     };
 
@@ -379,19 +201,13 @@ pub fn init(allocator: Allocator, device: vk.Device, swapchain: vk.Swapchain, re
         .size = 4,
     };
 
-    const transform_range: c.VkPushConstantRange = .{
-        .stageFlags = c.VK_SHADER_STAGE_VERTEX_BIT,
-        .offset = 4,
-        .size = 4,
-    };
-
-    const range: [2]c.VkPushConstantRange = .{lights_range, transform_range};
+    const range: [1]c.VkPushConstantRange = .{lights_range};
 
     const layout_info: c.VkPipelineLayoutCreateInfo = .{
         .sType = c.VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
         .setLayoutCount = 2,
         .pSetLayouts = set_layouts[0..].ptr,
-        .pushConstantRangeCount = 2,
+        .pushConstantRangeCount = 1,
         .pPushConstantRanges = range[0..].ptr,
     };
 
@@ -435,25 +251,20 @@ pub fn init(allocator: Allocator, device: vk.Device, swapchain: vk.Swapchain, re
 
     const size = c.VkDescriptorPoolSize{
         .type = c.VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-        .descriptorCount = 6,
+        .descriptorCount = 5,
     };
 
     const sampler_size = c.VkDescriptorPoolSize{
         .type = c.VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-        .descriptorCount = 2,
-    };
-
-    const transforms_size = c.VkDescriptorPoolSize{
-        .type = c.VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
         .descriptorCount = 1,
     };
 
-    const sizes = [_]c.VkDescriptorPoolSize {size, sampler_size, transforms_size};
+    const sizes = [_]c.VkDescriptorPoolSize {size, sampler_size};
 
     const descriptor_pool_info = c.VkDescriptorPoolCreateInfo{
         .sType = c.VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
         .maxSets = 2,
-        .poolSizeCount = 3,
+        .poolSizeCount = 2,
         .pPoolSizes = sizes[0..].ptr,
     };
 
@@ -472,25 +283,10 @@ pub fn init(allocator: Allocator, device: vk.Device, swapchain: vk.Swapchain, re
 
     try vk.mapError(c.vkAllocateDescriptorSets(device.handle, &descriptor_allocate_info, &descriptor_set));
 
-    const projection_buffer = try device.initBuffer(vk.BufferUsage{ .uniform_buffer = true, .transfer_dst = true }, vk.BufferFlags{ .device_local = true }, @sizeOf(math.Matrix));
-
-    var data: [*c]u8 = undefined;
-
-    try vk.mapError(c.vkMapMemory(
-        device.handle,
-        projection_buffer.memory,
-        0,
-        projection_buffer.size,
-        0,
-        @ptrCast(&data),
-    ));
-
-    @memcpy(data[0..@sizeOf(math.Matrix)], std.mem.asBytes(&Camera.getProjection(swapchain.extent.width, swapchain.extent.height)));
-
     const descriptor_buffer_info = c.VkDescriptorBufferInfo{
-        .buffer = projection_buffer.handle,
+        .buffer = graphics_pipeline.projection_buffer.handle,
         .offset = 0,
-        .range = projection_buffer.size,
+        .range = graphics_pipeline.projection_buffer.size,
     };
 
     const write_descriptor_set = c.VkWriteDescriptorSet{
@@ -505,23 +301,10 @@ pub fn init(allocator: Allocator, device: vk.Device, swapchain: vk.Swapchain, re
 
     c.vkUpdateDescriptorSets(device.handle, 1, &write_descriptor_set, 0, null);
 
-    const view_buffer = try device.initBuffer(vk.BufferUsage{ .uniform_buffer = true, .transfer_dst = true }, vk.BufferFlags{ .device_local = true }, @sizeOf(math.Matrix));
-
-    var view_data: [*c]u8 = undefined;
-
-    try vk.mapError(c.vkMapMemory(
-        device.handle,
-        view_buffer.memory,
-        0,
-        view_buffer.size,
-        0,
-        @ptrCast(&view_data),
-    ));
-
     const view_descriptor_buffer_info = c.VkDescriptorBufferInfo{
-        .buffer = view_buffer.handle,
+        .buffer = graphics_pipeline.view_buffer.handle,
         .offset = 0,
-        .range = view_buffer.size,
+        .range = graphics_pipeline.view_buffer.size,
     };
 
     const write_view_descriptor_set = c.VkWriteDescriptorSet{
@@ -536,27 +319,10 @@ pub fn init(allocator: Allocator, device: vk.Device, swapchain: vk.Swapchain, re
 
     c.vkUpdateDescriptorSets(device.handle, 1, &write_view_descriptor_set, 0, null);
 
-    const transform_buffer = try vk.DynamicBuffer(math.Transform).init(allocator, device, vk.BufferUsage{ .storage_buffer = true, .transfer_dst = true }, vk.BufferFlags{ .device_local = true }, descriptor_set, 4);
-
-    const directional_light_buffer = try device.initBuffer(vk.BufferUsage{ .uniform_buffer = true, .transfer_dst = true }, vk.BufferFlags{ .device_local = true }, @sizeOf(lights.DirectionalLight));
-
-    var directional_light_data: [*c]u8 = undefined;
-
-    try vk.mapError(c.vkMapMemory(
-        device.handle,
-        directional_light_buffer.memory,
-        0,
-        directional_light_buffer.size,
-        0,
-        @ptrCast(&directional_light_data),
-    ));
-
-    const directional_light: *lights.DirectionalLight = @alignCast(@ptrCast(directional_light_data));
-
     const directional_light_descriptor_buffer_info = c.VkDescriptorBufferInfo{
-        .buffer = directional_light_buffer.handle,
+        .buffer = graphics_pipeline.directional_light_buffer.handle,
         .offset = 0,
-        .range = directional_light_buffer.size,
+        .range = graphics_pipeline.directional_light_buffer.size,
     };
 
     const write_directional_light_descriptor_set = c.VkWriteDescriptorSet{
@@ -571,23 +337,8 @@ pub fn init(allocator: Allocator, device: vk.Device, swapchain: vk.Swapchain, re
 
     c.vkUpdateDescriptorSets(device.handle, 1, &write_directional_light_descriptor_set, 0, null);
 
-    const point_lights_buffer = try device.initBuffer(vk.BufferUsage{ .uniform_buffer = true, .transfer_dst = true }, vk.BufferFlags{ .device_local = true }, @sizeOf(lights.PointLight) * max_point_lights);
-
-    var point_lights_data: [*c]u8 = undefined;
-
-    try vk.mapError(c.vkMapMemory(
-        device.handle,
-        point_lights_buffer.memory,
-        0,
-        point_lights_buffer.size,
-        0,
-        @ptrCast(&point_lights_data),
-    ));
-
-    const point_lights: []lights.PointLight = @as([*]lights.PointLight, @alignCast(@ptrCast(point_lights_data)))[0..max_point_lights];
-
     var point_lights_descriptor_buffer_info: c.VkDescriptorBufferInfo = undefined;
-    point_lights_descriptor_buffer_info.buffer = point_lights_buffer.handle;
+    point_lights_descriptor_buffer_info.buffer = graphics_pipeline.point_lights_buffer.handle;
     point_lights_descriptor_buffer_info.offset = 0;
     point_lights_descriptor_buffer_info.range = @sizeOf(lights.PointLight) * max_point_lights;
 
@@ -603,23 +354,10 @@ pub fn init(allocator: Allocator, device: vk.Device, swapchain: vk.Swapchain, re
 
     c.vkUpdateDescriptorSets(device.handle, 1, &write_point_lights_descriptor_set, 0, null);
 
-    const view_pos_buffer = try device.initBuffer(vk.BufferUsage{ .uniform_buffer = true, .transfer_dst = true }, vk.BufferFlags{ .device_local = true }, @sizeOf([3]f32));
-
-    var view_pos_data: [*c]u8 = undefined;
-
-    try vk.mapError(c.vkMapMemory(
-        device.handle,
-        view_pos_buffer.memory,
-        0,
-        view_pos_buffer.size,
-        0,
-        @ptrCast(&view_pos_data),
-    ));
-
     const view_pos_descriptor_buffer_info = c.VkDescriptorBufferInfo{
-        .buffer = view_pos_buffer.handle,
+        .buffer = graphics_pipeline.view_pos_buffer.handle,
         .offset = 0,
-        .range = view_pos_buffer.size,
+        .range = graphics_pipeline.view_pos_buffer.size,
     };
 
     const write_view_pos_descriptor_set = c.VkWriteDescriptorSet{
@@ -634,36 +372,19 @@ pub fn init(allocator: Allocator, device: vk.Device, swapchain: vk.Swapchain, re
 
     c.vkUpdateDescriptorSets(device.handle, 1, &write_view_pos_descriptor_set, 0, null);
 
-    return Self{
+    return .{
         .layout = layout,
         .handle = pipeline,
         .texture_set_layout = texture_descriptor_set_layout,
         .descriptor_pool = descriptor_pool,
         .descriptor_set = descriptor_set,
         .descriptor_set_layout = descriptor_set_layout,
-        .projection_buffer = projection_buffer,
-        .view_buffer = view_buffer,
-        .view_memory = view_data,
-        .view_pos_memory = view_pos_data,
-        .view_pos_buffer = view_pos_buffer,
-        .transform_buffer = transform_buffer,
-        .diffuse_sampler = try vk.Sampler.init(device),
-        .specular_sampler = try vk.Sampler.init(device),
-        .textures = std.ArrayList(c.VkDescriptorSet).init(allocator),
-        .vertex_buffer = vertex_buffer,
-        .index_buffer = index_buffer,
-        .directional_light = directional_light,
-        .directional_light_buffer = directional_light_buffer,
-        .point_lights = point_lights,
-        .point_lights_buffer = point_lights_buffer,
-
-        .device = device,
-        .swapchain = swapchain,
-        .render_pass = render_pass,
+        .heightmap_sampler = try vk.Sampler.init(device),
+        .heightmap = undefined,
     };
 }
 
-pub fn addTexture(self: *Self, device: anytype, texture: Texture, diffuse: Texture) !usize {
+pub fn setHeightmap(self: *Self, device: anytype, heightmap: Texture) !void {
     var set_layouts = [_]c.VkDescriptorSetLayout{self.texture_set_layout};
     const descriptor_allocate_info = c.VkDescriptorSetAllocateInfo{
         .sType = c.VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
@@ -677,14 +398,8 @@ pub fn addTexture(self: *Self, device: anytype, texture: Texture, diffuse: Textu
 
     const texture_info: c.VkDescriptorImageInfo = .{
         .imageLayout = c.VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-        .imageView = texture.image_view,
-        .sampler = self.diffuse_sampler.handle,
-    };
-
-    const diffuse_info: c.VkDescriptorImageInfo = .{
-        .imageLayout = c.VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-        .imageView = diffuse.image_view,
-        .sampler = self.specular_sampler.handle,
+        .imageView = heightmap.image_view,
+        .sampler = self.heightmap_sampler.handle,
     };
 
     const write_texture_descriptor_set = c.VkWriteDescriptorSet{
@@ -697,24 +412,9 @@ pub fn addTexture(self: *Self, device: anytype, texture: Texture, diffuse: Textu
         .pImageInfo = &texture_info,
     };
 
-    const write_diffuse_descriptor_set = c.VkWriteDescriptorSet{
-        .sType = c.VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-        .dstSet = descriptor_set,
-        .dstBinding = 1,
-        .dstArrayElement = 0,
-        .descriptorCount = 1,
-        .descriptorType = c.VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-        .pImageInfo = &diffuse_info,
-    };
+    c.vkUpdateDescriptorSets(device.handle, 1, &write_texture_descriptor_set, 0, null);
 
-    const writes = [_]c.VkWriteDescriptorSet {write_texture_descriptor_set, write_diffuse_descriptor_set};
-
-    c.vkUpdateDescriptorSets(device.handle, 2, writes[0..].ptr, 0, null);
-
-    const index = self.textures.items.len;
-    try self.textures.append(descriptor_set);
-
-    return index;
+    self.heightmap = descriptor_set;
 }
 
 pub fn bind(self: Self, device: vk.Device, frame: usize) void {

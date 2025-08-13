@@ -19,7 +19,7 @@ pitch: f32 = -45,
 yaw: f32 = 0,
 
 pub fn getProjection(width: usize, height: usize) math.Matrix {
-    return math.Matrix.perspective(math.rad(45.0), (@as(f32, @floatFromInt(width)) / @as(f32, @floatFromInt(height))), 0.1, 100.0);
+    return math.Matrix.perspective(math.rad(45.0), (@as(f32, @floatFromInt(width)) / @as(f32, @floatFromInt(height))), 0.1, 1000.0);
 }
 
 pub fn getView(self: *Camera) math.Matrix {

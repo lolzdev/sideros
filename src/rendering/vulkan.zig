@@ -1,5 +1,6 @@
 pub const Texture = @import("Texture.zig");
 pub const GraphicsPipeline = @import("GraphicsPipeline.zig");
+pub const TerrainPipeline = @import("TerrainPipeline.zig");
 pub const Device = @import("Device.zig");
 pub const Swapchain = @import("Swapchain.zig");
 pub const PhysicalDevice = @import("PhysicalDevice.zig");
@@ -112,8 +113,8 @@ pub const Sampler = struct {
 
         const create_info: c.VkSamplerCreateInfo = .{
             .sType = c.VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
-            .magFilter = c.VK_FILTER_LINEAR,
-            .minFilter = c.VK_FILTER_LINEAR,
+            .magFilter = c.VK_FILTER_NEAREST,
+            .minFilter = c.VK_FILTER_NEAREST,
             .addressModeU = c.VK_SAMPLER_ADDRESS_MODE_REPEAT,
             .addressModeV = c.VK_SAMPLER_ADDRESS_MODE_REPEAT,
             .addressModeW = c.VK_SAMPLER_ADDRESS_MODE_REPEAT,

@@ -6,6 +6,8 @@ pub const rad = std.math.degreesToRadians;
 pub const deg = std.math.radiansToDegrees;
 pub const sqrt = std.math.sqrt;
 
+pub const PerlinNoise = @import("math/PerlinNoise.zig");
+
 pub const Axis = struct {
     pub const x: [3]f32 = .{1.0, 0.0, 0.0};
     pub const y: [3]f32 = .{0.0, 1.0, 0.0};

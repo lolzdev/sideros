@@ -3,6 +3,7 @@ const vk = @import("vulkan.zig");
 const gltf = @import("gltf.zig");
 const Allocator = std.mem.Allocator;
 const c = vk.c;
+const math = @import("math");
 
 const Mesh = @This();
 
@@ -59,12 +60,99 @@ pub const Vertex = struct {
     }
 };
 
-pub fn init(allocator: Allocator, device: anytype) !Mesh {
-    const vertex_buffer = try Mesh.createVertexBuffer(allocator, device);
-    const index_buffer = try Mesh.createIndexBuffer(allocator, device);
+fn createVertexBuffer(device: vk.Device, vertices: std.ArrayList([8]f32)) !vk.Buffer {
+    var data: [*c]?*anyopaque = null;
 
-    return Mesh{
-        .vertex_buffer = vertex_buffer,
-        .index_buffer = index_buffer,
-    };
+    const buffer = try device.initBuffer(vk.BufferUsage{ .transfer_src = true }, vk.BufferFlags{ .host_visible = true, .host_coherent = true }, @sizeOf([8]f32) * vertices.items.len);
+
+    try vk.mapError(vk.c.vkMapMemory(
+        device.handle,
+        buffer.memory,
+        0,
+        buffer.size,
+        0,
+        @ptrCast(&data),
+    ));
+
+    if (data) |ptr| {
+        const gpu_vertices: [*]Mesh.Vertex = @ptrCast(@alignCast(ptr));
+
+        @memcpy(gpu_vertices, @as([]Mesh.Vertex, @ptrCast(vertices.items[0..])));
+    }
+
+    vk.c.vkUnmapMemory(device.handle, buffer.memory);
+
+    const vertex_buffer = try device.initBuffer(vk.BufferUsage{ .vertex_buffer = true, .transfer_dst = true, .transfer_src = true }, vk.BufferFlags{ .device_local = true }, @sizeOf(Mesh.Vertex) * vertices.items.len);
+
+    try buffer.copyTo(device, vertex_buffer, 0);
+    buffer.deinit(device.handle);
+
+    return vertex_buffer;
+}
+
+fn createIndexBuffer(device: vk.Device, indices: std.ArrayList(u32)) !vk.Buffer {
+    var data: [*c]?*anyopaque = null;
+
+    const buffer = try device.initBuffer(vk.BufferUsage{ .transfer_src = true }, vk.BufferFlags{ .host_visible = true, .host_coherent = true }, @sizeOf(u32) * indices.items.len);
+
+    try vk.mapError(vk.c.vkMapMemory(
+        device.handle,
+        buffer.memory,
+        0,
+        buffer.size,
+        0,
+        @ptrCast(&data),
+    ));
+
+    if (data) |ptr| {
+        const gpu_indices: [*]u32 = @ptrCast(@alignCast(ptr));
+
+        @memcpy(gpu_indices, indices.items[0..]);
+    }
+
+    vk.c.vkUnmapMemory(device.handle, buffer.memory);
+
+    const index_buffer = try device.initBuffer(vk.BufferUsage{ .index_buffer = true, .transfer_dst = true, .transfer_src = true }, vk.BufferFlags{ .device_local = true }, @sizeOf(u32) * indices.items.len);
+
+    try buffer.copyTo(device, index_buffer, 0);
+    buffer.deinit(device.handle);
+
+    return index_buffer;
+}
+
+pub fn terrain(allocator: std.mem.Allocator, device: vk.Device, width: usize, height: usize, resolution: f32) !struct { vk.Buffer, vk.Buffer } {
+    var vertices = std.ArrayList([8]f32).init(allocator);
+    defer vertices.deinit();
+    var indices = std.ArrayList(u32).init(allocator);
+    defer indices.deinit();
+
+    for (0..width) |x| {
+        for (0..height) |z| {
+            const vertex: [8]f32 = .{@as(f32, @floatFromInt(x))/resolution, 0.0, @as(f32, @floatFromInt(z))/resolution, 0.0, 0.0, 0.0, @as(f32, @floatFromInt(x)) / @as(f32, @floatFromInt(width)), @as(f32, @floatFromInt(z)) / @as(f32, @floatFromInt(height))};
+            try vertices.append(vertex);
+        }
+    }
+
+
+    for (0..width-1) |x| {
+        for (0..height-1) |z| {
+            const top_left = @as(u32, @intCast(z * width + x));
+            const top_right = @as(u32, @intCast(z * width + (x+1)));
+            const bottom_left = @as(u32, @intCast((z+1) * width + x));
+            const bottom_right = @as(u32, @intCast((z+1) * width + (x + 1)));
+
+            try indices.append(top_left);
+            try indices.append(top_right);
+            try indices.append(bottom_left);
+
+            try indices.append(top_right);
+            try indices.append(bottom_right);
+            try indices.append(bottom_left);
+        }
+    }
+    
+    const vertex_buffer = try createVertexBuffer(device, vertices);
+    const index_buffer = try createIndexBuffer(device, indices);
+
+    return .{ vertex_buffer, index_buffer };
 }

@@ -162,7 +162,12 @@ pub fn transitionImageLayout(self: Self, image: c.VkImage, format: c.VkFormat, o
     try self.endSingleTimeCommands(command_buffer);
 }
 
-
+pub fn drawTerrain(self: Self, indices: u32, frame: usize, vertex_buffer: vk.Buffer, index_buffer: vk.Buffer) void {
+    std.debug.assert(frame < frames_in_flight);
+    c.vkCmdBindIndexBuffer(self.command_buffers[frame], index_buffer.handle, 0, c.VK_INDEX_TYPE_UINT32);
+    self.bindVertexBuffer(vertex_buffer, frame);
+    c.vkCmdDrawIndexed(self.command_buffers[frame], indices, 1, 0, 0, 0);
+}
 
 pub fn draw(self: Self, indices: u32, frame: usize, mesh: Mesh) void {
     std.debug.assert(frame < frames_in_flight);
@@ -207,6 +212,11 @@ pub fn bindVertexBuffer(self: Self, buffer: vk.Buffer, frame: usize) void {
 
 pub fn bindDescriptorSets(self: Self, pipeline: vk.GraphicsPipeline, frame: usize, texture: usize) void {
     const sets = [_]c.VkDescriptorSet {pipeline.descriptor_set, pipeline.textures.items[texture]};
+    c.vkCmdBindDescriptorSets(self.command_buffers[frame], c.VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.layout, 0, 2, sets[0..].ptr, 0, null);
+}
+
+pub fn bindTerrainSets(self: Self, pipeline: vk.TerrainPipeline, frame: usize) void {
+    const sets = [_]c.VkDescriptorSet {pipeline.descriptor_set, pipeline.heightmap};
     c.vkCmdBindDescriptorSets(self.command_buffers[frame], c.VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.layout, 0, 2, sets[0..].ptr, 0, null);
 }
 

@@ -20,6 +20,10 @@ pub fn render(pool: *ecs.Pool) anyerror!void {
     
     renderer.setLightCount(2);
 
+    try renderer.beginTerrain();
+    renderer.device.drawTerrain(@as(u32, @intCast(renderer.terrain_index.size/@sizeOf(u32))), renderer.current_frame, renderer.terrain_vertex, renderer.terrain_index);
+
+    try renderer.beginGraphics();
     for (renderer.transforms.items, 0..) |transform, i| {
         transform_memory[i] = transform;
         renderer.setTransform(@intCast(i));
