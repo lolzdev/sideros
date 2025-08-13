@@ -3,6 +3,7 @@ pub const tan = std.math.tan;
 pub const cos = std.math.cos;
 pub const sin = std.math.sin;
 pub const rad = std.math.degreesToRadians;
+pub const deg = std.math.radiansToDegrees;
 pub const sqrt = std.math.sqrt;
 
 pub const Axis = struct {
@@ -190,6 +191,31 @@ pub const Quaternion = extern struct {
         };
     }
 
+    //pub fn rotateVector(q: Quaternion, v: @Vector(3, f32)) @Vector(3, f32) {
+    //    const quaternion = q.normalize();
+    //    const u = @Vector(3, f32){quaternion.x, quaternion.y, quaternion.z};
+    //    const s = quaternion.w;
+    //    
+    //    return scaleVector(u, 2.0 * dot(u, v))
+    //         + scaleVector(v, s*s - dot(u, u))
+    //         + scaleVector(cross(u, v), 2.0 * s);
+    //}
+
+    pub fn rotateVector(self: Quaternion, vec: @Vector(3, f32)) @Vector(3, f32) {
+        const vec_quat: Quaternion = .{ .w = 0, .x = vec[0], .y = vec[1], .z = vec[2] };
+        
+        const conj: Quaternion = .{
+            .w = self.w,
+            .x = -self.x,
+            .y = -self.y,
+            .z = -self.z,
+        };
+        
+        const rotated = self.mul(vec_quat).mul(conj);
+        
+        return @Vector(3, f32){ rotated.x, rotated.y, rotated.z };
+    }
+
 
     inline fn mul(a: Quaternion, b: Quaternion) Quaternion {
         return .{
@@ -210,7 +236,7 @@ pub const Quaternion = extern struct {
         };
     }
 
-    fn matrix(q: Quaternion) Matrix {
+    pub fn matrix(q: Quaternion) Matrix {
         const x2 = q.x + q.x;
         const y2 = q.y + q.y;
         const z2 = q.z + q.z;
@@ -246,4 +272,8 @@ pub fn cross(a: @Vector(3, f32), b: @Vector(3, f32)) @Vector(3, f32) {
 
 pub fn normalize(a: @Vector(3, f32)) @Vector(3, f32) {
     return a / @as(@Vector(3, f32), @splat(@sqrt(dot(a, a))));
+}
+
+pub inline fn scaleVector(a: @Vector(3, f32), s: f32) @Vector(3, f32) {
+    return a * @as(@Vector(3, f32), @splat(s));
 }

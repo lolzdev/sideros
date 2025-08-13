@@ -1,3 +1,5 @@
+const std = @import("std");
+
 pub const components = @import("components.zig");
 pub const entities = @import("entities.zig");
 pub const Input = @import("Input.zig");
@@ -11,3 +13,31 @@ pub const Pool = entities.Pool;
 pub const Resources = entities.Resources;
 pub const System = *const fn (*Pool) anyerror!void;
 pub const SystemGroup = []const System;
+
+pub const hooks = struct {
+    pub const Scroll = *const fn (*Pool, direction: Input.ScrollDirection) anyerror!void;
+    pub const Key = *const fn (*Pool, key: Input.KeyCode) anyerror!void;
+
+    pub var key: std.ArrayList(Key) = undefined;
+    pub var scroll: std.ArrayList(Scroll) = undefined;
+
+    pub const Layer = enum {
+        key,
+        scroll
+    };
+
+    pub fn init(allocator: std.mem.Allocator) !void {
+        key = std.ArrayList(Key).init(allocator);
+        scroll = std.ArrayList(Scroll).init(allocator);
+    }
+
+    pub fn addHook(comptime layer: Layer, hook: anytype) !void {
+        var list = comptime switch (layer) {
+            .key => &key,
+            .scroll => &scroll,
+        };
+
+        try list.append(hook);
+    }
+};
+

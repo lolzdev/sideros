@@ -138,6 +138,8 @@ export fn sideros_init(init: api.GameInit) callconv(.c) void {
         .input = &input,
     };
 
+    ecs.hooks.init(allocator) catch @panic("TODO: handle this");
+    ecs.hooks.addHook(.scroll, systems.zoomCamera) catch @panic("TODO handle this");
     pool = ecs.Pool.init(allocator, &resources) catch @panic("TODO: Gracefully handle error");
     // TODO(ernesto): I think this @ptrCast are unavoidable but maybe not?
     renderer = Renderer.init(allocator, @ptrCast(init.instance), @ptrCast(init.surface)) catch @panic("TODO: Gracefully handle error");
@@ -176,5 +178,11 @@ export fn sideros_key_callback(key: u32, release: bool) callconv(.c) void {
         } else {
             input.key_pressed[key] = true;
         }
+    }
+}
+
+export fn sideros_scroll_callback(up: bool) callconv(.c) void {
+    for (ecs.hooks.scroll.items) |hook| {
+        hook(&pool, if (up) .up else .down) catch @panic("TODO: actually handle this");
     }
 }

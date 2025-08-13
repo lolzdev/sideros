@@ -154,7 +154,7 @@ pub fn main() !void {
     const screen = iter.data;
 
     const mask = c.XCB_CW_EVENT_MASK;
-    const value = c.XCB_EVENT_MASK_EXPOSURE | c.XCB_EVENT_MASK_KEY_PRESS | c.XCB_EVENT_MASK_KEY_RELEASE;
+    const value = c.XCB_EVENT_MASK_EXPOSURE | c.XCB_EVENT_MASK_KEY_PRESS | c.XCB_EVENT_MASK_KEY_RELEASE | c.XCB_EVENT_MASK_BUTTON_PRESS;
 
     const window = c.xcb_generate_id(connection);
     _ = c.xcb_create_window(connection, c.XCB_COPY_FROM_PARENT, window, screen.*.root, 0, 0, 800, 600, 10, c.XCB_WINDOW_CLASS_INPUT_OUTPUT, screen.*.root_visual, mask, &value);
@@ -189,6 +189,14 @@ pub fn main() !void {
                     const ev: *c.xcb_key_release_event_t = @ptrCast(e);
                     const key = c.xcb_key_symbols_get_keysym(keysyms, ev.detail, 0);
                     sideros.sideros_key_callback(mapKeysym(key), true);
+                },
+                c.XCB_BUTTON_PRESS => {
+                    const ev: *c.xcb_button_press_event_t = @ptrCast(e);
+                    switch (ev.detail) {
+                        4 => sideros.sideros_scroll_callback(true),
+                        5 => sideros.sideros_scroll_callback(false),
+                        else => {},
+                    }
                 },
                 else => {},
             }

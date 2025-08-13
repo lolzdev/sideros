@@ -1,6 +1,7 @@
 const ecs = @import("ecs");
 const math = @import("math");
 const std = @import("std");
+const Input = ecs.Input;
 
 pub fn render(pool: *ecs.Pool) anyerror!void {
     var renderer = pool.resources.renderer;
@@ -32,17 +33,38 @@ pub fn moveCamera(pool: *ecs.Pool) !void {
     const input = pool.resources.input;
     var camera = pool.resources.camera;
     const mul = @as(@Vector(3, f32), @splat(camera.speed * pool.resources.delta_time));
+    var forward = camera.getDirection();
+    forward[0] = -forward[0];
+    forward[1] = 0.0;
+    const left = math.cross(forward, camera.up);
 
     if (input.isKeyDown(.w)) {
-        camera.position += @as(@Vector(3, f32), .{0.0, 0.0, 1.0}) * mul;
+        camera.position += forward * mul;
     }
     if (input.isKeyDown(.s)) {
-        camera.position += @as(@Vector(3, f32), .{0.0, 0.0, -1.0}) * mul;
+        camera.position -= forward * mul;
     }
     if (input.isKeyDown(.a)) {
-        camera.position -= @as(@Vector(3, f32), .{1.0, 0.0, 0.0}) * mul;
+        camera.position += left * mul;
     }
     if (input.isKeyDown(.d)) {
-        camera.position += @as(@Vector(3, f32), .{1.0, 0.0, 0.0}) * mul;
+        camera.position -= left * mul;
+    }
+    if (input.isKeyDown(.q)) {
+        camera.rotateAround(camera.getTarget(), math.rad(100.0 * pool.resources.delta_time));
+    }
+    if (input.isKeyDown(.e)) {
+        camera.rotateAround(camera.getTarget(), math.rad(-100.0 * pool.resources.delta_time));
+    }
+}
+
+pub fn zoomCamera(pool: *ecs.Pool, direction: Input.ScrollDirection) !void {
+    var camera = pool.resources.camera;
+    var camera_direction = camera.getDirection();
+    camera_direction[0] = -camera_direction[0];
+    if (direction == .up) {
+        camera.position += camera_direction;
+    } else {
+        camera.position -= camera_direction;
     }
 }

@@ -8,7 +8,8 @@ const Camera = rendering.Camera;
 const ecs = @import("ecs.zig");
 const Input = ecs.Input;
 
-pub const System = ecs.System;
+
+pub const System = *const fn (*Pool) anyerror!void;
 pub const SystemGroup = []const System;
 pub const SyncGroup = []const System;
 

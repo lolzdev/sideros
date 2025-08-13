@@ -3,6 +3,11 @@ const Allocator = std.mem.Allocator;
 
 const Input = @This();
 
+pub const ScrollDirection = enum {
+    up,
+    down
+};
+
 pub const KeyCode = enum(u32) {
     space = 32,
     apostrophe = 39,
