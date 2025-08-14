@@ -20,6 +20,9 @@ Zig has built-in unit testing which should be used to verify that everything is 
 
 MEDIUM:
 
+- Window resizing:
+Currently the game window isn't resizable. Resizing should be implemented in all the platform specific code (wayland, xorg, macos).
+
 HARD:
 
 
