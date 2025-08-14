@@ -146,20 +146,20 @@ export fn sideros_init(init: api.GameInit) callconv(.c) void {
     renderer = Renderer.init(allocator, @ptrCast(init.instance), @ptrCast(init.surface)) catch @panic("TODO: Gracefully handle error");
 
     resources.terrain = rendering.Terrain.init(allocator, renderer.device, .{
-        .octaves = 8,
-        .lacunarity = 3.0,
+        .octaves = 4,
+        .lacunarity = 2.0,
         .gain = 0.5,
-        .scale = 0.01,
-        .multiplier = 3.0,
-        .exponent = 1.2,
+        .scale = 30,
+        .multiplier = 1.0,
+        .exponent = 1.0,
 
-        .width = 700,
-        .height = 700,
-        .seed = 12345678,
-        .resolution = 10.0,
+        .width = 100,
+        .height = 100,
+        .seed = 2497852058242342,
+        .resolution = 1,
     }) catch @panic("TODO: handle this");
 
-    renderer.terrain_pipeline.setHeightmap(renderer.device, resources.terrain.texture) catch @panic("TODO: handle this");
+    renderer.terrain_pipeline.setMaps(renderer.device, resources.terrain.texture) catch @panic("TODO: handle this");
 
     pool.addSystemGroup(&[_]ecs.System{systems.render, systems.moveCamera}, true) catch @panic("TODO: Gracefuly handle error");
     pool.resources.renderer = &renderer;

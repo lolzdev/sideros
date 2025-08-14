@@ -32,6 +32,8 @@ const validation_layers: []const [*c]const u8 = if (!debug) &[0][*c]const u8{} e
 pub const Error = error{
     out_of_host_memory,
     out_of_device_memory,
+    out_of_pool_memory,
+    fragmented_pool,
     initialization_failed,
     layer_not_present,
     extension_not_present,
@@ -50,6 +52,8 @@ pub fn mapError(result: c_int) !void {
         c.VK_ERROR_LAYER_NOT_PRESENT => Error.layer_not_present,
         c.VK_ERROR_EXTENSION_NOT_PRESENT => Error.extension_not_present,
         c.VK_ERROR_INCOMPATIBLE_DRIVER => Error.incompatible_driver,
+        c.VK_ERROR_OUT_OF_POOL_MEMORY => Error.out_of_pool_memory,
+        c.VK_ERROR_FRAGMENTED_POOL => Error.fragmented_pool,
         else => Error.unknown_error,
     };
 }
@@ -105,16 +109,21 @@ pub const Buffer = struct {
     }
 };
 
+pub const SamplerType = enum {
+    linear,
+    nearest,
+};
+
 pub const Sampler = struct {
     handle: c.VkSampler,
 
-    pub fn init(device: anytype) !Sampler {
+    pub fn init(device: anytype, filter: SamplerType) !Sampler {
         var sampler: c.VkSampler = undefined;
 
         const create_info: c.VkSamplerCreateInfo = .{
             .sType = c.VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
-            .magFilter = c.VK_FILTER_NEAREST,
-            .minFilter = c.VK_FILTER_NEAREST,
+            .magFilter = if (filter == .linear) c.VK_FILTER_LINEAR else c.VK_FILTER_NEAREST,
+            .minFilter = if (filter == .linear) c.VK_FILTER_LINEAR else c.VK_FILTER_NEAREST,
             .addressModeU = c.VK_SAMPLER_ADDRESS_MODE_REPEAT,
             .addressModeV = c.VK_SAMPLER_ADDRESS_MODE_REPEAT,
             .addressModeW = c.VK_SAMPLER_ADDRESS_MODE_REPEAT,

@@ -216,7 +216,7 @@ pub fn bindDescriptorSets(self: Self, pipeline: vk.GraphicsPipeline, frame: usiz
 }
 
 pub fn bindTerrainSets(self: Self, pipeline: vk.TerrainPipeline, frame: usize) void {
-    const sets = [_]c.VkDescriptorSet {pipeline.descriptor_set, pipeline.heightmap};
+    const sets = [_]c.VkDescriptorSet {pipeline.descriptor_set, pipeline.map};
     c.vkCmdBindDescriptorSets(self.command_buffers[frame], c.VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.layout, 0, 2, sets[0..].ptr, 0, null);
 }
 

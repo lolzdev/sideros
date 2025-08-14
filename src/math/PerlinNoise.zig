@@ -62,17 +62,16 @@ fn noise(self: Self, x: f64, y: f64) f64 {
 }
 
 pub fn fbm(self: Self, x: f64, y: f64, octaves: u32, lacunarity: f64, gain: f64) f64 {
-    var total: f64 = 0.0;
     var amplitude: f64 = 1.0;
     var frequency: f64 = 1.0;
-    var maxAmplitude: f64 = 1.0;
+    var maxAmplitude: f64 = 0.0;
 
     for(0..octaves) |_| {
-        total += self.noise(x * frequency, y * frequency) * amplitude;
-        maxAmplitude += amplitude;
+        const value = (self.noise(x * frequency, y * frequency) * 2) - 1;
+        maxAmplitude += amplitude * value;
         amplitude *= gain;
         frequency *= lacunarity;
     }
 
-    return total / maxAmplitude;
+    return maxAmplitude;
 }

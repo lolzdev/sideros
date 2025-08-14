@@ -120,26 +120,29 @@ fn createIndexBuffer(device: vk.Device, indices: std.ArrayList(u32)) !vk.Buffer 
     return index_buffer;
 }
 
-pub fn terrain(allocator: std.mem.Allocator, device: vk.Device, width: usize, height: usize, resolution: f32) !struct { vk.Buffer, vk.Buffer } {
+pub fn terrain(allocator: std.mem.Allocator, device: vk.Device, width: usize, height: usize, resolution: usize) !struct { vk.Buffer, vk.Buffer } {
     var vertices = std.ArrayList([8]f32).init(allocator);
     defer vertices.deinit();
     var indices = std.ArrayList(u32).init(allocator);
     defer indices.deinit();
 
-    for (0..width) |x| {
-        for (0..height) |z| {
-            const vertex: [8]f32 = .{@as(f32, @floatFromInt(x))/resolution, 0.0, @as(f32, @floatFromInt(z))/resolution, 0.0, 0.0, 0.0, @as(f32, @floatFromInt(x)) / @as(f32, @floatFromInt(width)), @as(f32, @floatFromInt(z)) / @as(f32, @floatFromInt(height))};
+    for (0..width*resolution) |x| {
+        for (0..height*resolution) |z| {
+            const offset_x = @as(f32, @floatFromInt(x)) / @as(f32, @floatFromInt(width*resolution - 1)) * @as(f32, @floatFromInt(width));
+            const offset_z = @as(f32, @floatFromInt(z)) / @as(f32, @floatFromInt(height*resolution - 1)) * @as(f32, @floatFromInt(height));
+
+            const vertex: [8]f32 = .{offset_x, 0.0, offset_z, 0.0, 0.0, 0.0, @as(f32, @floatFromInt(x)) / @as(f32, @floatFromInt(width*resolution - 1)), @as(f32, @floatFromInt(z)) / @as(f32, @floatFromInt(height*resolution - 1))};
             try vertices.append(vertex);
         }
     }
 
 
-    for (0..width-1) |x| {
-        for (0..height-1) |z| {
-            const top_left = @as(u32, @intCast(z * width + x));
-            const top_right = @as(u32, @intCast(z * width + (x+1)));
-            const bottom_left = @as(u32, @intCast((z+1) * width + x));
-            const bottom_right = @as(u32, @intCast((z+1) * width + (x + 1)));
+    for (0..width*resolution-1) |x| {
+        for (0..height*resolution-1) |z| {
+            const top_left = @as(u32, @intCast(z * width*resolution + x));
+            const top_right = @as(u32, @intCast(z * width*resolution + (x+1)));
+            const bottom_left = @as(u32, @intCast((z+1) * width*resolution + x));
+            const bottom_right = @as(u32, @intCast((z+1) * width*resolution + (x + 1)));
 
             try indices.append(top_left);
             try indices.append(top_right);

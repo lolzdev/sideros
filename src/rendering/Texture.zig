@@ -3,6 +3,7 @@ const vk = @import("vulkan.zig");
 const c = vk.c;
 pub const stb = @cImport({
     @cInclude("stb_image.h");
+    @cInclude("stb_image_write.h");
 });
 
 image: c.VkImage,

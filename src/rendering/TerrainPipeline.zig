@@ -21,7 +21,10 @@ descriptor_pool: c.VkDescriptorPool,
 descriptor_set: c.VkDescriptorSet,
 descriptor_set_layout: c.VkDescriptorSetLayout,
 heightmap_sampler: vk.Sampler,
-heightmap: c.VkDescriptorSet,
+sand_sampler: vk.Sampler,
+grass_sampler: vk.Sampler,
+rock_sampler: vk.Sampler,
+map: c.VkDescriptorSet,
 
 const Self = @This();
 
@@ -172,8 +175,29 @@ pub fn init(
         .stageFlags = c.VK_SHADER_STAGE_VERTEX_BIT,
     };
 
+    const sand_sampler_binding = c.VkDescriptorSetLayoutBinding{
+        .binding = 1,
+        .descriptorType = c.VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+        .descriptorCount = 1,
+        .stageFlags = c.VK_SHADER_STAGE_FRAGMENT_BIT,
+    };
+
+    const grass_sampler_binding = c.VkDescriptorSetLayoutBinding{
+        .binding = 2,
+        .descriptorType = c.VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+        .descriptorCount = 1,
+        .stageFlags = c.VK_SHADER_STAGE_FRAGMENT_BIT,
+    };
+
+    const stone_sampler_binding = c.VkDescriptorSetLayoutBinding{
+        .binding = 3,
+        .descriptorType = c.VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+        .descriptorCount = 1,
+        .stageFlags = c.VK_SHADER_STAGE_FRAGMENT_BIT,
+    };
+
     const bindings = [_]c.VkDescriptorSetLayoutBinding{projection_binding, view_binding, directional_light_binding, point_lights_binding, view_pos_binding};
-    const texture_bindings = [_]c.VkDescriptorSetLayoutBinding{heightmap_sampler_binding};
+    const texture_bindings = [_]c.VkDescriptorSetLayoutBinding{heightmap_sampler_binding, sand_sampler_binding, grass_sampler_binding, stone_sampler_binding};
 
     var descriptor_set_layout: c.VkDescriptorSetLayout = undefined;
     var texture_descriptor_set_layout: c.VkDescriptorSetLayout = undefined;
@@ -186,7 +210,7 @@ pub fn init(
 
     const texture_descriptor_set_layout_info = c.VkDescriptorSetLayoutCreateInfo{
         .sType = c.VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
-        .bindingCount = 1,
+        .bindingCount = 4,
         .pBindings = texture_bindings[0..].ptr,
     };
 
@@ -256,7 +280,7 @@ pub fn init(
 
     const sampler_size = c.VkDescriptorPoolSize{
         .type = c.VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-        .descriptorCount = 1,
+        .descriptorCount = 4,
     };
 
     const sizes = [_]c.VkDescriptorPoolSize {size, sampler_size};
@@ -379,12 +403,15 @@ pub fn init(
         .descriptor_pool = descriptor_pool,
         .descriptor_set = descriptor_set,
         .descriptor_set_layout = descriptor_set_layout,
-        .heightmap_sampler = try vk.Sampler.init(device),
-        .heightmap = undefined,
+        .heightmap_sampler = try vk.Sampler.init(device, .nearest),
+        .sand_sampler = try vk.Sampler.init(device, .linear),
+        .grass_sampler = try vk.Sampler.init(device, .linear),
+        .rock_sampler = try vk.Sampler.init(device, .linear),
+        .map = undefined,
     };
 }
 
-pub fn setHeightmap(self: *Self, device: anytype, heightmap: Texture) !void {
+pub fn setMaps(self: *Self, device: anytype, heightmap: Texture) !void {
     var set_layouts = [_]c.VkDescriptorSetLayout{self.texture_set_layout};
     const descriptor_allocate_info = c.VkDescriptorSetAllocateInfo{
         .sType = c.VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
@@ -396,25 +423,79 @@ pub fn setHeightmap(self: *Self, device: anytype, heightmap: Texture) !void {
     var descriptor_set: c.VkDescriptorSet = undefined;
     try vk.mapError(c.vkAllocateDescriptorSets(device.handle, &descriptor_allocate_info, &descriptor_set));
 
-    const texture_info: c.VkDescriptorImageInfo = .{
+    const height_info: c.VkDescriptorImageInfo = .{
         .imageLayout = c.VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
         .imageView = heightmap.image_view,
         .sampler = self.heightmap_sampler.handle,
     };
 
-    const write_texture_descriptor_set = c.VkWriteDescriptorSet{
+    const sand = try Texture.init("assets/textures/sand.png", device);
+    const grass = try Texture.init("assets/textures/grass.png", device);
+    const rock = try Texture.init("assets/textures/rock.png", device);
+
+    const sand_info: c.VkDescriptorImageInfo = .{
+        .imageLayout = c.VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+        .imageView = sand.image_view,
+        .sampler = self.sand_sampler.handle,
+    };
+
+    const grass_info: c.VkDescriptorImageInfo = .{
+        .imageLayout = c.VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+        .imageView = grass.image_view,
+        .sampler = self.grass_sampler.handle,
+    };
+
+    const rock_info: c.VkDescriptorImageInfo = .{
+        .imageLayout = c.VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+        .imageView = rock.image_view,
+        .sampler = self.rock_sampler.handle,
+    };
+
+    const write_height_descriptor_set = c.VkWriteDescriptorSet{
         .sType = c.VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
         .dstSet = descriptor_set,
         .dstBinding = 0,
         .dstArrayElement = 0,
         .descriptorCount = 1,
         .descriptorType = c.VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-        .pImageInfo = &texture_info,
+        .pImageInfo = &height_info,
     };
 
-    c.vkUpdateDescriptorSets(device.handle, 1, &write_texture_descriptor_set, 0, null);
+    const write_sand_descriptor_set = c.VkWriteDescriptorSet{
+        .sType = c.VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+        .dstSet = descriptor_set,
+        .dstBinding = 1,
+        .dstArrayElement = 0,
+        .descriptorCount = 1,
+        .descriptorType = c.VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+        .pImageInfo = &sand_info,
+    };
 
-    self.heightmap = descriptor_set;
+    const write_grass_descriptor_set = c.VkWriteDescriptorSet{
+        .sType = c.VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+        .dstSet = descriptor_set,
+        .dstBinding = 2,
+        .dstArrayElement = 0,
+        .descriptorCount = 1,
+        .descriptorType = c.VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+        .pImageInfo = &grass_info,
+    };
+
+    const write_rock_descriptor_set = c.VkWriteDescriptorSet{
+        .sType = c.VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+        .dstSet = descriptor_set,
+        .dstBinding = 3,
+        .dstArrayElement = 0,
+        .descriptorCount = 1,
+        .descriptorType = c.VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+        .pImageInfo = &rock_info,
+    };
+
+    const writes = [_]c.VkWriteDescriptorSet {write_height_descriptor_set, write_sand_descriptor_set, write_grass_descriptor_set, write_rock_descriptor_set};
+
+    c.vkUpdateDescriptorSets(device.handle, 4, writes[0..].ptr, 0, null);
+
+    self.map = descriptor_set;
 }
 
 pub fn bind(self: Self, device: vk.Device, frame: usize) void {

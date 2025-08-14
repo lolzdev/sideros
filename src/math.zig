@@ -279,3 +279,7 @@ pub fn normalize(a: @Vector(3, f32)) @Vector(3, f32) {
 pub inline fn scaleVector(a: @Vector(3, f32), s: f32) @Vector(3, f32) {
     return a * @as(@Vector(3, f32), @splat(s));
 }
+
+pub inline fn inverseLerp(a: f64, b: f64, t: f64) f64 {
+    return (t - a) / (b - a);
+}
