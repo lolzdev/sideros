@@ -54,8 +54,8 @@ pub fn init(
     // TODO: shouldn't this be closer to usage?
     const shader_stage_infos: []const c.VkPipelineShaderStageCreateInfo = &.{ vertex_shader_stage_info, fragment_shader_stage_info };
 
-    const vertex_attributes: []const c.VkVertexInputAttributeDescription = Mesh.Vertex.attributeDescriptions();
-    const vertex_bindings: []const c.VkVertexInputBindingDescription = &.{Mesh.Vertex.bindingDescription()};
+    const vertex_attributes: []const c.VkVertexInputAttributeDescription = Mesh.TerrainVertex.attributeDescriptions();
+    const vertex_bindings: []const c.VkVertexInputBindingDescription = &.{Mesh.TerrainVertex.bindingDescription()};
 
     const vertex_input_info: c.VkPipelineVertexInputStateCreateInfo = .{
         .sType = c.VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,

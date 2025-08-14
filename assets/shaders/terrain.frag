@@ -83,9 +83,9 @@ void main() {
 	grassWeight /= total;
 	rockWeight /= total;
 
-	vec4 sandColor = texture(sand, TexCoords);
-	vec4 grassColor = texture(grass, TexCoords);
-	vec4 rockColor = texture(rock, TexCoords);
+	vec4 sandColor = texture(sand, vec2(FragPos.x, FragPos.z));
+	vec4 grassColor = texture(grass, vec2(FragPos.x, FragPos.z));
+	vec4 rockColor = texture(rock, vec2(FragPos.x, FragPos.z));
 
 	vec4 finalColor = sandColor * sandWeight + 
 			 grassColor * grassWeight + 

@@ -60,10 +60,52 @@ pub const Vertex = struct {
     }
 };
 
-fn createVertexBuffer(device: vk.Device, vertices: std.ArrayList([8]f32)) !vk.Buffer {
+pub const TerrainVertex = struct {
+    position: [2]f32,
+    uv: [2]f32,
+    texture: [2]f32,
+
+    pub fn bindingDescription() vk.c.VkVertexInputBindingDescription {
+        const binding_description: vk.c.VkVertexInputBindingDescription = .{
+            .binding = 0,
+            .stride = @sizeOf(TerrainVertex),
+            .inputRate = vk.c.VK_VERTEX_INPUT_RATE_VERTEX,
+        };
+
+        return binding_description;
+    }
+
+    pub fn attributeDescriptions() []const c.VkVertexInputAttributeDescription {
+        const attributes: []const c.VkVertexInputAttributeDescription = &.{
+            .{
+                .location = 0,
+                .binding = 0,
+                .format = c.VK_FORMAT_R32G32_SFLOAT,
+                .offset = 0,
+            },
+            .{
+                .location = 1,
+                .binding = 0,
+                .format = c.VK_FORMAT_R32G32_SFLOAT,
+                .offset = 8,
+            },
+            .{
+                .location = 2,
+                .binding = 0,
+                .format = c.VK_FORMAT_R32G32_SFLOAT,
+                .offset = 16,
+            },
+        };
+
+        return attributes;
+    }
+};
+
+
+fn createVertexBuffer(device: vk.Device, vertices: std.ArrayList([6]f32)) !vk.Buffer {
     var data: [*c]?*anyopaque = null;
 
-    const buffer = try device.initBuffer(vk.BufferUsage{ .transfer_src = true }, vk.BufferFlags{ .host_visible = true, .host_coherent = true }, @sizeOf([8]f32) * vertices.items.len);
+    const buffer = try device.initBuffer(vk.BufferUsage{ .transfer_src = true }, vk.BufferFlags{ .host_visible = true, .host_coherent = true }, @sizeOf([6]f32) * vertices.items.len);
 
     try vk.mapError(vk.c.vkMapMemory(
         device.handle,
@@ -75,14 +117,14 @@ fn createVertexBuffer(device: vk.Device, vertices: std.ArrayList([8]f32)) !vk.Bu
     ));
 
     if (data) |ptr| {
-        const gpu_vertices: [*]Mesh.Vertex = @ptrCast(@alignCast(ptr));
+        const gpu_vertices: [*]Mesh.TerrainVertex = @ptrCast(@alignCast(ptr));
 
-        @memcpy(gpu_vertices, @as([]Mesh.Vertex, @ptrCast(vertices.items[0..])));
+        @memcpy(gpu_vertices, @as([]Mesh.TerrainVertex, @ptrCast(vertices.items[0..])));
     }
 
     vk.c.vkUnmapMemory(device.handle, buffer.memory);
 
-    const vertex_buffer = try device.initBuffer(vk.BufferUsage{ .vertex_buffer = true, .transfer_dst = true, .transfer_src = true }, vk.BufferFlags{ .device_local = true }, @sizeOf(Mesh.Vertex) * vertices.items.len);
+    const vertex_buffer = try device.initBuffer(vk.BufferUsage{ .vertex_buffer = true, .transfer_dst = true, .transfer_src = true }, vk.BufferFlags{ .device_local = true }, @sizeOf(Mesh.TerrainVertex) * vertices.items.len);
 
     try buffer.copyTo(device, vertex_buffer, 0);
     buffer.deinit(device.handle);
@@ -121,7 +163,7 @@ fn createIndexBuffer(device: vk.Device, indices: std.ArrayList(u32)) !vk.Buffer 
 }
 
 pub fn terrain(allocator: std.mem.Allocator, device: vk.Device, width: usize, height: usize, resolution: usize) !struct { vk.Buffer, vk.Buffer } {
-    var vertices = std.ArrayList([8]f32).init(allocator);
+    var vertices = std.ArrayList([6]f32).init(allocator);
     defer vertices.deinit();
     var indices = std.ArrayList(u32).init(allocator);
     defer indices.deinit();
@@ -130,8 +172,10 @@ pub fn terrain(allocator: std.mem.Allocator, device: vk.Device, width: usize, he
         for (0..height*resolution) |z| {
             const offset_x = @as(f32, @floatFromInt(x)) / @as(f32, @floatFromInt(width*resolution - 1)) * @as(f32, @floatFromInt(width));
             const offset_z = @as(f32, @floatFromInt(z)) / @as(f32, @floatFromInt(height*resolution - 1)) * @as(f32, @floatFromInt(height));
+            const u = @as(f32, @floatFromInt(x)) / @as(f32, @floatFromInt(width*resolution - 1));
+            const v = @as(f32, @floatFromInt(z)) / @as(f32, @floatFromInt(width*resolution - 1));
 
-            const vertex: [8]f32 = .{offset_x, 0.0, offset_z, 0.0, 0.0, 0.0, @as(f32, @floatFromInt(x)) / @as(f32, @floatFromInt(width*resolution - 1)), @as(f32, @floatFromInt(z)) / @as(f32, @floatFromInt(height*resolution - 1))};
+            const vertex: [6]f32 = .{offset_x, offset_z, u, v, offset_x, offset_z };
             try vertices.append(vertex);
         }
     }

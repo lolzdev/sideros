@@ -1,9 +1,8 @@
 #version 450
 
-
-layout(location = 0) in vec3 vertPos;
-layout(location = 1) in vec3 normal;
-layout(location = 2) in vec2 uv;
+layout(location = 0) in vec2 vertPos;
+layout(location = 1) in vec2 uv;
+layout(location = 2) in vec2 frag;
 
 layout (binding = 0) uniform ProjUniform {
     mat4 proj;
@@ -20,19 +19,21 @@ layout(location = 4) out vec2 TexCoords;
 layout (set = 1, binding = 0) uniform sampler2D diffuseSampler;
 
 void main() {
+    float y = texture(diffuseSampler, uv).x;
+    float mul = pow(2, y * 5);
+
     float texelSize = 1.0 / (50*4);
-    float hL = texture(diffuseSampler, uv - vec2(texelSize, 0.0)).r * 10;
-    float hR = texture(diffuseSampler, uv + vec2(texelSize, 0.0)).r * 10;
-    float hD = texture(diffuseSampler, uv - vec2(0.0, texelSize)).r * 10;
-    float hU = texture(diffuseSampler, uv + vec2(0.0, texelSize)).r * 10;
+    float hL = texture(diffuseSampler, uv - vec2(texelSize, 0.0)).r;
+    float hR = texture(diffuseSampler, uv + vec2(texelSize, 0.0)).r;
+    float hD = texture(diffuseSampler, uv - vec2(0.0, texelSize)).r;
+    float hU = texture(diffuseSampler, uv + vec2(0.0, texelSize)).r;
 
     float dX = (hR - hL) * 15.0;
     float dY = (hU - hD) * 15.0;
 
-    float y = texture(diffuseSampler, uv).x;
     
-    vec4 out_vec = proj.proj * view.view * vec4(vec3(vertPos.x, y * 10, vertPos.z), 1.0);
-    FragPos = vec3(vertPos.x, y, vertPos.z);
+    vec4 out_vec = proj.proj * view.view * vec4(vec3(vertPos.x, y * mul, vertPos.y), 1.0);
+    FragPos = vec3(vertPos.x, y, vertPos.y);
 
     Normal = normalize(vec3(-dX, -dY, 1.0));
     TexCoords = uv;

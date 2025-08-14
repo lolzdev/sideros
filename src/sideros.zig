@@ -153,8 +153,8 @@ export fn sideros_init(init: api.GameInit) callconv(.c) void {
         .multiplier = 1.0,
         .exponent = 1.0,
 
-        .width = 100,
-        .height = 100,
+        .width = 200,
+        .height = 200,
         .seed = 2497852058242342,
         .resolution = 1,
     }) catch @panic("TODO: handle this");
