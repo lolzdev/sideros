@@ -6,6 +6,7 @@ const Input = ecs.Input;
 pub fn render(pool: *ecs.Pool) anyerror!void {
     var renderer = pool.resources.renderer;
     const camera = pool.resources.camera;
+    const terrain = pool.resources.terrain;
 
     const now = try std.time.Instant.now();
     const delta_time: f32 = @as(f32, @floatFromInt(now.since(renderer.previous_time))) / @as(f32, 1_000_000_000.0);
@@ -21,7 +22,7 @@ pub fn render(pool: *ecs.Pool) anyerror!void {
     renderer.setLightCount(2);
 
     try renderer.beginTerrain();
-    renderer.device.drawTerrain(@as(u32, @intCast(renderer.terrain_index.size/@sizeOf(u32))), renderer.current_frame, renderer.terrain_vertex, renderer.terrain_index);
+    renderer.device.drawTerrain(@as(u32, @intCast(terrain.index_buffer.size/@sizeOf(u32))), renderer.current_frame, terrain.vertex_buffer, terrain.index_buffer);
 
     try renderer.beginGraphics();
     for (renderer.transforms.items, 0..) |transform, i| {

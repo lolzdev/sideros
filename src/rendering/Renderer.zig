@@ -22,8 +22,6 @@ mesh: Mesh,
 transforms: std.ArrayList(math.Transform),
 previous_time: std.time.Instant,
 current_image: usize,
-terrain_vertex: vk.Buffer,
-terrain_index: vk.Buffer,
 
 pub fn init(allocator: Allocator, instance_handle: vk.c.VkInstance, surface_handle: vk.c.VkSurfaceKHR) !Self {
     const instance: vk.Instance = .{ .handle = instance_handle };
@@ -49,27 +47,7 @@ pub fn init(allocator: Allocator, instance_handle: vk.c.VkInstance, surface_hand
     const terrain_fragment_shader = try device.initShader("terrain_frag");
     defer device.deinitShader(terrain_fragment_shader);
 
-    var terrain_pipeline = try vk.TerrainPipeline.init(graphics_pipeline, terrain_vertex_shader, terrain_fragment_shader);
-
-    const perlin: math.PerlinNoise = .{ .seed = 54321 };
-    const heightmap = try allocator.alloc(u32, 700 * 700);
-    defer allocator.free(heightmap);
-    for (0..700) |x| {
-        for (0..700) |y| {
-            const scale = 0.01;
-            var pixel = (perlin.fbm(@as(f64, @floatFromInt(x)) * scale, @as(f64, @floatFromInt(y)) * scale, 8, 3, 0.5) * 3);
-            pixel = std.math.pow(f64, pixel, 1.2);
-            const gray: u32 = @intFromFloat(pixel * 255);
-            const color: u32 = (255 << 24) | (gray << 16) | (gray << 8) | gray;
-
-            heightmap[x*700 + y] = color;
-        }
-    }
-
-    const terrain_vertex, const terrain_index = try Mesh.terrain(allocator, device, 700, 700, 10);
-    const heightmap_texture = try Texture.fromBytes(@alignCast(@ptrCast(heightmap)), device, 700, 700);
-    //const heightmap_texture = try Texture.init("assets/textures/heightmap.png", device);
-    try terrain_pipeline.setHeightmap(device, heightmap_texture);
+    const terrain_pipeline = try vk.TerrainPipeline.init(graphics_pipeline, terrain_vertex_shader, terrain_fragment_shader);
     const texture = try Texture.init("assets/textures/container.png", device);
     const diffuse = try Texture.init("assets/textures/container_specular.png", device);
 
@@ -116,8 +94,6 @@ pub fn init(allocator: Allocator, instance_handle: vk.c.VkInstance, surface_hand
         .previous_time = try std.time.Instant.now(),
         .mesh = mesh,
         .current_image = undefined,
-        .terrain_vertex = terrain_vertex,
-        .terrain_index = terrain_index,
     };
 }
 

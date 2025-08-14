@@ -17,6 +17,7 @@ pub const Resources = struct {
     camera: *Camera,
     renderer: *Renderer,
     input: *Input,
+    terrain: rendering.Terrain,
     delta_time: f32 = 0.0,
 };
 

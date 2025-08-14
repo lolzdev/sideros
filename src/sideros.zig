@@ -136,6 +136,7 @@ export fn sideros_init(init: api.GameInit) callconv(.c) void {
         .camera = &camera,
         .renderer = undefined,
         .input = &input,
+        .terrain = undefined,
     };
 
     ecs.hooks.init(allocator) catch @panic("TODO: handle this");
@@ -143,6 +144,23 @@ export fn sideros_init(init: api.GameInit) callconv(.c) void {
     pool = ecs.Pool.init(allocator, &resources) catch @panic("TODO: Gracefully handle error");
     // TODO(ernesto): I think this @ptrCast are unavoidable but maybe not?
     renderer = Renderer.init(allocator, @ptrCast(init.instance), @ptrCast(init.surface)) catch @panic("TODO: Gracefully handle error");
+
+    resources.terrain = rendering.Terrain.init(allocator, renderer.device, .{
+        .octaves = 8,
+        .lacunarity = 3.0,
+        .gain = 0.5,
+        .scale = 0.01,
+        .multiplier = 3.0,
+        .exponent = 1.2,
+
+        .width = 700,
+        .height = 700,
+        .seed = 12345678,
+        .resolution = 10.0,
+    }) catch @panic("TODO: handle this");
+
+    renderer.terrain_pipeline.setHeightmap(renderer.device, resources.terrain.texture) catch @panic("TODO: handle this");
+
     pool.addSystemGroup(&[_]ecs.System{systems.render, systems.moveCamera}, true) catch @panic("TODO: Gracefuly handle error");
     pool.resources.renderer = &renderer;
     pool.tick();
