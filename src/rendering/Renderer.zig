@@ -39,6 +39,15 @@ pub fn init(allocator: Allocator, instance_handle: vk.c.VkInstance, surface_hand
     const swapchain = try vk.Swapchain.init(allocator, surface, device, physical_device, render_pass);
 
     var pipeline_builder = vk.GraphicsPipeline.Builder.init(allocator, device);
+
+    const texture = try Texture.init("assets/textures/container.png", device);
+    const diffuse = try Texture.init("assets/textures/container_specular.png", device);
+
+    _ = try pipeline_builder.addTexture(texture, diffuse);
+    _ = try pipeline_builder.addTexture(texture, diffuse);
+    _ = try pipeline_builder.addTexture(texture, diffuse);
+    _ = try pipeline_builder.addTexture(texture, diffuse);
+
     const mesh = try pipeline_builder.addMesh("assets/models/cube.glb");
     var graphics_pipeline = try pipeline_builder.build(swapchain, render_pass, vertex_shader, fragment_shader);
 
@@ -48,10 +57,7 @@ pub fn init(allocator: Allocator, instance_handle: vk.c.VkInstance, surface_hand
     defer device.deinitShader(terrain_fragment_shader);
 
     const terrain_pipeline = try vk.TerrainPipeline.init(graphics_pipeline, terrain_vertex_shader, terrain_fragment_shader);
-    const texture = try Texture.init("assets/textures/container.png", device);
-    const diffuse = try Texture.init("assets/textures/container_specular.png", device);
 
-    _ = try graphics_pipeline.addTexture(device, texture, diffuse);
 
     graphics_pipeline.directional_light.direction = .{-0.2, -1.0, -0.3};
     graphics_pipeline.directional_light.ambient = .{0.5, 0.5, 0.5};
@@ -74,11 +80,10 @@ pub fn init(allocator: Allocator, instance_handle: vk.c.VkInstance, surface_hand
     graphics_pipeline.point_lights[1].diffuse = .{0.5, 0.5, 0.5};
     graphics_pipeline.point_lights[1].specular = .{1.0, 1.0, 1.0};
 
-    var transforms = std.ArrayList(math.Transform).init(allocator);
+    var transforms = std.ArrayList(math.Transform).empty;
 
-    try transforms.append(math.Transform.init(.{0.0, 0.5, 1.0}, .{0.5, 0.5, 0.5}, .{0.0, 0.0, 0.0}));
-    try transforms.append(math.Transform.init(.{0.0, 0.0, 0.0}, .{0.5, 0.5, 0.5}, .{0.0, 0.0, 0.0}));
-
+    try transforms.append(allocator, math.Transform.init(.{0.0, 0.0, 0.0}, .{0.5, 0.5, 0.5}, .{0.0, 0.0, 0.0}));
+    try transforms.append(allocator, math.Transform.init(.{0.0, 0.5, 1.0}, .{0.5, 0.5, 0.5}, .{0.0, 0.0, 0.0}));
 
     return .{
         .instance = instance,
@@ -130,7 +135,7 @@ pub fn beginGraphics(self: *Self) !void {
     self.graphics_pipeline.bind(self.device, self.current_frame);
     self.device.bindVertexBuffer(self.graphics_pipeline.vertex_buffer, self.current_frame);
     self.device.bindIndexBuffer(self.graphics_pipeline.index_buffer, self.current_frame);
-    self.device.bindDescriptorSets(self.graphics_pipeline, self.current_frame, 0);
+    self.device.bindDescriptorSets(self.graphics_pipeline, self.current_frame);
 }
 
 pub fn beginTerrain(self: *Self) !void {

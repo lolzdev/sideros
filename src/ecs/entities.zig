@@ -41,8 +41,8 @@ pub const Pool = struct {
         var pool = @This(){
             .humans = .{},
             .resources = resources,
-            .system_groups = std.ArrayList(SystemGroup).init(allocator),
-            .sync_groups = std.ArrayList(SystemGroup).init(allocator),
+            .system_groups = std.ArrayList(SystemGroup).empty,
+            .sync_groups = std.ArrayList(SystemGroup).empty,
             .thread_pool = try allocator.create(std.Thread.Pool),
             .wait_group = .{},
             .mutex = .{},
@@ -59,17 +59,17 @@ pub const Pool = struct {
 
     pub fn addSystemGroup(self: *@This(), group: SystemGroup, sync: bool) !void {
         if (sync) {
-            try self.sync_groups.append(group);
+            try self.sync_groups.append(self.allocator, group);
         } else {
-            try self.system_groups.append(group);
+            try self.system_groups.append(self.allocator, group);
         }
     }
 
     pub fn deinit(self: *@This()) void {
         self.humans.deinit(self.allocator);
 
-        self.system_groups.deinit();
-        self.sync_groups.deinit();
+        self.system_groups.deinit(self.allocator);
+        self.sync_groups.deinit(self.allocator);
         self.thread_pool.deinit();
         self.allocator.destroy(self.thread_pool);
     }

@@ -163,10 +163,10 @@ fn createIndexBuffer(device: vk.Device, indices: std.ArrayList(u32)) !vk.Buffer 
 }
 
 pub fn terrain(allocator: std.mem.Allocator, device: vk.Device, width: usize, height: usize, resolution: usize) !struct { vk.Buffer, vk.Buffer } {
-    var vertices = std.ArrayList([6]f32).init(allocator);
-    defer vertices.deinit();
-    var indices = std.ArrayList(u32).init(allocator);
-    defer indices.deinit();
+    var vertices = std.ArrayList([6]f32).empty;
+    defer vertices.deinit(allocator);
+    var indices = std.ArrayList(u32).empty;
+    defer indices.deinit(allocator);
 
     for (0..width*resolution) |x| {
         for (0..height*resolution) |z| {
@@ -176,7 +176,7 @@ pub fn terrain(allocator: std.mem.Allocator, device: vk.Device, width: usize, he
             const v = @as(f32, @floatFromInt(z)) / @as(f32, @floatFromInt(width*resolution - 1));
 
             const vertex: [6]f32 = .{offset_x, offset_z, u, v, offset_x, offset_z };
-            try vertices.append(vertex);
+            try vertices.append(allocator, vertex);
         }
     }
 
@@ -188,13 +188,13 @@ pub fn terrain(allocator: std.mem.Allocator, device: vk.Device, width: usize, he
             const bottom_left = @as(u32, @intCast((z+1) * width*resolution + x));
             const bottom_right = @as(u32, @intCast((z+1) * width*resolution + (x + 1)));
 
-            try indices.append(top_left);
-            try indices.append(top_right);
-            try indices.append(bottom_left);
+            try indices.append(allocator, top_left);
+            try indices.append(allocator, top_right);
+            try indices.append(allocator, bottom_left);
 
-            try indices.append(top_right);
-            try indices.append(bottom_right);
-            try indices.append(bottom_left);
+            try indices.append(allocator, top_right);
+            try indices.append(allocator, bottom_right);
+            try indices.append(allocator, bottom_left);
         }
     }
     

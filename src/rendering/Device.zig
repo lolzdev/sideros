@@ -210,8 +210,8 @@ pub fn bindVertexBuffer(self: Self, buffer: vk.Buffer, frame: usize) void {
     c.vkCmdBindVertexBuffers(self.command_buffers[frame], 0, 1, &buffer.handle, &offset);
 }
 
-pub fn bindDescriptorSets(self: Self, pipeline: vk.GraphicsPipeline, frame: usize, texture: usize) void {
-    const sets = [_]c.VkDescriptorSet {pipeline.descriptor_set, pipeline.textures.items[texture]};
+pub fn bindDescriptorSets(self: Self, pipeline: vk.GraphicsPipeline, frame: usize) void {
+    const sets = [_]c.VkDescriptorSet {pipeline.descriptor_set, pipeline.textures};
     c.vkCmdBindDescriptorSets(self.command_buffers[frame], c.VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.layout, 0, 2, sets[0..].ptr, 0, null);
 }
 

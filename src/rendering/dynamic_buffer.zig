@@ -84,9 +84,9 @@ pub fn DynamicBuffer(comptime T: type) type {
 
             c.vkUpdateDescriptorSets(device.handle, 1, &write_descriptor_set, 0, null);
 
-            var free_indices = std.ArrayList(usize).init(allocator);
+            var free_indices = std.ArrayList(usize).empty;
             for (0..10) |i| {
-                try free_indices.append(i);
+                try free_indices.append(allocator, i);
             }
 
             return .{

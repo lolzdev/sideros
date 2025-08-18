@@ -78,8 +78,8 @@ fn vulkan_init_instance(allocator: std.mem.Allocator, handle: *c.VkInstance) !vo
     _ = c.vkEnumerateInstanceLayerProperties(&avaliableLayersCount, availableLayers.ptr);
 
     // Every layer we do have we add to this list, if we don't have it no worries just print a message and continue
-    var newLayers = std.ArrayList([*c]const u8).init(allocator);
-    defer newLayers.deinit();
+    var newLayers = std.ArrayList([*c]const u8).empty;
+    defer newLayers.deinit(allocator);
     // Loop over layers we want
     for (validation_layers) |want_layer| {
         var found = false;
@@ -94,7 +94,7 @@ fn vulkan_init_instance(allocator: std.mem.Allocator, handle: *c.VkInstance) !vo
             std.debug.print("WARNING: Compiled in debug mode, but wanted validation layer {s} not found.\n", .{want_layer});
             std.debug.print("NOTE: Validation layer will be removed from the wanted validation layers\n", .{});
         } else {
-            try newLayers.append(want_layer);
+            try newLayers.append(allocator, want_layer);
         }
     }
 

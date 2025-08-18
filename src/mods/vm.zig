@@ -143,7 +143,7 @@ pub const Runtime = struct {
     }
 
     pub fn deinit(self: *Runtime, allocator: Allocator) void {
-        self.stack.deinit();
+        self.stack.deinit(allocator);
         self.global_runtime.deinit();
         self.module.deinit(allocator);
         self.externalFuncs.deinit(allocator);
@@ -181,10 +181,10 @@ pub const Runtime = struct {
                 },
                 .@"return" => break :loop,
                 .call => {
-                    var parameters = std.ArrayList(Value).init(allocator);
-                    defer parameters.deinit();
+                    var parameters = std.ArrayList(Value).empty;
+                    defer parameters.deinit(allocator);
                     for (self.module.functions[index.u32].func_type.parameters) |_| {
-                        try parameters.append(self.stack.pop().?);
+                        try parameters.append(allocator, self.stack.pop().?);
                     }
                     try self.call(allocator, index.u32, parameters.items);
                 },
@@ -194,22 +194,22 @@ pub const Runtime = struct {
                     }
                     const j: u32 = @intCast(self.stack.pop().?.i32);
                     const funcIdx = self.module.elems[index.indirect.x][j];
-                    var parameters = std.ArrayList(Value).init(allocator);
-                    defer parameters.deinit();
+                    var parameters = std.ArrayList(Value).empty;
+                    defer parameters.deinit(allocator);
                     for (self.module.functions[funcIdx].func_type.parameters) |_| {
-                        try parameters.append(self.stack.pop().?);
+                        try parameters.append(allocator, self.stack.pop().?);
                     }
                     try self.call(allocator, funcIdx, parameters.items);
                 },
 
                 .refnull => {
-                    try self.stack.append(.{.ref = .{.type = null, .val = 0}});
+                    try self.stack.append(allocator, .{.ref = .{.type = null, .val = 0}});
                 },
                 .refisnull => {
-                    try self.stack.append(.{ .i32 = @intCast(@as(i1, @bitCast(self.stack.pop().?.ref.type == null))) });
+                    try self.stack.append(allocator, .{ .i32 = @intCast(@as(i1, @bitCast(self.stack.pop().?.ref.type == null))) });
                 },
                 .reffunc => {
-                    try self.stack.append(.{.ref = .{.type = std.wasm.RefType.funcref, .val = index.u32}});
+                    try self.stack.append(allocator, .{.ref = .{.type = std.wasm.RefType.funcref, .val = index.u32}});
                 },
 
                 .drop => {
@@ -220,17 +220,17 @@ pub const Runtime = struct {
                     const val2 = self.stack.pop().?;
                     const val1 = self.stack.pop().?;
                     if (c != 0) {
-                        try self.stack.append(val1);
+                        try self.stack.append(allocator, val1);
                     } else {
-                        try self.stack.append(val2);
+                        try self.stack.append(allocator, val2);
                     }
                 },
                 .select_with_values => @panic("UNIMPLEMENTED"),
 
-                .localget => try self.stack.append(frame.locals[index.u32]),
+                .localget => try self.stack.append(allocator, frame.locals[index.u32]),
                 .localset => frame.locals[index.u32] = self.stack.pop().?,
                 .localtee => frame.locals[index.u32] = self.stack.items[self.stack.items.len - 1],
-                .globalget => try self.stack.append(self.global_runtime.getGlobal(index.u32)),
+                .globalget => try self.stack.append(allocator, self.global_runtime.getGlobal(index.u32)),
                 .globalset => try self.global_runtime.updateGlobal(index.u32, self.stack.pop().?),
 
                 .tableget => @panic("UNIMPLEMENTED"),
@@ -246,82 +246,82 @@ pub const Runtime = struct {
                 .i32_load => {
                     const start = index.memarg.offset + @as(u32, @intCast(self.stack.pop().?.i32));
                     const end = start + @sizeOf(i32);
-                    try self.stack.append(.{ .i32 = std.mem.littleToNative(i32, std.mem.bytesAsValue(i32, self.memory[start..end]).*) });
+                    try self.stack.append(allocator, .{ .i32 = std.mem.littleToNative(i32, std.mem.bytesAsValue(i32, self.memory[start..end]).*) });
                 },
                 .i64_load => {
                     const start = index.memarg.offset + @as(u32, @intCast(self.stack.pop().?.i32));
                     const end = start + @sizeOf(i64);
-                    try self.stack.append(.{ .i64 = std.mem.littleToNative(i64, std.mem.bytesAsValue(i64, self.memory[start..end]).*) });
+                    try self.stack.append(allocator, .{ .i64 = std.mem.littleToNative(i64, std.mem.bytesAsValue(i64, self.memory[start..end]).*) });
                 },
                 .f32_load => {
                     const start = index.memarg.offset + @as(u32, @intCast(self.stack.pop().?.i32));
                     const end = start + @sizeOf(f32);
-                    try self.stack.append(.{ .f32 = std.mem.littleToNative(f32, std.mem.bytesAsValue(f32, self.memory[start..end]).*) });
+                    try self.stack.append(allocator, .{ .f32 = std.mem.littleToNative(f32, std.mem.bytesAsValue(f32, self.memory[start..end]).*) });
                 },
                 .f64_load => {
                     const start = index.memarg.offset + @as(u32, @intCast(self.stack.pop().?.i32));
                     const end = start + @sizeOf(f64);
-                    try self.stack.append(.{ .f64 = std.mem.littleToNative(f64, std.mem.bytesAsValue(f64, self.memory[start..end]).*) });
+                    try self.stack.append(allocator, .{ .f64 = std.mem.littleToNative(f64, std.mem.bytesAsValue(f64, self.memory[start..end]).*) });
                 },
                 .i32_load8_s => {
                     const start = index.memarg.offset + @as(u32, @intCast(self.stack.pop().?.i32));
                     const end = start + @sizeOf(i8);
                     const raw_value = std.mem.readInt(i8, @as(*const [1]u8, @ptrCast(self.memory[start..end])), std.builtin.Endian.little);
-                    try self.stack.append(.{ .i32 = @intCast(@as(i32, raw_value)) });
+                    try self.stack.append(allocator, .{ .i32 = @intCast(@as(i32, raw_value)) });
                 },
                 .i32_load8_u => {
                     const start = index.memarg.offset + @as(u32, @intCast(self.stack.pop().?.i32));
                     const end = start + @sizeOf(u8);
                     const raw_value = std.mem.readInt(u8, @as(*const [1]u8, @ptrCast(self.memory[start..end])), std.builtin.Endian.little);
-                    try self.stack.append(.{ .i32 = @intCast(@as(u32, raw_value)) });
+                    try self.stack.append(allocator, .{ .i32 = @intCast(@as(u32, raw_value)) });
                 },
                 .i32_load16_s => {
                     const start = index.memarg.offset + @as(u32, @intCast(self.stack.pop().?.i32));
                     const end = start + @sizeOf(i16);
                     const raw_value = std.mem.readInt(i16, @as(*const [2]u8, @ptrCast(self.memory[start..end])), std.builtin.Endian.little);
-                    try self.stack.append(.{ .i32 = @intCast(@as(i32, raw_value)) });
+                    try self.stack.append(allocator, .{ .i32 = @intCast(@as(i32, raw_value)) });
                 },
                 .i32_load16_u => {
                     const start = index.memarg.offset + @as(u32, @intCast(self.stack.pop().?.i32));
                     const end = start + @sizeOf(u16);
                     const raw_value = std.mem.readInt(u16, @as(*const [2]u8, @ptrCast(self.memory[start..end])), std.builtin.Endian.little);
-                    try self.stack.append(.{ .i32 = @intCast(@as(u32, raw_value)) });
+                    try self.stack.append(allocator, .{ .i32 = @intCast(@as(u32, raw_value)) });
                 },
                 .i64_load8_s => {
                     const start = index.memarg.offset + @as(u32, @intCast(self.stack.pop().?.i32));
                     const end = start + @sizeOf(i8);
                     const raw_value = std.mem.readInt(i8, @as(*const [1]u8, @ptrCast(self.memory[start..end])), std.builtin.Endian.little);
-                    try self.stack.append(.{ .i64 = @intCast(@as(i64, raw_value)) });
+                    try self.stack.append(allocator, .{ .i64 = @intCast(@as(i64, raw_value)) });
                 },
                 .i64_load8_u => {
                     const start = index.memarg.offset + @as(u32, @intCast(self.stack.pop().?.i32));
                     const end = start + @sizeOf(u8);
                     const raw_value = std.mem.readInt(u8, @as(*const [1]u8, @ptrCast(self.memory[start..end])), std.builtin.Endian.little);
-                    try self.stack.append(.{ .i64 = @intCast(@as(u64, raw_value)) });
+                    try self.stack.append(allocator, .{ .i64 = @intCast(@as(u64, raw_value)) });
                 },
                 .i64_load16_s => {
                     const start = index.memarg.offset + @as(u32, @intCast(self.stack.pop().?.i32));
                     const end = start + @sizeOf(i16);
                     const raw_value = std.mem.readInt(i16, @as(*const [2]u8, @ptrCast(self.memory[start..end])), std.builtin.Endian.little);
-                    try self.stack.append(.{ .i64 = @intCast(@as(i64, raw_value)) });
+                    try self.stack.append(allocator, .{ .i64 = @intCast(@as(i64, raw_value)) });
                 },
                 .i64_load16_u => {
                     const start = index.memarg.offset + @as(u32, @intCast(self.stack.pop().?.i32));
                     const end = start + @sizeOf(u16);
                     const raw_value = std.mem.readInt(u16, @as(*const [2]u8, @ptrCast(self.memory[start..end])), std.builtin.Endian.little);
-                    try self.stack.append(.{ .i64 = @intCast(@as(u64, raw_value)) });
+                    try self.stack.append(allocator, .{ .i64 = @intCast(@as(u64, raw_value)) });
                 },
                 .i64_load32_s => {
                     const start = index.memarg.offset + @as(u32, @intCast(self.stack.pop().?.i32));
                     const end = start + @sizeOf(i32);
                     const raw_value = std.mem.readInt(i32, @as(*const [4]u8, @ptrCast(self.memory[start..end])), std.builtin.Endian.little);
-                    try self.stack.append(.{ .i64 = @intCast(@as(i64, raw_value)) });
+                    try self.stack.append(allocator, .{ .i64 = @intCast(@as(i64, raw_value)) });
                 },
                 .i64_load32_u => {
                     const start = index.memarg.offset + @as(u32, @intCast(self.stack.pop().?.i32));
                     const end = start + @sizeOf(u32);
                     const raw_value = std.mem.readInt(u32, @as(*const [4]u8, @ptrCast(self.memory[start..end])), std.builtin.Endian.little);
-                    try self.stack.append(.{ .i64 = @intCast(@as(u64, raw_value)) });
+                    try self.stack.append(allocator, .{ .i64 = @intCast(@as(u64, raw_value)) });
                 },
                 .i32_store => {
                     const val = std.mem.nativeToLittle(i32, self.stack.pop().?.i32);
@@ -424,7 +424,7 @@ pub const Runtime = struct {
                 },
 
                 .memorysize => {
-                    try self.stack.append(.{ .i32 = @intCast(self.memory.len / Parser.PAGE_SIZE) });
+                    try self.stack.append(allocator, .{ .i32 = @intCast(self.memory.len / Parser.PAGE_SIZE) });
                 },
                 .memorygrow => {
                     const newPages = self.stack.pop().?.i32;
@@ -434,7 +434,7 @@ pub const Runtime = struct {
                     }
                     const oldPages: i32 = @intCast(self.memory.len / Parser.PAGE_SIZE);
                     self.memory = try allocator.realloc(self.memory, newSize * Parser.PAGE_SIZE);
-                    try self.stack.append(.{ .i32 = oldPages });
+                    try self.stack.append(allocator, .{ .i32 = oldPages });
                 },
                 // TODO(luccie): We need passive memory for this
                 .memoryinit => @panic("UNIMPLEMENTED"),
@@ -453,218 +453,218 @@ pub const Runtime = struct {
                 },
 
                 .i32_const => {
-                    try self.stack.append(.{ .i32 = frame.code.indices[frame.program_counter].i32 });
+                    try self.stack.append(allocator, .{ .i32 = frame.code.indices[frame.program_counter].i32 });
                 },
                 .i64_const => {
-                    try self.stack.append(.{ .i64 = frame.code.indices[frame.program_counter].i64 });
+                    try self.stack.append(allocator, .{ .i64 = frame.code.indices[frame.program_counter].i64 });
                 },
                 .f32_const => {
-                    try self.stack.append(.{ .f32 = frame.code.indices[frame.program_counter].f32 });
+                    try self.stack.append(allocator, .{ .f32 = frame.code.indices[frame.program_counter].f32 });
                 },
                 .f64_const => {
-                    try self.stack.append(.{ .f64 = frame.code.indices[frame.program_counter].f64 });
+                    try self.stack.append(allocator, .{ .f64 = frame.code.indices[frame.program_counter].f64 });
                 },
 
                 .i32_eqz => {
                     const val = self.stack.pop().?.i32;
-                    try self.stack.append(.{ .i32 = @intFromBool(val == 0) });
+                    try self.stack.append(allocator, .{ .i32 = @intFromBool(val == 0) });
                 },
                 .i32_eq => {
                     const a = self.stack.pop().?.i32;
                     const b = self.stack.pop().?.i32;
-                    try self.stack.append(.{ .i32 = @intFromBool(a == b) });
+                    try self.stack.append(allocator, .{ .i32 = @intFromBool(a == b) });
                 },
                 .i32_ne => {
                     const a = self.stack.pop().?.i32;
                     const b = self.stack.pop().?.i32;
-                    try self.stack.append(.{ .i32 = @intFromBool(a != b) });
+                    try self.stack.append(allocator, .{ .i32 = @intFromBool(a != b) });
                 },
                 .i32_lt_s => {
                     const a = self.stack.pop().?.i32;
                     const b = self.stack.pop().?.i32;
-                    try self.stack.append(.{ .i32 = @intFromBool(b < a) });
+                    try self.stack.append(allocator, .{ .i32 = @intFromBool(b < a) });
                 },
                 .i32_lt_u => {
                     const a = @as(u32, @bitCast(self.stack.pop().?.i32));
                     const b = @as(u32, @bitCast(self.stack.pop().?.i32));
-                    try self.stack.append(.{ .i32 = @intFromBool(b < a) });
+                    try self.stack.append(allocator, .{ .i32 = @intFromBool(b < a) });
                 },
                 .i32_gt_s => {
                     const a = self.stack.pop().?.i32;
                     const b = self.stack.pop().?.i32;
-                    try self.stack.append(.{ .i32 = @intFromBool(b > a) });
+                    try self.stack.append(allocator, .{ .i32 = @intFromBool(b > a) });
                 },
                 .i32_gt_u => {
                     const a = @as(u32, @bitCast(self.stack.pop().?.i32));
                     const b = @as(u32, @bitCast(self.stack.pop().?.i32));
-                    try self.stack.append(.{ .i32 = @intFromBool(b > a) });
+                    try self.stack.append(allocator, .{ .i32 = @intFromBool(b > a) });
                 },
                 .i32_le_s => {
                     const a = self.stack.pop().?.i32;
                     const b = self.stack.pop().?.i32;
-                    try self.stack.append(.{ .i32 = @intFromBool(b <= a) });
+                    try self.stack.append(allocator, .{ .i32 = @intFromBool(b <= a) });
                 },
                 .i32_le_u => {
                     const a = @as(u32, @bitCast(self.stack.pop().?.i32));
                     const b = @as(u32, @bitCast(self.stack.pop().?.i32));
-                    try self.stack.append(.{ .i32 = @intFromBool(b <= a) });
+                    try self.stack.append(allocator, .{ .i32 = @intFromBool(b <= a) });
                 },
                 .i32_ge_s => {
                     const a = self.stack.pop().?.i32;
                     const b = self.stack.pop().?.i32;
-                    try self.stack.append(.{ .i32 = @intFromBool(b >= a) });
+                    try self.stack.append(allocator, .{ .i32 = @intFromBool(b >= a) });
                 },
                 .i32_ge_u => {
                     const a = @as(u32, @bitCast(self.stack.pop().?.i32));
                     const b = @as(u32, @bitCast(self.stack.pop().?.i32));
-                    try self.stack.append(.{ .i32 = @intFromBool(b >= a) });
+                    try self.stack.append(allocator, .{ .i32 = @intFromBool(b >= a) });
                 },
 
                 .i64_eqz => {
                     const val = self.stack.pop().?.i64;
-                    try self.stack.append(.{ .i32 = @intFromBool(val == 0) });
+                    try self.stack.append(allocator, .{ .i32 = @intFromBool(val == 0) });
                 },
                 .i64_eq => {
                     const a = self.stack.pop().?.i64;
                     const b = self.stack.pop().?.i64;
-                    try self.stack.append(.{ .i32 = @intFromBool(a == b) });
+                    try self.stack.append(allocator, .{ .i32 = @intFromBool(a == b) });
                 },
                 .i64_ne => {
                     const a = self.stack.pop().?.i64;
                     const b = self.stack.pop().?.i64;
-                    try self.stack.append(.{ .i32 = @intFromBool(a != b) });
+                    try self.stack.append(allocator, .{ .i32 = @intFromBool(a != b) });
                 },
                 .i64_lt_s => {
                     const a = self.stack.pop().?.i64;
                     const b = self.stack.pop().?.i64;
-                    try self.stack.append(.{ .i32 = @intFromBool(b < a) });
+                    try self.stack.append(allocator, .{ .i32 = @intFromBool(b < a) });
                 },
                 .i64_lt_u => {
                     const a = @as(u64, @bitCast(self.stack.pop().?.i64));
                     const b = @as(u64, @bitCast(self.stack.pop().?.i64));
-                    try self.stack.append(.{ .i32 = @intFromBool(b < a) });
+                    try self.stack.append(allocator, .{ .i32 = @intFromBool(b < a) });
                 },
                 .i64_gt_s => {
                     const a = self.stack.pop().?.i64;
                     const b = self.stack.pop().?.i64;
-                    try self.stack.append(.{ .i32 = @intFromBool(b > a) });
+                    try self.stack.append(allocator, .{ .i32 = @intFromBool(b > a) });
                 },
                 .i64_gt_u => {
                     const a = @as(u64, @bitCast(self.stack.pop().?.i64));
                     const b = @as(u64, @bitCast(self.stack.pop().?.i64));
-                    try self.stack.append(.{ .i32 = @intFromBool(b > a) });
+                    try self.stack.append(allocator, .{ .i32 = @intFromBool(b > a) });
                 },
                 .i64_le_s => {
                     const a = self.stack.pop().?.i64;
                     const b = self.stack.pop().?.i64;
-                    try self.stack.append(.{ .i32 = @intFromBool(b <= a) });
+                    try self.stack.append(allocator, .{ .i32 = @intFromBool(b <= a) });
                 },
                 .i64_le_u => {
                     const a = @as(u64, @bitCast(self.stack.pop().?.i64));
                     const b = @as(u64, @bitCast(self.stack.pop().?.i64));
-                    try self.stack.append(.{ .i32 = @intFromBool(b <= a) });
+                    try self.stack.append(allocator, .{ .i32 = @intFromBool(b <= a) });
                 },
                 .i64_ge_s => {
                     const a = self.stack.pop().?.i64;
                     const b = self.stack.pop().?.i64;
-                    try self.stack.append(.{ .i32 = @intFromBool(b >= a) });
+                    try self.stack.append(allocator, .{ .i32 = @intFromBool(b >= a) });
                 },
                 .i64_ge_u => {
                     const a = @as(u64, @bitCast(self.stack.pop().?.i64));
                     const b = @as(u64, @bitCast(self.stack.pop().?.i64));
-                    try self.stack.append(.{ .i32 = @intFromBool(b >= a) });
+                    try self.stack.append(allocator, .{ .i32 = @intFromBool(b >= a) });
                 },
 
                 .f32_eq => {
                     const a = self.stack.pop().?.f32;
                     const b = self.stack.pop().?.f32;
-                    try self.stack.append(.{ .i32 = @intFromBool(a == b) });
+                    try self.stack.append(allocator, .{ .i32 = @intFromBool(a == b) });
                 },
                 .f32_ne => {
                     const a = self.stack.pop().?.f32;
                     const b = self.stack.pop().?.f32;
-                    try self.stack.append(.{ .i32 = @intFromBool(a != b) });
+                    try self.stack.append(allocator, .{ .i32 = @intFromBool(a != b) });
                 },
                 .f32_lt => {
                     const a = self.stack.pop().?.f32;
                     const b = self.stack.pop().?.f32;
-                    try self.stack.append(.{ .i32 = @intFromBool(b < a) });
+                    try self.stack.append(allocator, .{ .i32 = @intFromBool(b < a) });
                 },
                 .f32_gt => {
                     const a = self.stack.pop().?.f32;
                     const b = self.stack.pop().?.f32;
-                    try self.stack.append(.{ .i32 = @intFromBool(b > a) });
+                    try self.stack.append(allocator, .{ .i32 = @intFromBool(b > a) });
                 },
                 .f32_le => {
                     const a = self.stack.pop().?.f32;
                     const b = self.stack.pop().?.f32;
-                    try self.stack.append(.{ .i32 = @intFromBool(b <= a) });
+                    try self.stack.append(allocator, .{ .i32 = @intFromBool(b <= a) });
                 },
                 .f32_ge => {
                     const a = self.stack.pop().?.f32;
                     const b = self.stack.pop().?.f32;
-                    try self.stack.append(.{ .i32 = @intFromBool(b >= a) });
+                    try self.stack.append(allocator, .{ .i32 = @intFromBool(b >= a) });
                 },
 
                 .f64_eq => {
                     const a = self.stack.pop().?.f64;
                     const b = self.stack.pop().?.f64;
-                    try self.stack.append(.{ .i32 = @intFromBool(a == b) });
+                    try self.stack.append(allocator, .{ .i32 = @intFromBool(a == b) });
                 },
                 .f64_ne => {
                     const a = self.stack.pop().?.f64;
                     const b = self.stack.pop().?.f64;
-                    try self.stack.append(.{ .i32 = @intFromBool(a != b) });
+                    try self.stack.append(allocator, .{ .i32 = @intFromBool(a != b) });
                 },
                 .f64_lt => {
                     const a = self.stack.pop().?.f64;
                     const b = self.stack.pop().?.f64;
-                    try self.stack.append(.{ .i32 = @intFromBool(b < a) });
+                    try self.stack.append(allocator, .{ .i32 = @intFromBool(b < a) });
                 },
                 .f64_gt => {
                     const a = self.stack.pop().?.f64;
                     const b = self.stack.pop().?.f64;
-                    try self.stack.append(.{ .i32 = @intFromBool(b > a) });
+                    try self.stack.append(allocator, .{ .i32 = @intFromBool(b > a) });
                 },
                 .f64_le => {
                     const a = self.stack.pop().?.f64;
                     const b = self.stack.pop().?.f64;
-                    try self.stack.append(.{ .i32 = @intFromBool(b <= a) });
+                    try self.stack.append(allocator, .{ .i32 = @intFromBool(b <= a) });
                 },
                 .f64_ge => {
                     const a = self.stack.pop().?.f64;
                     const b = self.stack.pop().?.f64;
-                    try self.stack.append(.{ .i32 = @intFromBool(b >= a) });
+                    try self.stack.append(allocator, .{ .i32 = @intFromBool(b >= a) });
                 },
 
                 .i32_clz => {
-                    try self.stack.append(.{ .i32 = @clz(self.stack.pop().?.i32) });
+                    try self.stack.append(allocator, .{ .i32 = @clz(self.stack.pop().?.i32) });
                 },
                 .i32_ctz => {
-                    try self.stack.append(.{ .i32 = @ctz(self.stack.pop().?.i32) });
+                    try self.stack.append(allocator, .{ .i32 = @ctz(self.stack.pop().?.i32) });
                 },
                 .i32_popcnt => {
-                    try self.stack.append(.{ .i32 = @popCount(self.stack.pop().?.i32) });
+                    try self.stack.append(allocator, .{ .i32 = @popCount(self.stack.pop().?.i32) });
                 },
                 .i32_add => {
                     const a = self.stack.pop().?.i32;
                     const b = self.stack.pop().?.i32;
-                    try self.stack.append(.{ .i32 = a + b });
+                    try self.stack.append(allocator, .{ .i32 = a + b });
                 },
                 .i32_sub => {
                     const a = self.stack.pop().?.i32;
                     const b = self.stack.pop().?.i32;
-                    try self.stack.append(.{ .i32 = b - a });
+                    try self.stack.append(allocator, .{ .i32 = b - a });
                 },
                 .i32_and => {
                     const a = self.stack.pop().?.i32;
                     const b = self.stack.pop().?.i32;
-                    try self.stack.append(.{ .i32 = a & b });
+                    try self.stack.append(allocator, .{ .i32 = a & b });
                 },
                 .i32_mul => {
                     const a = self.stack.pop().?.i32;
                     const b = self.stack.pop().?.i32;
-                    try self.stack.append(.{ .i32 = a * b });
+                    try self.stack.append(allocator, .{ .i32 = a * b });
                 },
                 .i32_div_s => {
                     const a_signed = self.stack.pop().?.i32;
@@ -672,7 +672,7 @@ pub const Runtime = struct {
                     if (a_signed == 0){
                         std.debug.panic("Division by 0 error!\n", .{});
                     }
-                    try self.stack.append(.{ .i32 = @divTrunc(b_signed, a_signed) });
+                    try self.stack.append(allocator, .{ .i32 = @divTrunc(b_signed, a_signed) });
                 },
                 .i32_div_u => {
                     const a_unsigned = @as(u32, @bitCast(self.stack.pop().?.i32));
@@ -680,7 +680,7 @@ pub const Runtime = struct {
                     if (a_unsigned == 0){
                         std.debug.panic("Division by 0 error!\n", .{});
                     }
-                    try self.stack.append(.{ .i32 = @bitCast(b_unsigned / a_unsigned) });
+                    try self.stack.append(allocator, .{ .i32 = @bitCast(b_unsigned / a_unsigned) });
                 },
                 .i32_rem_s => {
                     const divisor = self.stack.pop().?.i32;
@@ -688,7 +688,7 @@ pub const Runtime = struct {
                     if (divisor == 0) {
                         std.debug.panic("Divide by 0\n", .{});
                     }
-                    try self.stack.append(.{ .i32 = @intCast(dividend - divisor * @divTrunc(dividend, divisor)) });
+                    try self.stack.append(allocator, .{ .i32 = @intCast(dividend - divisor * @divTrunc(dividend, divisor)) });
                 },
                 .i32_rem_u => {
                     const divisor = @as(u32, @bitCast(self.stack.pop().?.i32));
@@ -696,67 +696,67 @@ pub const Runtime = struct {
                     if (divisor == 0) {
                         std.debug.panic("Divide by 0\n", .{});
                     }
-                    try self.stack.append(.{ .i32 = @intCast(dividend - divisor * @divTrunc(dividend, divisor)) });
+                    try self.stack.append(allocator, .{ .i32 = @intCast(dividend - divisor * @divTrunc(dividend, divisor)) });
                 },
                 .i32_or => {
                     const a = self.stack.pop().?.i32;
                     const b = self.stack.pop().?.i32;
-                    try self.stack.append(.{ .i32 = a | b });
+                    try self.stack.append(allocator, .{ .i32 = a | b });
                 },
                 .i32_xor => {
                     const a = self.stack.pop().?.i32;
                     const b = self.stack.pop().?.i32;
-                    try self.stack.append(.{ .i32 = a ^ b });
+                    try self.stack.append(allocator, .{ .i32 = a ^ b });
                 },
                 .i32_shl => {
                     const a = self.stack.pop().?.i32;
                     const b = self.stack.pop().?.i32;
-                    try self.stack.append(.{ .i32 = (b << @as(u5, @intCast(a))) });
+                    try self.stack.append(allocator, .{ .i32 = (b << @as(u5, @intCast(a))) });
                 },
                 .i32_shr_s => {
                     const a = self.stack.pop().?.i32;
                     const b = self.stack.pop().?.i32;
-                    try self.stack.append(.{ .i32 = (b >> @as(u5, @intCast(a))) });
+                    try self.stack.append(allocator, .{ .i32 = (b >> @as(u5, @intCast(a))) });
                 },
                 .i32_shr_u => {
                     const a = @as(u32, @bitCast(self.stack.pop().?.i32));
                     const b = @as(u32, @bitCast(self.stack.pop().?.i32));
-                    try self.stack.append(.{ .i32 = @bitCast(b >> @as(u5, @intCast(a))) });
+                    try self.stack.append(allocator, .{ .i32 = @bitCast(b >> @as(u5, @intCast(a))) });
                 },
                 .i32_rotl => {
                     const a = @as(u32, @bitCast(self.stack.pop().?.i32));
                     const b = @as(u32, @bitCast(self.stack.pop().?.i32));
-                    try self.stack.append(.{ .i32 = @intCast(std.math.rotl(u32, b, a)) });
+                    try self.stack.append(allocator, .{ .i32 = @intCast(std.math.rotl(u32, b, a)) });
                 },
                 .i32_rotr => {
                     const a = @as(u32, @bitCast(self.stack.pop().?.i32));
                     const b = @as(u32, @bitCast(self.stack.pop().?.i32));
-                    try self.stack.append(.{ .i32 = @intCast(std.math.rotr(u32, b, a)) });
+                    try self.stack.append(allocator, .{ .i32 = @intCast(std.math.rotr(u32, b, a)) });
                 },
 
                 .i64_clz => {
-                    try self.stack.append(.{ .i64 = @clz(self.stack.pop().?.i64) });
+                    try self.stack.append(allocator, .{ .i64 = @clz(self.stack.pop().?.i64) });
                 },
                 .i64_ctz => {
-                    try self.stack.append(.{ .i64 = @ctz(self.stack.pop().?.i64) });
+                    try self.stack.append(allocator, .{ .i64 = @ctz(self.stack.pop().?.i64) });
                 },
                 .i64_popcnt => {
-                    try self.stack.append(.{ .i64 = @popCount(self.stack.pop().?.i64) });
+                    try self.stack.append(allocator, .{ .i64 = @popCount(self.stack.pop().?.i64) });
                 },
                 .i64_add => {
                     const a = self.stack.pop().?.i64;
                     const b = self.stack.pop().?.i64;
-                    try self.stack.append(.{ .i64 = a + b });
+                    try self.stack.append(allocator, .{ .i64 = a + b });
                 },
                 .i64_sub => {
                     const a = self.stack.pop().?.i64;
                     const b = self.stack.pop().?.i64;
-                    try self.stack.append(.{ .i64 = b - a });
+                    try self.stack.append(allocator, .{ .i64 = b - a });
                 },
                 .i64_mul => {
                     const a = self.stack.pop().?.i64;
                     const b = self.stack.pop().?.i64;
-                    try self.stack.append(.{ .i64 = a * b });
+                    try self.stack.append(allocator, .{ .i64 = a * b });
                 },
                 .i64_div_s => {
                     const a_signed = self.stack.pop().?.i64;
@@ -764,7 +764,7 @@ pub const Runtime = struct {
                     if (a_signed == 0){
                         std.debug.panic("Division by 0 error!\n", .{});
                     }
-                    try self.stack.append(.{ .i64 = @divTrunc(b_signed, a_signed) });
+                    try self.stack.append(allocator, .{ .i64 = @divTrunc(b_signed, a_signed) });
                 },
                 .i64_div_u => {
                     const a_unsigned = @as(u64, @bitCast(self.stack.pop().?.i64));
@@ -772,7 +772,7 @@ pub const Runtime = struct {
                     if (a_unsigned == 0){
                         std.debug.panic("Division by 0 error!\n", .{});
                     }
-                    try self.stack.append(.{ .i64 = @bitCast(b_unsigned / a_unsigned) });
+                    try self.stack.append(allocator, .{ .i64 = @bitCast(b_unsigned / a_unsigned) });
                 },
                 .i64_rem_s => {
                     const divisor = self.stack.pop().?.i64;
@@ -780,7 +780,7 @@ pub const Runtime = struct {
                     if (divisor == 0) {
                         std.debug.panic("Divide by 0\n", .{});
                     }
-                    try self.stack.append(.{ .i64 = @intCast(dividend - divisor * @divTrunc(dividend, divisor)) });
+                    try self.stack.append(allocator, .{ .i64 = @intCast(dividend - divisor * @divTrunc(dividend, divisor)) });
                 },
                 .i64_rem_u => {
                     const divisor = @as(u64, @bitCast(self.stack.pop().?.i64));
@@ -788,86 +788,86 @@ pub const Runtime = struct {
                     if (divisor == 0) {
                         std.debug.panic("Divide by 0\n", .{});
                     }
-                    try self.stack.append(.{ .i64 = @bitCast(dividend - divisor * @divTrunc(dividend, divisor)) });
+                    try self.stack.append(allocator, .{ .i64 = @bitCast(dividend - divisor * @divTrunc(dividend, divisor)) });
                 },
                 .i64_and => {
                     const a = self.stack.pop().?.i64;
                     const b = self.stack.pop().?.i64;
-                    try self.stack.append(.{ .i64 = a & b });
+                    try self.stack.append(allocator, .{ .i64 = a & b });
                 },
                 .i64_or => {
                     const a = self.stack.pop().?.i64;
                     const b = self.stack.pop().?.i64;
-                    try self.stack.append(.{ .i64 = a | b });
+                    try self.stack.append(allocator, .{ .i64 = a | b });
                 },
                 .i64_xor => {
                     const a = self.stack.pop().?.i64;
                     const b = self.stack.pop().?.i64;
-                    try self.stack.append(.{ .i64 = a ^ b });
+                    try self.stack.append(allocator, .{ .i64 = a ^ b });
                 },
                 .i64_shl => {
                     const a = self.stack.pop().?.i64;
                     const b = self.stack.pop().?.i64;
-                    try self.stack.append(.{ .i64 = @intCast(b << @as(u6, @intCast(a))) });
+                    try self.stack.append(allocator, .{ .i64 = @intCast(b << @as(u6, @intCast(a))) });
                 },
                 .i64_shr_s => {
                     const a = self.stack.pop().?.i64;
                     const b = self.stack.pop().?.i64;
-                    try self.stack.append(.{ .i64 = @intCast(b >> @as(u6, @intCast(a))) });
+                    try self.stack.append(allocator, .{ .i64 = @intCast(b >> @as(u6, @intCast(a))) });
                 },
                 .i64_shr_u => {
                     const a = @as(u64, @bitCast(self.stack.pop().?.i64));
                     const b = @as(u64, @bitCast(self.stack.pop().?.i64));
-                    try self.stack.append(.{ .i64 = @bitCast(b >> @as(u6, @intCast(a))) });
+                    try self.stack.append(allocator, .{ .i64 = @bitCast(b >> @as(u6, @intCast(a))) });
                 },
                 .i64_rotl => {
                     const a = @as(u64, @bitCast(self.stack.pop().?.i64));
                     const b = @as(u64, @bitCast(self.stack.pop().?.i64));
-                    try self.stack.append(.{ .i64 = @intCast(std.math.rotl(u64, b, a)) });
+                    try self.stack.append(allocator, .{ .i64 = @intCast(std.math.rotl(u64, b, a)) });
                 },
                 .i64_rotr => {
                     const a = @as(u64, @bitCast(self.stack.pop().?.i64));
                     const b = @as(u64, @bitCast(self.stack.pop().?.i64));
-                    try self.stack.append(.{ .i64 = @intCast(std.math.rotr(u64, b, a)) });
+                    try self.stack.append(allocator, .{ .i64 = @intCast(std.math.rotr(u64, b, a)) });
                 },
 
                 // The value 0x7FFFFFFF here represents the bitmask that masks everything except for the IEEE754 32 bit precision sign bit
                 .f32_abs => {
-                    try self.stack.append(.{ .f32 = @bitCast(@as(u32, @bitCast(self.stack.pop().?.f32)) & 0x7FFFFFFF) });
+                    try self.stack.append(allocator, .{ .f32 = @bitCast(@as(u32, @bitCast(self.stack.pop().?.f32)) & 0x7FFFFFFF) });
                 },
                 // The value 0x80000000 here represents the bitmask that only masks the IEEE754 32 bit precision sign bit
                 .f32_neg => {
-                    try self.stack.append(.{ .f32 = @bitCast(@as(u32, @bitCast(self.stack.pop().?.f32)) ^ 0x80000000) });
+                    try self.stack.append(allocator, .{ .f32 = @bitCast(@as(u32, @bitCast(self.stack.pop().?.f32)) ^ 0x80000000) });
                 },
                 .f32_ceil => {
-                    try self.stack.append(.{ .f32 = @ceil(self.stack.pop().?.f32) });
+                    try self.stack.append(allocator, .{ .f32 = @ceil(self.stack.pop().?.f32) });
                 },
                 .f32_floor => {
-                    try self.stack.append(.{ .f32 = @floor(self.stack.pop().?.f32) });
+                    try self.stack.append(allocator, .{ .f32 = @floor(self.stack.pop().?.f32) });
                 },
                 .f32_trunc => {
-                    try self.stack.append(.{ .f32 = @trunc(self.stack.pop().?.f32) });
+                    try self.stack.append(allocator, .{ .f32 = @trunc(self.stack.pop().?.f32) });
                 },
                 .f32_nearest => {
-                    try self.stack.append(.{ .f32 = @round(self.stack.pop().?.f32) });
+                    try self.stack.append(allocator, .{ .f32 = @round(self.stack.pop().?.f32) });
                 },
                 .f32_sqrt => {
-                    try self.stack.append(.{ .f32 = @sqrt(self.stack.pop().?.f32) });
+                    try self.stack.append(allocator, .{ .f32 = @sqrt(self.stack.pop().?.f32) });
                 },
                 .f32_add => {
                     const a = self.stack.pop().?.f32;
                     const b = self.stack.pop().?.f32;
-                    try self.stack.append(.{ .f32 = a + b });
+                    try self.stack.append(allocator, .{ .f32 = a + b });
                 },
                 .f32_sub => {
                     const a = self.stack.pop().?.f32;
                     const b = self.stack.pop().?.f32;
-                    try self.stack.append(.{ .f32 = b - a });
+                    try self.stack.append(allocator, .{ .f32 = b - a });
                 },
                 .f32_mul => {
                     const a = self.stack.pop().?.f32;
                     const b = self.stack.pop().?.f32;
-                    try self.stack.append(.{ .f32 = a * b });
+                    try self.stack.append(allocator, .{ .f32 = a * b });
                 },
                 .f32_div => {
                     const a = self.stack.pop().?.f32;
@@ -875,205 +875,205 @@ pub const Runtime = struct {
                     if (a == 0){
                         std.debug.panic("[ERROR]: Division by 0\n", .{});
                     }
-                    try self.stack.append(.{ .f32 = b / a });
+                    try self.stack.append(allocator, .{ .f32 = b / a });
                 },
                 .f32_min => {
                     const a = self.stack.pop().?.f32;
                     const b = self.stack.pop().?.f32;
-                    try self.stack.append(.{ .f32 = @min(a, b) });
+                    try self.stack.append(allocator, .{ .f32 = @min(a, b) });
                 },
                 .f32_max => {
                     const a = self.stack.pop().?.f32;
                     const b = self.stack.pop().?.f32;
-                    try self.stack.append(.{ .f32 = @max(a, b) });
+                    try self.stack.append(allocator, .{ .f32 = @max(a, b) });
                 },
                 // See f32_abs and f32_neg for explainations behind these magic values
                 .f32_copysign => {
                     const a = self.stack.pop().?.f32;
                     const b = self.stack.pop().?.f32;
-                    try self.stack.append(.{ .f32 = @bitCast((@as(u32, @bitCast(b)) & 0x7FFFFFFF) | (@as(u32, @bitCast(a)) & 0x80000000)) });
+                    try self.stack.append(allocator, .{ .f32 = @bitCast((@as(u32, @bitCast(b)) & 0x7FFFFFFF) | (@as(u32, @bitCast(a)) & 0x80000000)) });
                 },
 
                 // The value 0x7FFFFFFFFFFFFFFF here represents the bitmask that masks everything except for the IEEE754 64 bit precision sign bit
                 .f64_abs => {
-                    try self.stack.append(.{ .f64 = @bitCast(@as(u64, @bitCast(self.stack.pop().?.f64)) & 0x7FFFFFFFFFFFFFFF) });
+                    try self.stack.append(allocator, .{ .f64 = @bitCast(@as(u64, @bitCast(self.stack.pop().?.f64)) & 0x7FFFFFFFFFFFFFFF) });
                 },
                 // The value 0x8000000000000000 here represents the bitmask that only masks the IEEE754 64 bit precision sign bit
                 .f64_neg => {
-                    try self.stack.append(.{ .f64 = @bitCast(@as(u64, @bitCast(self.stack.pop().?.f64)) ^ 0x8000000000000000) });
+                    try self.stack.append(allocator, .{ .f64 = @bitCast(@as(u64, @bitCast(self.stack.pop().?.f64)) ^ 0x8000000000000000) });
                 },
                 .f64_ceil => {
-                    try self.stack.append(.{ .f64 = @ceil(self.stack.pop().?.f64) });
+                    try self.stack.append(allocator, .{ .f64 = @ceil(self.stack.pop().?.f64) });
                 },
                 .f64_floor => {
-                    try self.stack.append(.{ .f64 = @floor(self.stack.pop().?.f64) });
+                    try self.stack.append(allocator, .{ .f64 = @floor(self.stack.pop().?.f64) });
                 },
                 .f64_trunc => {
-                    try self.stack.append(.{ .f64 = @trunc(self.stack.pop().?.f64) });
+                    try self.stack.append(allocator, .{ .f64 = @trunc(self.stack.pop().?.f64) });
                 },
                 .f64_nearest => {
-                    try self.stack.append(.{ .f64 = @round(self.stack.pop().?.f64) });
+                    try self.stack.append(allocator, .{ .f64 = @round(self.stack.pop().?.f64) });
                 },
                 .f64_sqrt => {
-                    try self.stack.append(.{ .f64 = @sqrt(self.stack.pop().?.f64) });
+                    try self.stack.append(allocator, .{ .f64 = @sqrt(self.stack.pop().?.f64) });
                 },
                 .f64_add => {
                     const a = self.stack.pop().?.f64;
                     const b = self.stack.pop().?.f64;
-                    try self.stack.append(.{ .f64 = a + b });
+                    try self.stack.append(allocator, .{ .f64 = a + b });
                 },
                 .f64_sub => {
                     const a = self.stack.pop().?.f64;
                     const b = self.stack.pop().?.f64;
-                    try self.stack.append(.{ .f64 = b - a });
+                    try self.stack.append(allocator, .{ .f64 = b - a });
                 },
                 .f64_mul => {
                     const a = self.stack.pop().?.f64;
                     const b = self.stack.pop().?.f64;
-                    try self.stack.append(.{ .f64 = a * b });
+                    try self.stack.append(allocator, .{ .f64 = a * b });
                 },
                 .f64_div => {
                     const a = self.stack.pop().?.f64;
                     const b = self.stack.pop().?.f64;
-                    try self.stack.append(.{ .f64 = b / a });
+                    try self.stack.append(allocator, .{ .f64 = b / a });
                 },
                 .f64_min => {
                     const a = self.stack.pop().?.f64;
                     const b = self.stack.pop().?.f64;
-                    try self.stack.append(.{ .f64 = @min(a, b) });
+                    try self.stack.append(allocator, .{ .f64 = @min(a, b) });
                 },
                 .f64_max => {
                     const a = self.stack.pop().?.f64;
                     const b = self.stack.pop().?.f64;
-                    try self.stack.append(.{ .f64 = @max(a, b) });
+                    try self.stack.append(allocator, .{ .f64 = @max(a, b) });
                 },
                 // See f64_abs and f64_neg for explainations behind these magic values
                 .f64_copysign => {
                     const a = self.stack.pop().?.f64;
                     const b = self.stack.pop().?.f64;
-                    try self.stack.append(.{ .f64 = @bitCast((@as(u64, @bitCast(b)) & 0x7FFFFFFFFFFFFFFF) | (@as(u64, @bitCast(a)) & 0x8000000000000000)) });
+                    try self.stack.append(allocator, .{ .f64 = @bitCast((@as(u64, @bitCast(b)) & 0x7FFFFFFFFFFFFFFF) | (@as(u64, @bitCast(a)) & 0x8000000000000000)) });
                 },
 
                 .i32_wrap_i64 => {
-                    try self.stack.append(.{ .i32 = @truncate(self.stack.pop().?.i64) });
+                    try self.stack.append(allocator, .{ .i32 = @truncate(self.stack.pop().?.i64) });
                 },
                 .i32_trunc_f32_s => {
-                    try self.stack.append(.{ .i32 = @intFromFloat(self.stack.pop().?.f32) });
+                    try self.stack.append(allocator, .{ .i32 = @intFromFloat(self.stack.pop().?.f32) });
                 },
                 .i32_trunc_f32_u => {
-                    try self.stack.append(.{ .i32 = @bitCast(@as(u32, @intFromFloat(self.stack.pop().?.f32))) });
+                    try self.stack.append(allocator, .{ .i32 = @bitCast(@as(u32, @intFromFloat(self.stack.pop().?.f32))) });
                 },
                 .i32_trunc_f64_s => {
-                    try self.stack.append(.{ .i32 = @intFromFloat(self.stack.pop().?.f64) });
+                    try self.stack.append(allocator, .{ .i32 = @intFromFloat(self.stack.pop().?.f64) });
                 },
                 .i32_trunc_f64_u => {
-                    try self.stack.append(.{ .i32 = @bitCast(@as(u32, @intFromFloat(self.stack.pop().?.f64))) });
+                    try self.stack.append(allocator, .{ .i32 = @bitCast(@as(u32, @intFromFloat(self.stack.pop().?.f64))) });
                 },
                 .i64_extend_i32_s => {
-                    try self.stack.append(.{ .i64 = @as(i64, self.stack.pop().?.i32) });
+                    try self.stack.append(allocator, .{ .i64 = @as(i64, self.stack.pop().?.i32) });
                 },
                 .i64_extend_i32_u => {
-                    try self.stack.append(.{ .i64 = @as(i64, @as(u32, @bitCast(self.stack.pop().?.i32))) });
+                    try self.stack.append(allocator, .{ .i64 = @as(i64, @as(u32, @bitCast(self.stack.pop().?.i32))) });
                 },
                 .i64_trunc_f32_s => {
-                    try self.stack.append(.{ .i64 = @intFromFloat(self.stack.pop().?.f32) });
+                    try self.stack.append(allocator, .{ .i64 = @intFromFloat(self.stack.pop().?.f32) });
                 },
                 .i64_trunc_f32_u => {
-                    try self.stack.append(.{ .i64 = @bitCast(@as(u64, @intFromFloat(self.stack.pop().?.f32))) });
+                    try self.stack.append(allocator, .{ .i64 = @bitCast(@as(u64, @intFromFloat(self.stack.pop().?.f32))) });
                 },
                 .i64_trunc_f64_s => {
-                    try self.stack.append(.{ .i64 = @intFromFloat(self.stack.pop().?.f64) });
+                    try self.stack.append(allocator, .{ .i64 = @intFromFloat(self.stack.pop().?.f64) });
                 },
                 .i64_trunc_f64_u => {
-                    try self.stack.append(.{ .i64 = @bitCast(@as(u64, @intFromFloat(self.stack.pop().?.f64))) });
+                    try self.stack.append(allocator, .{ .i64 = @bitCast(@as(u64, @intFromFloat(self.stack.pop().?.f64))) });
                 },
                 .f32_convert_i32_s => {
-                    try self.stack.append(.{ .f32 = @floatFromInt(self.stack.pop().?.i32) });
+                    try self.stack.append(allocator, .{ .f32 = @floatFromInt(self.stack.pop().?.i32) });
                 },
                 .f32_convert_i32_u => {
-                    try self.stack.append(.{ .f32 = @floatFromInt(@as(u32, @bitCast(self.stack.pop().?.i32))) });
+                    try self.stack.append(allocator, .{ .f32 = @floatFromInt(@as(u32, @bitCast(self.stack.pop().?.i32))) });
                 },
                 .f32_convert_i64_s => {
-                    try self.stack.append(.{ .f32 = @floatFromInt(self.stack.pop().?.i64) });
+                    try self.stack.append(allocator, .{ .f32 = @floatFromInt(self.stack.pop().?.i64) });
                 },
                 .f32_convert_i64_u => {
-                    try self.stack.append(.{ .f32 = @floatFromInt(@as(u64, @bitCast(self.stack.pop().?.i64))) });
+                    try self.stack.append(allocator, .{ .f32 = @floatFromInt(@as(u64, @bitCast(self.stack.pop().?.i64))) });
                 },
                 .f32_demote_f64 => {
-                    try self.stack.append(.{ .f32 = @floatCast(self.stack.pop().?.f64) });
+                    try self.stack.append(allocator, .{ .f32 = @floatCast(self.stack.pop().?.f64) });
                 },
                 .f64_convert_i32_s => {
-                    try self.stack.append(.{ .f64 = @floatFromInt(self.stack.pop().?.i32) });
+                    try self.stack.append(allocator, .{ .f64 = @floatFromInt(self.stack.pop().?.i32) });
                 },
                 .f64_convert_i32_u => {
-                    try self.stack.append(.{ .f64 = @floatFromInt(@as(u32, @bitCast(self.stack.pop().?.i32))) });
+                    try self.stack.append(allocator, .{ .f64 = @floatFromInt(@as(u32, @bitCast(self.stack.pop().?.i32))) });
                 },
                 .f64_convert_i64_s => {
-                    try self.stack.append(.{ .f64 = @floatFromInt(self.stack.pop().?.i64) });
+                    try self.stack.append(allocator, .{ .f64 = @floatFromInt(self.stack.pop().?.i64) });
                 },
                 .f64_convert_i64_u => {
-                    try self.stack.append(.{ .f64 = @floatFromInt(@as(u64, @bitCast(self.stack.pop().?.i64))) });
+                    try self.stack.append(allocator, .{ .f64 = @floatFromInt(@as(u64, @bitCast(self.stack.pop().?.i64))) });
                 },
                 .f64_promote_f32 => {
-                    try self.stack.append(.{ .f64 = @floatCast(self.stack.pop().?.f32) });
+                    try self.stack.append(allocator, .{ .f64 = @floatCast(self.stack.pop().?.f32) });
                 },
                 .i32_reinterpret_f32 => {
-                    try self.stack.append(.{ .i32 = @bitCast(self.stack.pop().?.f32) });
+                    try self.stack.append(allocator, .{ .i32 = @bitCast(self.stack.pop().?.f32) });
                 },
                 .i64_reinterpret_f64 => {
-                    try self.stack.append(.{ .i64 = @bitCast(self.stack.pop().?.f64) });
+                    try self.stack.append(allocator, .{ .i64 = @bitCast(self.stack.pop().?.f64) });
                 },
                 .f32_reinterpret_i32 => {
-                    try self.stack.append(.{ .f32 = @bitCast(self.stack.pop().?.i32) });
+                    try self.stack.append(allocator, .{ .f32 = @bitCast(self.stack.pop().?.i32) });
                 },
                 .f64_reinterpret_i64 => {
-                    try self.stack.append(.{ .f64 = @bitCast(self.stack.pop().?.i64) });
+                    try self.stack.append(allocator, .{ .f64 = @bitCast(self.stack.pop().?.i64) });
                 },
 
                 .i32_extend8_s => {
                     const val = self.stack.pop().?.i32;
-                    try self.stack.append(.{ .i32 = @as(i32, @as(i8, @truncate(val))) });
+                    try self.stack.append(allocator, .{ .i32 = @as(i32, @as(i8, @truncate(val))) });
                 },
                 .i32_extend16_s => {
                     const val = self.stack.pop().?.i32;
-                    try self.stack.append(.{ .i32 = @as(i32, @as(i16, @truncate(val))) });
+                    try self.stack.append(allocator, .{ .i32 = @as(i32, @as(i16, @truncate(val))) });
                 },
                 .i64_extend8_s => {
                     const val = self.stack.pop().?.i64;
-                    try self.stack.append(.{ .i64 = @as(i64, @as(i8, @truncate(val))) });
+                    try self.stack.append(allocator, .{ .i64 = @as(i64, @as(i8, @truncate(val))) });
                 },
                 .i64_extend16_s => {
                     const val = self.stack.pop().?.i64;
-                    try self.stack.append(.{ .i64 = @as(i64, @as(i16, @truncate(val))) });
+                    try self.stack.append(allocator, .{ .i64 = @as(i64, @as(i16, @truncate(val))) });
                 },
                 .i64_extend32_s => {
                     const val = self.stack.pop().?.i64;
-                    try self.stack.append(.{ .i64 = @as(i64, @as(i32, @truncate(val))) });
+                    try self.stack.append(allocator, .{ .i64 = @as(i64, @as(i32, @truncate(val))) });
                 },
 
                 .i32_trunc_sat_f32_s => {
-                    try self.stack.append(.{ .i32 = @intFromFloat(self.stack.pop().?.f32) });
+                    try self.stack.append(allocator, .{ .i32 = @intFromFloat(self.stack.pop().?.f32) });
                 },
                 .i32_trunc_sat_f32_u => {
-                    try self.stack.append(.{ .i32 = @bitCast(@as(u32, @intFromFloat(self.stack.pop().?.f32))) });
+                    try self.stack.append(allocator, .{ .i32 = @bitCast(@as(u32, @intFromFloat(self.stack.pop().?.f32))) });
                 },
                 .i32_trunc_sat_f64_s => {
-                    try self.stack.append(.{ .i32 = @intFromFloat(self.stack.pop().?.f64) });
+                    try self.stack.append(allocator, .{ .i32 = @intFromFloat(self.stack.pop().?.f64) });
                 },
                 .i32_trunc_sat_f64_u => {
-                    try self.stack.append(.{ .i32 = @bitCast(@as(u32, @intFromFloat(self.stack.pop().?.f64))) });
+                    try self.stack.append(allocator, .{ .i32 = @bitCast(@as(u32, @intFromFloat(self.stack.pop().?.f64))) });
                 },
                 .i64_trunc_sat_f32_s => {
-                    try self.stack.append(.{ .i64 = @intFromFloat(self.stack.pop().?.f32) });
+                    try self.stack.append(allocator, .{ .i64 = @intFromFloat(self.stack.pop().?.f32) });
                 },
                 .i64_trunc_sat_f32_u => {
-                    try self.stack.append(.{ .i64 = @bitCast(@as(u64, @intFromFloat(self.stack.pop().?.f32))) });
+                    try self.stack.append(allocator, .{ .i64 = @bitCast(@as(u64, @intFromFloat(self.stack.pop().?.f32))) });
                 },
                 .i64_trunc_sat_f64_s => {
-                    try self.stack.append(.{ .i64 = @intFromFloat(self.stack.pop().?.f64) });
+                    try self.stack.append(allocator, .{ .i64 = @intFromFloat(self.stack.pop().?.f64) });
                 },
                 .i64_trunc_sat_f64_u => {
-                    try self.stack.append(.{ .i64 = @bitCast(@as(u64, @intFromFloat(self.stack.pop().?.f64))) });
+                    try self.stack.append(allocator, .{ .i64 = @bitCast(@as(u64, @intFromFloat(self.stack.pop().?.f64))) });
                 },
 
                 .vecinst => @panic("UNIMPLEMENTED"),
@@ -1166,7 +1166,7 @@ pub const Runtime = struct {
                 }
                 const ret = func.?.func(self, parameters);
                 if (ret != null){
-                    try self.stack.append(ret.?);
+                    try self.stack.append(allocator, ret.?);
                 }
             },
         }
@@ -1176,12 +1176,12 @@ pub const Runtime = struct {
 pub fn handleGlobalInit(allocator: Allocator, ir: IR) !Value {
     var instruction_pointer: usize = 0;
     var stack = try std.ArrayList(Value).initCapacity(allocator, 10);
-    defer stack.deinit();
+    defer stack.deinit(allocator);
     while (instruction_pointer < ir.opcodes.len) {
         const opcode: IR.Opcode = ir.opcodes[instruction_pointer];
         const index = ir.indices[instruction_pointer];
         switch (opcode) {
-            .i32_const => try stack.append(Value{ .i32 = index.i32 }),
+            .i32_const => try stack.append(allocator, Value{ .i32 = index.i32 }),
             else => {
                 std.debug.panic("TODO: Handle opcode {any}\n", .{opcode});
             },

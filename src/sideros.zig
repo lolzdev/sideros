@@ -143,12 +143,12 @@ export fn sideros_init(init: api.GameInit) callconv(.c) void {
     ecs.hooks.addHook(.scroll, systems.zoomCamera) catch @panic("TODO handle this");
     pool = ecs.Pool.init(allocator, &resources) catch @panic("TODO: Gracefully handle error");
     // TODO(ernesto): I think this @ptrCast are unavoidable but maybe not?
-    renderer = Renderer.init(allocator, @ptrCast(init.instance), @ptrCast(init.surface)) catch @panic("TODO: Gracefully handle error");
+    renderer = Renderer.init(allocator, @ptrCast(init.instance), @ptrCast(init.surface)) catch |err| std.debug.panic("TODO: Gracefully handle error: {}\n", .{err});
 
     resources.terrain = rendering.Terrain.init(allocator, renderer.device, .{
-        .octaves = 4,
+        .octaves = 8,
         .lacunarity = 2.0,
-        .gain = 0.5,
+        .gain = 0.6,
         .scale = 30,
         .multiplier = 1.0,
         .exponent = 1.0,
