@@ -73,13 +73,14 @@ fn loadMod(entry: std.fs.Dir.Entry) !void {
         std.debug.panic("Failed to delete {s} (reason: {any})", .{modDir, err});
     };
     defer file.close();
-    const all = file.readToEndAlloc(allocator, 1_000_000) catch @panic("Unable to read main file");
-    defer allocator.free(all);
-    var parser = mods.Parser.init(allocator, all) catch @panic("Failed to init parser");
+    // TODO(luccie): Make this be able to construct a buffer for the whole file
+    const buffer = try allocator.alloc(u8, 1_000_000);
+    var parser = mods.Parser.init(allocator, file.reader(buffer)) catch @panic("Failed to init parser");
     defer parser.deinit();
     parser.parseModule() catch |err| {
-       std.debug.print("[ERROR]: error {any} at byte {x}(0x{x})\n", .{ err, parser.byte_idx, parser.bytes[parser.byte_idx] });
-       return err;
+        // TODO(luccie): Find a better option for the expression `parser.reader.buffer[parser.reader.seek]`
+        std.debug.print("[ERROR]: error {any} at byte {x}(0x{x})\n", .{ err, parser.reader.seek, parser.reader.buffer[parser.reader.seek] });
+        return err;
     };
     const module = parser.module();
 

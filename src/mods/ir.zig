@@ -649,7 +649,7 @@ const IRParserState = struct {
             0xFD => self.parseVector(),
             0xFC => self.parseMisc(),
             else => {
-                std.log.err("Invalid instruction {x} at position {d}\n", .{ b, self.parser.byte_idx });
+                std.log.err("Invalid instruction {x} at position {d}\n", .{ b, self.parser.reader.seek });
                 return Parser.Error.invalid_instruction;
             },
         };
@@ -697,7 +697,7 @@ const IRParserState = struct {
             },
             12...17 => @panic("UNIMPLEMENTED"),
             else => {
-                std.log.err("Invalid misc instruction {d} at position {d}\n", .{ n, self.parser.byte_idx });
+                std.log.err("Invalid misc instruction {d} at position {d}\n", .{ n, self.parser.reader.seek });
                 return Parser.Error.invalid_instruction;
             },
         };
@@ -845,7 +845,7 @@ const IRParserState = struct {
                 try self.push(.vecinst, .{ .vector = .{ .opcode = @enumFromInt(n), .memarg = .{ .alignment = 0, .offset = 0 }, .laneidx = 0 } });
             },
             else => {
-                std.log.err("Invalid vector instruction {d} at position {d}\n", .{ n, self.parser.byte_idx });
+                std.log.err("Invalid vector instruction {d} at position {d}\n", .{ n, self.parser.reader.seek });
                 return Parser.Error.invalid_instruction;
             },
         };

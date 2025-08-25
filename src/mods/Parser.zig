@@ -3,8 +3,7 @@ const vm = @import("vm.zig");
 const IR = @import("ir.zig");
 const Allocator = std.mem.Allocator;
 
-bytes: []const u8,
-byte_idx: usize,
+reader: *std.Io.Reader,
 allocator: Allocator,
 
 types: []vm.Functype,
@@ -27,6 +26,8 @@ pub const Error = error{
     OutOfMemory,
     DivideBy0,
     Overflow,
+    ReadFailed,
+    EndOfStream,
     invalid_instruction,
     invalid_magic,
     invalid_version,
@@ -51,15 +52,14 @@ pub const Error = error{
     unterminated_wasm,
 };
 
-pub fn init(allocator: Allocator, bytes: []const u8) !Parser {
+pub fn init(allocator: Allocator, reader: std.fs.File.Reader) !Parser {
     return .{
         .elems = &.{},
         .tables = &.{},
         .parsedData = &.{},
         .exported_memory = 0,
         .importCount = 0,
-        .bytes = bytes,
-        .byte_idx = 0,
+        .reader = @constCast(&reader.interface),
         .allocator = allocator,
         .types = &.{},
         .functions = &.{},
@@ -103,18 +103,19 @@ pub fn module(self: *Parser) vm.Module {
 
 // TODO: This function should not exists
 fn warn(self: Parser, s: []const u8) void {
-    std.debug.print("[WARN]: Parsing of {s} unimplemented at byte index {d}\n", .{ s, self.byte_idx });
+    std.debug.print("[WARN]: Parsing of {s} unimplemented at byte index {d}\n", .{ s, self.reader.seek });
 }
 
 // TODO: remove peek?
 pub fn peek(self: Parser) ?u8 {
-    return if (self.byte_idx < self.bytes.len) self.bytes[self.byte_idx] else null;
+    return self.reader.peekByte() catch return null;
 }
 
 fn read(self: *Parser, n: usize) ![]const u8 {
-    if (self.byte_idx + n > self.bytes.len) return Error.unterminated_wasm;
-    defer self.byte_idx += n;
-    return self.bytes[self.byte_idx .. self.byte_idx + n];
+    _ = self.reader.peek(n) catch {
+        return Error.unterminated_wasm;
+    };
+    return try self.reader.readAlloc(self.allocator, n);
 }
 
 // ==========
@@ -309,7 +310,7 @@ pub fn parseModule(self: *Parser) !void {
     if (!std.mem.eql(u8, try self.read(4), &.{ 0x00, 0x61, 0x73, 0x6d })) return Error.invalid_magic;
     if (!std.mem.eql(u8, try self.read(4), &.{ 0x01, 0x00, 0x00, 0x00 })) return Error.invalid_version;
     // TODO: Ensure only one section of each type (except for custom section), some code depends on it
-    while (self.byte_idx < self.bytes.len) {
+    while (self.reader.seek < self.reader.end) {
         try switch (try self.readByte()) {
             0 => self.parseCustomsec(),
             1 => self.parseTypesec(),
@@ -343,7 +344,7 @@ fn parseCustomsec(self: *Parser) !void {
 
 fn parseTypesec(self: *Parser) !void {
     const size = try self.readU32();
-    const end_idx = self.byte_idx + size;
+    const end_idx = self.reader.seek + size;
 
     const ft = try self.parseVector(Parser.parseFunctype);
 
@@ -351,7 +352,7 @@ fn parseTypesec(self: *Parser) !void {
     self.types = ft;
 
     // TODO(ernesto): run this check not only on debug
-    std.debug.assert(self.byte_idx == end_idx);
+    std.debug.assert(self.reader.seek == end_idx);
 }
 
 pub const Import = struct {
@@ -379,7 +380,7 @@ fn parseImport(self: *Parser) !Import {
 
 fn parseImportsec(self: *Parser) !void {
     const size = try self.readU32();
-    const end_idx = self.byte_idx + size;
+    const end_idx = self.reader.seek + size;
 
     const imports = try self.parseVector(Parser.parseImport);
 
@@ -423,12 +424,12 @@ fn parseImportsec(self: *Parser) !void {
     defer self.allocator.free(imports);
 
     // TODO: run this check not only on debug
-    std.debug.assert(self.byte_idx == end_idx);
+    std.debug.assert(self.reader.seek == end_idx);
 }
 
 fn parseFuncsec(self: *Parser) !void {
     const size = try self.readU32();
-    const end_idx = self.byte_idx + size;
+    const end_idx = self.reader.seek + size;
 
     const types = try self.parseVector(Parser.readU32);
     defer self.allocator.free(types);
@@ -449,7 +450,7 @@ fn parseFuncsec(self: *Parser) !void {
     std.debug.assert(types.len + self.importCount == self.functions.len);
 
     // TODO: run this check not only on debug
-    std.debug.assert(self.byte_idx == end_idx);
+    std.debug.assert(self.reader.seek == end_idx);
 }
 
 pub const Table = struct {
@@ -464,7 +465,7 @@ fn parseTable(self: *Parser) !Table {
 
 fn parseTablesec(self: *Parser) !void {
     const size = try self.readU32();
-    const end_idx = self.byte_idx + size;
+    const end_idx = self.reader.seek + size;
 
     const tables = try self.parseVector(Parser.parseTable);
     defer self.allocator.free(tables);
@@ -476,12 +477,12 @@ fn parseTablesec(self: *Parser) !void {
         self.tables[i] = t.t;
     }
  
-    std.debug.assert(self.byte_idx == end_idx);
+    std.debug.assert(self.reader.seek == end_idx);
 }
 
 fn parseMemsec(self: *Parser) !void {
     const size = try self.readU32();
-    const end_idx = self.byte_idx + size;
+    const end_idx = self.reader.seek + size;
 
     const mems = try self.parseVector(Parser.parseMemtype);
     defer self.allocator.free(mems);
@@ -498,7 +499,7 @@ fn parseMemsec(self: *Parser) !void {
     }
 
     // TODO: run this check not only on debug
-    std.debug.assert(self.byte_idx == end_idx);
+    std.debug.assert(self.reader.seek == end_idx);
 }
 
 pub const Global = struct {
@@ -515,7 +516,7 @@ fn parseGlobal(self: *Parser) !Global {
 
 fn parseGlobalsec(self: *Parser) !void {
     const size = try self.readU32();
-    const end_idx = self.byte_idx + size;
+    const end_idx = self.reader.seek + size;
 
     const globals = try self.parseVector(Parser.parseGlobal);
     defer self.allocator.free(globals);
@@ -530,7 +531,7 @@ fn parseGlobalsec(self: *Parser) !void {
         self.globalTypes[i] = global.t;
     }
 
-    std.debug.assert(self.byte_idx == end_idx);
+    std.debug.assert(self.reader.seek == end_idx);
 }
 
 pub const Export = struct {
@@ -556,7 +557,7 @@ fn parseExport(self: *Parser) !Export {
 
 fn parseExportsec(self: *Parser) !void {
     const size = try self.readU32();
-    const end_idx = self.byte_idx + size;
+    const end_idx = self.reader.seek + size;
 
     const exports = try self.parseVector(Parser.parseExport);
     defer {
@@ -582,7 +583,7 @@ fn parseExportsec(self: *Parser) !void {
     }
 
     // TODO: run this check not only on debug
-    std.debug.assert(self.byte_idx == end_idx);
+    std.debug.assert(self.reader.seek == end_idx);
 }
 
 fn parseStartsec(self: *Parser) !void {
@@ -636,7 +637,7 @@ fn parseElem(self: *Parser) !Elem {
 
 fn parseElemsec(self: *Parser) !void {
     const size = try self.readU32();
-    const end_idx = self.byte_idx + size;
+    const end_idx = self.reader.seek + size;
 
     const elems = try self.parseVector(Parser.parseElem);
     defer self.allocator.free(elems);
@@ -655,7 +656,7 @@ fn parseElemsec(self: *Parser) !void {
         }
     }
 
-    std.debug.assert(self.byte_idx == end_idx);
+    std.debug.assert(self.reader.seek == end_idx);
 }
 
 pub const Func = struct {
@@ -675,7 +676,7 @@ fn parseLocal(self: *Parser) !Local {
 
 fn parseCode(self: *Parser) !Func {
     const size = try self.readU32();
-    const end_idx = self.byte_idx + size;
+    const end_idx = self.reader.seek + size;
 
     const locals = try self.parseVector(Parser.parseLocal);
     defer self.allocator.free(locals);
@@ -700,14 +701,14 @@ fn parseCode(self: *Parser) !Func {
     }
 
     // TODO: run this check not only on debug
-    std.debug.assert(self.byte_idx == end_idx);
+    std.debug.assert(self.reader.seek == end_idx);
 
     return func;
 }
 
 fn parseCodesec(self: *Parser) !void {
     const size = try self.readU32();
-    const end_idx = self.byte_idx + size;
+    const end_idx = self.reader.seek + size;
 
     const codes = try self.parseVector(Parser.parseCode);
     defer self.allocator.free(codes);
@@ -722,7 +723,7 @@ fn parseCodesec(self: *Parser) !void {
     }
 
     // TODO: run this check not only on debug
-    std.debug.assert(self.byte_idx == end_idx);
+    std.debug.assert(self.reader.seek == end_idx);
 }
 
 pub const Data = struct {
@@ -747,14 +748,14 @@ fn parseData(self: *Parser) !Data {
 
 fn parseDatasec(self: *Parser) !void {
     const size = try self.readU32();
-    const end_idx = self.byte_idx + size;
+    const end_idx = self.reader.seek + size;
     const datas = try self.parseVector(Parser.parseData);
     defer self.allocator.free(datas);
     for (datas) |data| {
         self.parsedData = try self.allocator.realloc(self.parsedData, @as(usize, @intCast(data.offsetVal.i32)) + data.data.len);
         @memcpy(self.parsedData[@as(usize, @intCast(data.offsetVal.i32))..@as(usize, @intCast(data.offsetVal.i32))+data.data.len], data.data);
     }
-    std.debug.assert(self.byte_idx == end_idx);
+    std.debug.assert(self.reader.seek == end_idx);
 }
 
 fn parseDatacountsec(self: *Parser) !void {
