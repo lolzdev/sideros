@@ -28,7 +28,6 @@ pub const Error = error{
     Overflow,
     ReadFailed,
     EndOfStream,
-    invalid_instruction,
     invalid_magic,
     invalid_version,
     invalid_section,
@@ -49,17 +48,16 @@ pub const Error = error{
     duplicated_tablesec,
     duplicated_elemsec,
     unresolved_branch,
-    unterminated_wasm,
 };
 
-pub fn init(allocator: Allocator, reader: std.fs.File.Reader) !Parser {
+pub fn init(allocator: Allocator, reader: *std.Io.Reader) !Parser {
     return .{
         .elems = &.{},
         .tables = &.{},
         .parsedData = &.{},
         .exported_memory = 0,
         .importCount = 0,
-        .reader = @constCast(&reader.interface),
+        .reader = reader,
         .allocator = allocator,
         .types = &.{},
         .functions = &.{},
@@ -106,57 +104,15 @@ fn warn(self: Parser, s: []const u8) void {
     std.debug.print("[WARN]: Parsing of {s} unimplemented at byte index {d}\n", .{ s, self.reader.seek });
 }
 
-// TODO: remove peek?
-pub fn peek(self: Parser) ?u8 {
-    return self.reader.peekByte() catch return null;
-}
-
-fn read(self: *Parser, n: usize) ![]const u8 {
-    _ = self.reader.peek(n) catch {
-        return Error.unterminated_wasm;
-    };
-    return try self.reader.readAlloc(self.allocator, n);
-}
-
 // ==========
 // = VALUES =
 // ==========
 
-pub fn readByte(self: *Parser) !u8 {
-    return (try self.read(1))[0];
-}
-
-pub fn readU32(self: *Parser) !u32 {
-    return std.leb.readUleb128(u32, self);
-}
-
-pub fn readI32(self: *Parser) !i32 {
-    return std.leb.readIleb128(i32, self);
-}
-
-pub fn readI64(self: *Parser) !i64 {
-    return std.leb.readIleb128(i64, self);
-}
-
-pub fn readI33(self: *Parser) !i33 {
-    return std.leb.readIleb128(i33, self);
-}
-
-pub fn readF32(self: *Parser) !f32 {
-    const bytes = try self.read(@sizeOf(f32));
-    return std.mem.bytesAsValue(f32, bytes).*;
-}
-
-pub fn readF64(self: *Parser) !f64 {
-    const bytes = try self.read(@sizeOf(f64));
-    return std.mem.bytesAsValue(f64, bytes).*;
-}
-
 fn readName(self: *Parser) ![]const u8 {
-    // NOTE: This should be the only vector not parsed through parseVector
-    const size = try self.readU32();
+    // NOTE: This should be the only vector not parsed through parseVector for efficiency
+    const size = try self.reader.takeLeb128(u32);
     const str = try self.allocator.alloc(u8, size);
-    @memcpy(str, try self.read(size));
+    try self.reader.readSliceAll(str);
     if (!std.unicode.utf8ValidateSlice(str)) return Error.invalid_string;
     return str;
 }
@@ -179,24 +135,16 @@ fn VectorFnResult(parse_fn: anytype) type {
     };
 }
 pub fn parseVector(self: *Parser, parse_fn: anytype) ![]VectorFnResult(parse_fn) {
-    const n = try self.readU32();
+    const n = try self.reader.takeLeb128(u32);
     const ret = try self.allocator.alloc(VectorFnResult(parse_fn), n);
     for (ret) |*i| {
         i.* = try parse_fn(self);
     }
     return ret;
 }
-pub fn parseVectorU32(self: *Parser) ![]u32 {
-    const n = try self.readU32();
-    const ret = try self.allocator.alloc(u32, n);
-    for (ret) |*i| {
-        i.* = try self.readU32();
-    }
-    return ret;
-}
 
 fn parseNumtype(self: *Parser) !std.wasm.Valtype {
-    return switch (try self.readByte()) {
+    return switch (try self.reader.takeByte()) {
         0x7F => .i32,
         0x7E => .i64,
         0x7D => .f32,
@@ -206,14 +154,14 @@ fn parseNumtype(self: *Parser) !std.wasm.Valtype {
 }
 
 fn parseVectype(self: *Parser) !std.wasm.Valtype {
-    return switch (try self.readByte()) {
+    return switch (try self.reader.takeByte()) {
         0x7B => .v128,
         else => Error.invalid_vectype,
     };
 }
 
-pub fn parseReftype(self: *Parser) !std.wasm.RefType {
-    return switch (try self.readByte()) {
+fn parseReftype(self: *Parser) !std.wasm.RefType {
+    return switch (try self.reader.takeByte()) {
         0x70 => .funcref,
         0x6F => .externref,
         else => Error.invalid_reftype,
@@ -223,7 +171,7 @@ pub fn parseReftype(self: *Parser) !std.wasm.RefType {
 // NOTE: Parsing of Valtype can be improved but it makes it less close to spec so...
 // TODO: Do we really need Valtype?
 fn parseValtype(self: *Parser) !vm.Valtype {
-    const pb = self.peek() orelse return Error.unterminated_wasm;
+    const pb = try self.reader.peekByte();
     return switch (pb) {
         0x7F, 0x7E, 0x7D, 0x7C => .{ .val = try self.parseNumtype() },
         0x7B => .{ .val = try self.parseVectype() },
@@ -237,7 +185,7 @@ fn parseResultType(self: *Parser) ![]vm.Valtype {
 }
 
 fn parseFunctype(self: *Parser) !vm.Functype {
-    if (try self.readByte() != 0x60) return Error.invalid_functype;
+    if (try self.reader.takeByte() != 0x60) return Error.invalid_functype;
     return .{
         .parameters = try self.parseResultType(),
         .returns = try self.parseResultType(),
@@ -250,14 +198,14 @@ const Limits = struct {
 };
 
 fn parseLimits(self: *Parser) !Limits {
-    return switch (try self.readByte()) {
+    return switch (try self.reader.takeByte()) {
         0x00 => .{
-            .min = try self.readU32(),
+            .min = try self.reader.takeLeb128(u32),
             .max = null,
         },
         0x01 => .{
-            .min = try self.readU32(),
-            .max = try self.readU32(),
+            .min = try self.reader.takeLeb128(u32),
+            .max = try self.reader.takeLeb128(u32),
         },
         else => Error.invalid_limits,
     };
@@ -293,7 +241,7 @@ pub const Globaltype = struct {
 fn parseGlobaltype(self: *Parser) !Globaltype {
     return .{
         .t = try self.parseValtype(),
-        .m = switch (try self.readByte()) {
+        .m = switch (try self.reader.takeByte()) {
             0x00 => .@"const",
             0x01 => .@"var",
             else => return Error.invalid_globaltype,
@@ -307,11 +255,12 @@ fn parseGlobaltype(self: *Parser) !Globaltype {
 // NOTE: This should not return anything but modify IR
 
 pub fn parseModule(self: *Parser) !void {
-    if (!std.mem.eql(u8, try self.read(4), &.{ 0x00, 0x61, 0x73, 0x6d })) return Error.invalid_magic;
-    if (!std.mem.eql(u8, try self.read(4), &.{ 0x01, 0x00, 0x00, 0x00 })) return Error.invalid_version;
+    if (!std.mem.eql(u8, try self.reader.takeArray(4), &.{ 0x00, 0x61, 0x73, 0x6d })) return Error.invalid_magic;
+    if (!std.mem.eql(u8, try self.reader.takeArray(4), &.{ 0x01, 0x00, 0x00, 0x00 })) return Error.invalid_version;
+
     // TODO: Ensure only one section of each type (except for custom section), some code depends on it
-    while (self.reader.seek < self.reader.end) {
-        try switch (try self.readByte()) {
+    while (self.reader.takeByte()) |b| {
+        try switch (b) {
             0 => self.parseCustomsec(),
             1 => self.parseTypesec(),
             2 => self.parseImportsec(),
@@ -327,23 +276,23 @@ pub fn parseModule(self: *Parser) !void {
             12 => self.parseDatacountsec(),
             else => return Error.invalid_section,
         };
-    }
-    if (self.exports.init != null and self.exports.init.? != 0){
+    } else |_| {}
+    if (self.exports.init != null and self.exports.init.? != 0) {
         self.exports.init.? -= self.importCount;
     }
-    if (self.exports.deinit != null and self.exports.deinit.? != 0){
+    if (self.exports.deinit != null and self.exports.deinit.? != 0) {
         self.exports.deinit.? -= self.importCount;
     }
 }
 
 fn parseCustomsec(self: *Parser) !void {
     self.warn("customsec");
-    const size = try self.readU32();
-    _ = try self.read(size);
+    const size = try self.reader.takeLeb128(u32);
+    try self.reader.discardAll(size);
 }
 
 fn parseTypesec(self: *Parser) !void {
-    const size = try self.readU32();
+    const size = try self.reader.takeLeb128(u32);
     const end_idx = self.reader.seek + size;
 
     const ft = try self.parseVector(Parser.parseFunctype);
@@ -368,8 +317,8 @@ fn parseImport(self: *Parser) !Import {
     return .{
         .module = try self.readName(),
         .name = try self.readName(),
-        .importdesc = switch (try self.readByte()) {
-            0x00 => .{ .func = try self.readU32() },
+        .importdesc = switch (try self.reader.takeByte()) {
+            0x00 => .{ .func = try self.reader.takeLeb128(u32) },
             0x01 => .{ .table = try self.parseTabletype() },
             0x02 => .{ .mem = try self.parseMemtype() },
             0x03 => .{ .global = try self.parseGlobaltype() },
@@ -379,7 +328,7 @@ fn parseImport(self: *Parser) !Import {
 }
 
 fn parseImportsec(self: *Parser) !void {
-    const size = try self.readU32();
+    const size = try self.reader.takeLeb128(u32);
     const end_idx = self.reader.seek + size;
 
     const imports = try self.parseVector(Parser.parseImport);
@@ -428,10 +377,15 @@ fn parseImportsec(self: *Parser) !void {
 }
 
 fn parseFuncsec(self: *Parser) !void {
-    const size = try self.readU32();
+    const size = try self.reader.takeLeb128(u32);
     const end_idx = self.reader.seek + size;
 
-    const types = try self.parseVector(Parser.readU32);
+    // TODO(ernesto): ugly as fuck
+    const types = try self.parseVector(struct {
+        fn fun(parser: *Parser) !u32 {
+            return parser.reader.takeLeb128(u32);
+        }
+    }.fun);
     defer self.allocator.free(types);
 
     if (self.functions.len != self.importCount) return Error.duplicated_funcsec;
@@ -458,13 +412,11 @@ pub const Table = struct {
 };
 
 fn parseTable(self: *Parser) !Table {
-    return .{
-        .t = try self.parseTabletype()
-    };
+    return .{ .t = try self.parseTabletype() };
 }
 
 fn parseTablesec(self: *Parser) !void {
-    const size = try self.readU32();
+    const size = try self.reader.takeLeb128(u32);
     const end_idx = self.reader.seek + size;
 
     const tables = try self.parseVector(Parser.parseTable);
@@ -476,12 +428,12 @@ fn parseTablesec(self: *Parser) !void {
     for (tables, 0..) |t, i| {
         self.tables[i] = t.t;
     }
- 
+
     std.debug.assert(self.reader.seek == end_idx);
 }
 
 fn parseMemsec(self: *Parser) !void {
-    const size = try self.readU32();
+    const size = try self.reader.takeLeb128(u32);
     const end_idx = self.reader.seek + size;
 
     const mems = try self.parseVector(Parser.parseMemtype);
@@ -515,7 +467,7 @@ fn parseGlobal(self: *Parser) !Global {
 }
 
 fn parseGlobalsec(self: *Parser) !void {
-    const size = try self.readU32();
+    const size = try self.reader.takeLeb128(u32);
     const end_idx = self.reader.seek + size;
 
     const globals = try self.parseVector(Parser.parseGlobal);
@@ -526,7 +478,7 @@ fn parseGlobalsec(self: *Parser) !void {
     self.globalValues = try self.allocator.alloc(vm.Value, globals.len);
     self.globalTypes = try self.allocator.alloc(Globaltype, globals.len);
 
-    for(globals, 0..) |global, i| {
+    for (globals, 0..) |global, i| {
         self.globalValues[i] = try vm.handleGlobalInit(self.allocator, global.ir);
         self.globalTypes[i] = global.t;
     }
@@ -545,18 +497,18 @@ pub const Export = struct {
 fn parseExport(self: *Parser) !Export {
     return .{
         .name = try self.readName(),
-        .exportdesc = switch (try self.readByte()) {
-            0x00 => .{ .func = try self.readU32() },
-            0x01 => .{ .table = try self.readU32() },
-            0x02 => .{ .mem = try self.readU32() },
-            0x03 => .{ .global = try self.readU32() },
+        .exportdesc = switch (try self.reader.takeByte()) {
+            0x00 => .{ .func = try self.reader.takeLeb128(u32) },
+            0x01 => .{ .table = try self.reader.takeLeb128(u32) },
+            0x02 => .{ .mem = try self.reader.takeLeb128(u32) },
+            0x03 => .{ .global = try self.reader.takeLeb128(u32) },
             else => return Error.invalid_exportdesc,
         },
     };
 }
 
 fn parseExportsec(self: *Parser) !void {
-    const size = try self.readU32();
+    const size = try self.reader.takeLeb128(u32);
     const end_idx = self.reader.seek + size;
 
     const exports = try self.parseVector(Parser.parseExport);
@@ -588,8 +540,8 @@ fn parseExportsec(self: *Parser) !void {
 
 fn parseStartsec(self: *Parser) !void {
     self.warn("startsec");
-    const size = try self.readU32();
-    _ = try self.read(size);
+    const size = try self.reader.takeLeb128(u32);
+    try self.reader.discardAll(size);
 }
 
 const Elemmode = union(enum) {
@@ -607,22 +559,20 @@ pub const Elem = struct {
 };
 
 fn parseElem(self: *Parser) !Elem {
-    const b: u32 = try self.readU32();
-    switch (b){
+    const b: u32 = try self.reader.takeLeb128(u32);
+    switch (b) {
         0 => {
             // if (try self.parseReftype() != std.wasm.RefType.funcref){
             //     std.debug.panic("Active function index element table was not a function reference\n", .{});
             // }
-            const elemMode: Elemmode = .{
-                .Active = .{
-                    .tableidx = 0,
-                    .offset = try vm.handleGlobalInit(self.allocator, try IR.parseGlobalExpr(self)),
-                }
-            };
-            const n = try self.readU32();
+            const elemMode: Elemmode = .{ .Active = .{
+                .tableidx = 0,
+                .offset = try vm.handleGlobalInit(self.allocator, try IR.parseGlobalExpr(self)),
+            } };
+            const n = try self.reader.takeLeb128(u32);
             const indices: []u32 = try self.allocator.alloc(u32, n);
             for (0..n) |i| {
-                indices[i] = try self.readU32();
+                indices[i] = try self.reader.takeLeb128(u32);
             }
             return .{
                 .indices = indices,
@@ -631,12 +581,12 @@ fn parseElem(self: *Parser) !Elem {
         },
         else => {
             std.debug.panic("TODO: Handle elem type {any}\n", .{b});
-        }
+        },
     }
 }
 
 fn parseElemsec(self: *Parser) !void {
-    const size = try self.readU32();
+    const size = try self.reader.takeLeb128(u32);
     const end_idx = self.reader.seek + size;
 
     const elems = try self.parseVector(Parser.parseElem);
@@ -645,7 +595,7 @@ fn parseElemsec(self: *Parser) !void {
     self.elems = try self.allocator.alloc([]u32, elems.len);
 
     for (elems) |elem| {
-        if (elem.elemMode != Elemmode.Active){
+        if (elem.elemMode != Elemmode.Active) {
             std.debug.panic("No support for non active elements\n", .{});
         }
         const tab = self.tables[elem.elemMode.Active.tableidx];
@@ -669,13 +619,13 @@ const Local = struct {
 };
 fn parseLocal(self: *Parser) !Local {
     return .{
-        .n = try self.readU32(),
+        .n = try self.reader.takeLeb128(u32),
         .t = try self.parseValtype(),
     };
 }
 
 fn parseCode(self: *Parser) !Func {
-    const size = try self.readU32();
+    const size = try self.reader.takeLeb128(u32);
     const end_idx = self.reader.seek + size;
 
     const locals = try self.parseVector(Parser.parseLocal);
@@ -707,7 +657,7 @@ fn parseCode(self: *Parser) !Func {
 }
 
 fn parseCodesec(self: *Parser) !void {
-    const size = try self.readU32();
+    const size = try self.reader.takeLeb128(u32);
     const end_idx = self.reader.seek + size;
 
     const codes = try self.parseVector(Parser.parseCode);
@@ -732,34 +682,39 @@ pub const Data = struct {
 };
 
 fn parseData(self: *Parser) !Data {
-    const b: u32 = try self.readU32();
+    const b: u32 = try self.reader.takeLeb128(u32);
     switch (b) {
         0 => {
+            // TODO(ernesto): ugly (Zig, we need lambdas asap
             return .{
                 .offsetVal = try vm.handleGlobalInit(self.allocator, try IR.parseGlobalExpr(self)),
-                .data = try self.parseVector(readByte),
+                .data = try self.parseVector(struct {
+                    fn fun(p: *Parser) !u8 {
+                        return p.reader.takeByte();
+                    }
+                }.fun),
             };
         },
         else => {
             std.debug.panic("TODO: Handle data type {any}\n", .{b});
-        }
+        },
     }
 }
 
 fn parseDatasec(self: *Parser) !void {
-    const size = try self.readU32();
+    const size = try self.reader.takeLeb128(u32);
     const end_idx = self.reader.seek + size;
     const datas = try self.parseVector(Parser.parseData);
     defer self.allocator.free(datas);
     for (datas) |data| {
         self.parsedData = try self.allocator.realloc(self.parsedData, @as(usize, @intCast(data.offsetVal.i32)) + data.data.len);
-        @memcpy(self.parsedData[@as(usize, @intCast(data.offsetVal.i32))..@as(usize, @intCast(data.offsetVal.i32))+data.data.len], data.data);
+        @memcpy(self.parsedData[@as(usize, @intCast(data.offsetVal.i32)) .. @as(usize, @intCast(data.offsetVal.i32)) + data.data.len], data.data);
     }
     std.debug.assert(self.reader.seek == end_idx);
 }
 
 fn parseDatacountsec(self: *Parser) !void {
     self.warn("datacountsec");
-    const size = try self.readU32();
-    _ = try self.read(size);
+    const size = try self.reader.takeLeb128(u32);
+    try self.reader.discardAll(size);
 }

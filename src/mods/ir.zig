@@ -6,6 +6,12 @@ const Allocator = std.mem.Allocator;
 
 const IR = @This();
 
+const Error = error{
+    invalid_instruction,
+    invalid_reftype,
+    double_else,
+};
+
 const VectorIndex = packed struct {
     opcode: VectorOpcode,
     laneidx: u8,
@@ -59,6 +65,8 @@ pub fn print(self: IR, writer: anytype) !void {
         _ = try writer.write("\n");
     }
 }
+
+// TODO(ernesto): This file is unreadable, we should avoid "0xXX" and use names
 
 /// Opcodes.
 /// This is a mix of wasm opcodes mixed with a few of our own.
@@ -602,11 +610,11 @@ const VectorOpcode = enum(u8) {
 };
 
 const IRParserState = struct {
-    parser: *Parser,
+    reader: *std.Io.Reader,
     allocator: Allocator,
 
     // branches: std.AutoHashMapUnmanaged(u32, u32),
-    branches: std.ArrayListUnmanaged( struct { pc: u32, index: u32, table: bool } ),
+    branches: std.ArrayListUnmanaged(struct { pc: u32, index: u32, table: bool }),
     br_table_vectors: std.ArrayListUnmanaged(u32),
 
     opcodes: std.ArrayListUnmanaged(Opcode),
@@ -614,9 +622,9 @@ const IRParserState = struct {
 
     fn parseFunction(self: *IRParserState) !void {
         while (true) {
-            const op = self.parser.peek() orelse return Parser.Error.unterminated_wasm;
+            const op = try self.reader.peekByte();
             if (op == 0x0B) {
-                _ = try self.parser.readByte();
+                self.reader.toss(1);
                 break;
             } else {
                 try self.parseExpression();
@@ -624,8 +632,9 @@ const IRParserState = struct {
         }
     }
 
-    fn parseExpression(self: *IRParserState) Parser.Error!void {
-        const b = try self.parser.readByte();
+    const PossibleError = std.Io.Reader.TakeLeb128Error || std.mem.Allocator.Error || IR.Error;
+    fn parseExpression(self: *IRParserState) PossibleError!void {
+        const b = try self.reader.takeByte();
         try switch (b) {
             0x00 => self.push(@enumFromInt(b), .{ .u64 = 0 }),
             0x01 => self.push(@enumFromInt(b), .{ .u64 = 0 }),
@@ -634,14 +643,14 @@ const IRParserState = struct {
             0x0C...0x0D => self.parseBranch(b),
             0x0E => self.parseBrTable(b),
             0x0F => self.push(@enumFromInt(b), .{ .u64 = 0 }),
-            0x10 => self.push(@enumFromInt(b), .{ .u32 = try self.parser.readU32() }),
-            0x11 => self.push(@enumFromInt(b), .{ .indirect = .{ .y = try self.parser.readU32(), .x = try self.parser.readU32() } }),
-            0xD0 => self.push(@enumFromInt(b), .{ .reftype = try self.parser.parseReftype() }),
+            0x10 => self.push(@enumFromInt(b), .{ .u32 = try self.reader.takeLeb128(u32) }),
+            0x11 => self.push(@enumFromInt(b), .{ .indirect = .{ .y = try self.reader.takeLeb128(u32), .x = try self.reader.takeLeb128(u32) } }),
+            0xD0 => self.push(@enumFromInt(b), .{ .reftype = try self.parseReftype() }),
             0xD1 => self.push(@enumFromInt(b), .{ .u64 = 0 }),
-            0xD2 => self.push(@enumFromInt(b), .{ .u32 = try self.parser.readU32() }),
+            0xD2 => self.push(@enumFromInt(b), .{ .u32 = try self.reader.takeLeb128(u32) }),
             0x1A...0x1C => self.parseParametric(b),
-            0x20...0x24 => self.push(@enumFromInt(b), .{ .u32 = try self.parser.readU32() }),
-            0x25...0x26 => self.push(@enumFromInt(b), .{ .u32 = try self.parser.readU32() }),
+            0x20...0x24 => self.push(@enumFromInt(b), .{ .u32 = try self.reader.takeLeb128(u32) }),
+            0x25...0x26 => self.push(@enumFromInt(b), .{ .u32 = try self.reader.takeLeb128(u32) }),
             0x28...0x3E => self.push(@enumFromInt(b), .{ .memarg = try self.parseMemarg() }),
             0x3F...0x40 => self.parseMemsizeorgrow(b),
             0x41...0x44 => self.parseConst(b),
@@ -649,8 +658,8 @@ const IRParserState = struct {
             0xFD => self.parseVector(),
             0xFC => self.parseMisc(),
             else => {
-                std.log.err("Invalid instruction {x} at position {d}\n", .{ b, self.parser.reader.seek });
-                return Parser.Error.invalid_instruction;
+                std.log.err("Invalid instruction {x} at position {d}\n", .{ b, self.reader.seek });
+                return IR.Error.invalid_instruction;
             },
         };
     }
@@ -660,55 +669,70 @@ const IRParserState = struct {
         try self.indices.append(self.allocator, index);
     }
 
+    fn parseReftype(self: *IRParserState) !std.wasm.RefType {
+        return switch (try self.reader.takeByte()) {
+            0x70 => .funcref,
+            0x6F => .externref,
+            else => Error.invalid_reftype,
+        };
+    }
+
     fn parseMemarg(self: *IRParserState) !Memarg {
         return .{
             // TODO: assert this intCast does not fail
-            .alignment = @intCast(try self.parser.readU32()),
-            .offset = try self.parser.readU32(),
+            .alignment = @intCast(try self.reader.takeLeb128(u32)),
+            .offset = try self.reader.takeLeb128(u32),
         };
     }
 
     fn parseMemsizeorgrow(self: *IRParserState, b: u8) !void {
-        if (try self.parser.readByte() != 0x00) return Parser.Error.invalid_instruction;
+        if (try self.reader.takeByte() != 0x00) return IR.Error.invalid_instruction;
         try self.push(@enumFromInt(b), .{ .u64 = 0 });
     }
 
     fn parseConst(self: *IRParserState, b: u8) !void {
         try switch (b) {
-            0x41 => self.push(.i32_const, .{ .i32 = try self.parser.readI32() }),
-            0x42 => self.push(.i64_const, .{ .i64 = try self.parser.readI64() }),
-            0x43 => self.push(.f32_const, .{ .f32 = try self.parser.readF32() }),
-            0x44 => self.push(.f64_const, .{ .f64 = try self.parser.readF64() }),
+            0x41 => self.push(.i32_const, .{ .i32 = try self.reader.takeLeb128(i32) }),
+            0x42 => self.push(.i64_const, .{ .i64 = try self.reader.takeLeb128(i64) }),
+            0x43 => self.push(.f32_const, .{ .f32 = val: {
+                const bytes = try self.reader.takeArray(4);
+                break :val std.mem.bytesAsValue(f32, bytes).*;
+            } }),
+            0x44 => self.push(.f64_const, .{ .f64 = val: {
+                const bytes = try self.reader.takeArray(8);
+                break :val std.mem.bytesAsValue(f64, bytes).*;
+            } }),
             else => unreachable,
         };
     }
 
     fn parseMisc(self: *IRParserState) !void {
-        const n = try self.parser.readU32();
+        const n = try self.reader.takeLeb128(u32);
         try switch (n) {
             0...7 => self.push(@enumFromInt(0xD3 + @as(u8, @intCast(n))), .{ .u64 = 0 }),
             8...9 => @panic("UNIMPLEMENTED"),
             10...11 => {
                 try self.push(@enumFromInt(0xD3 + @as(u8, @intCast(n))), .{ .u64 = 0 });
-                _ = try self.parser.readByte();
+                // TODO(ernesto): This is sus
+                try self.reader.discardAll(1);
                 if (n == 10) {
-                    _ = try self.parser.readByte();
+                    try self.reader.discardAll(1);
                 }
             },
             12...17 => @panic("UNIMPLEMENTED"),
             else => {
-                std.log.err("Invalid misc instruction {d} at position {d}\n", .{ n, self.parser.reader.seek });
-                return Parser.Error.invalid_instruction;
+                std.log.err("Invalid misc instruction {d} at position {d}\n", .{ n, self.reader.seek });
+                return IR.Error.invalid_instruction;
             },
         };
     }
 
     fn parseBlockType(self: *IRParserState) !void {
-        const b = self.parser.peek() orelse return Parser.Error.unterminated_wasm;
+        const b = try self.reader.peekByte();
         switch (b) {
-            0x40 => _ = try self.parser.readByte(),
-            0x6F...0x70, 0x7B...0x7F => _ = try self.parser.readByte(),
-            else => _ = try self.parser.readI33(),
+            0x40 => self.reader.toss(1),
+            0x6F...0x70, 0x7B...0x7F => self.reader.toss(1),
+            else => _ = try self.reader.takeLeb128(i33),
         }
     }
 
@@ -717,9 +741,9 @@ const IRParserState = struct {
         _ = try self.parseBlockType();
         const start: u32 = @intCast(self.opcodes.items.len);
         while (true) {
-            const op = self.parser.peek() orelse return Parser.Error.unterminated_wasm;
+            const op = try self.reader.peekByte();
             if (op == 0x0B) {
-                _ = try self.parser.readByte();
+                self.reader.toss(1);
                 break;
             } else {
                 try self.parseExpression();
@@ -736,9 +760,9 @@ const IRParserState = struct {
 
     fn parseGlobal(self: *IRParserState) !void {
         while (true) {
-            const op = self.parser.peek() orelse return Parser.Error.unterminated_wasm;
+            const op = try self.reader.peekByte();
             if (op == 0x0B) {
-                _ = try self.parser.readByte();
+                self.reader.toss(1);
                 break;
             } else {
                 try self.parseExpression();
@@ -756,15 +780,14 @@ const IRParserState = struct {
 
         var else_addr: u32 = 0;
         while (true) {
-            const op = self.parser.peek() orelse return Parser.Error.unterminated_wasm;
-
+            const op = try self.reader.peekByte();
             if (op == 0x05) {
-                if (else_addr != 0) return Parser.Error.double_else;
-                _ = try self.parser.readByte();
+                if (else_addr != 0) return IR.Error.double_else;
+                self.reader.toss(1);
                 else_addr = @intCast(self.opcodes.items.len);
                 try self.push(.br, .{ .u32 = 0 });
             } else if (op == 0x0B) {
-                _ = try self.parser.readByte();
+                self.reader.toss(1);
                 break;
             } else {
                 try self.parseExpression();
@@ -786,7 +809,7 @@ const IRParserState = struct {
         try switch (b) {
             0x1A...0x1B => self.push(@enumFromInt(b), .{ .u64 = 0 }),
             0x1C => @panic("UNIMPLEMENTED"),
-            else => return Parser.Error.invalid_instruction,
+            else => return IR.Error.invalid_instruction,
         };
     }
 
@@ -815,38 +838,47 @@ const IRParserState = struct {
     }
 
     fn parseBranch(self: *IRParserState, b: u8) !void {
-        const idx = try self.parser.readU32();
+        const idx = try self.reader.takeLeb128(u32);
         try self.branches.append(self.allocator, .{ .pc = @intCast(self.opcodes.items.len), .index = @intCast(self.indices.items.len), .table = false });
         try self.push(@enumFromInt(b), .{ .u32 = idx });
     }
 
+    fn parseVectorU32(self: *IRParserState) ![]u32 {
+        const n = try self.reader.takeLeb128(u32);
+        const vec = try self.allocator.alloc(u32, n);
+        for (vec) |*i| {
+            i.* = try self.reader.takeLeb128(u32);
+        }
+        return vec;
+    }
+
     fn parseBrTable(self: *IRParserState, b: u8) !void {
-        const idxs = try self.parser.parseVectorU32();
-        const idxN = try self.parser.readU32();
+        const idxs = try self.parseVectorU32();
+        const idxN = try self.reader.takeLeb128(u32);
         const table_vectors_len = self.br_table_vectors.items.len;
         try self.br_table_vectors.appendSlice(self.allocator, idxs);
         try self.br_table_vectors.append(self.allocator, idxN);
-        for (0..idxs.len+1) |i| {
+        for (0..idxs.len + 1) |i| {
             try self.branches.append(self.allocator, .{ .pc = @intCast(self.opcodes.items.len), .index = @intCast(table_vectors_len + i), .table = true });
         }
-        try self.push(@enumFromInt(b), .{ .indirect = .{ .x = @intCast(table_vectors_len), .y = @intCast(idxs.len) }});
+        try self.push(@enumFromInt(b), .{ .indirect = .{ .x = @intCast(table_vectors_len), .y = @intCast(idxs.len) } });
     }
 
     fn parseVector(self: *IRParserState) !void {
-        const n = try self.parser.readU32();
+        const n = try self.reader.takeLeb128(u32);
         try switch (n) {
             0...10, 92...93, 11 => self.push(.vecinst, .{ .vector = .{ .opcode = @enumFromInt(n), .memarg = try self.parseMemarg(), .laneidx = 0 } }),
-            84...91 => self.push(.vecinst, .{ .vector = .{ .opcode = @enumFromInt(n), .memarg = try self.parseMemarg(), .laneidx = try self.parser.readByte() } }),
+            84...91 => self.push(.vecinst, .{ .vector = .{ .opcode = @enumFromInt(n), .memarg = try self.parseMemarg(), .laneidx = try self.reader.takeByte() } }),
             12 => {},
             13 => {},
-            21...34 => self.push(.vecinst, .{ .vector = .{ .opcode = @enumFromInt(n), .memarg = .{ .alignment = 0, .offset = 0 }, .laneidx = try self.parser.readByte() } }),
+            21...34 => self.push(.vecinst, .{ .vector = .{ .opcode = @enumFromInt(n), .memarg = .{ .alignment = 0, .offset = 0 }, .laneidx = try self.reader.takeByte() } }),
             // Yes, there are this random gaps in wasm vector instructions don't ask me how I know...
             14...20, 35...83, 94...153, 155...161, 163...164, 167...174, 177, 181...186, 188...193, 195...196, 199...206, 209, 213...225, 227...237, 239...255 => {
                 try self.push(.vecinst, .{ .vector = .{ .opcode = @enumFromInt(n), .memarg = .{ .alignment = 0, .offset = 0 }, .laneidx = 0 } });
             },
             else => {
-                std.log.err("Invalid vector instruction {d} at position {d}\n", .{ n, self.parser.reader.seek });
-                return Parser.Error.invalid_instruction;
+                std.log.err("Invalid vector instruction {d} at position {d}\n", .{ n, self.reader.seek });
+                return IR.Error.invalid_instruction;
             },
         };
     }
@@ -858,17 +890,12 @@ pub fn parse(parser: *Parser) !IR {
         .opcodes = .{},
         .indices = .{},
         .branches = .{},
-        .parser = parser,
+        .reader = parser.reader,
         .allocator = parser.allocator,
     };
     try state.parseFunction();
     if (state.branches.items.len != 0) return Parser.Error.unresolved_branch;
-    return .{
-        .opcodes = try state.opcodes.toOwnedSlice(state.allocator),
-        .indices = try state.indices.toOwnedSlice(state.allocator),
-        .select_valtypes = &.{},
-        .br_table_vectors = state.br_table_vectors.items
-    };
+    return .{ .opcodes = try state.opcodes.toOwnedSlice(state.allocator), .indices = try state.indices.toOwnedSlice(state.allocator), .select_valtypes = &.{}, .br_table_vectors = state.br_table_vectors.items };
 }
 
 pub fn parseGlobalExpr(parser: *Parser) !IR {
@@ -877,16 +904,11 @@ pub fn parseGlobalExpr(parser: *Parser) !IR {
         .opcodes = .{},
         .indices = .{},
         .branches = .{},
-        .parser = parser,
+        .reader = parser.reader,
         .allocator = parser.allocator,
     };
     try state.parseGlobal();
-    return .{
-        .opcodes = try state.opcodes.toOwnedSlice(state.allocator),
-        .indices = try state.indices.toOwnedSlice(state.allocator),
-        .select_valtypes = &.{},
-        .br_table_vectors = state.br_table_vectors.items
-    };
+    return .{ .opcodes = try state.opcodes.toOwnedSlice(state.allocator), .indices = try state.indices.toOwnedSlice(state.allocator), .select_valtypes = &.{}, .br_table_vectors = state.br_table_vectors.items };
 }
 
 pub fn parseSingleExpr(parser: *Parser) !IR {
@@ -895,14 +917,9 @@ pub fn parseSingleExpr(parser: *Parser) !IR {
         .opcodes = .{},
         .indices = .{},
         .branches = .{},
-        .parser = parser,
+        .reader = parser.reader,
         .allocator = parser.allocator,
     };
     try state.parseExpression();
-    return .{
-        .opcodes = try state.opcodes.toOwnedSlice(state.allocator),
-        .indices = try state.indices.toOwnedSlice(state.allocator),
-        .select_valtypes = &.{},
-        .br_table_vectors = state.br_table_vectors.items
-    };
+    return .{ .opcodes = try state.opcodes.toOwnedSlice(state.allocator), .indices = try state.indices.toOwnedSlice(state.allocator), .select_valtypes = &.{}, .br_table_vectors = state.br_table_vectors.items };
 }
