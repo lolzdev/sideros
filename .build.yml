@@ -1,0 +1,12 @@
+image: alpine/edge
+secrets:
+  - badec204-0896-4219-87f3-8054687e01e4
+sources:
+  - git@git.sr.ht/~lolzdev/sideros
+environment:
+  GIT_SSH_COMMAND: ssh -o StrictHostKeyChecking=no
+tasks:
+  - setup: |
+      echo 'cd sideros' >> ~/.buildenv
+  - mirror: |
+      git push --force --mirror git@github.com:lolzdev/sideros.git
