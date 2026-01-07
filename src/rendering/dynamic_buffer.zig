@@ -23,7 +23,11 @@ pub fn DynamicBuffer(comptime T: type) type {
         const Self = @This();
 
         pub fn init(allocator: std.mem.Allocator, device: vk.Device, usage: vk.BufferUsage, flags: vk.BufferFlags, descriptor_set: c.VkDescriptorSet, binding: u32) !Self {
-            const size = @sizeOf(T) * 10;
+            return initWithCapacity(allocator, device, usage, flags, descriptor_set, binding, 10);
+        }
+
+        fn initWithCapacity(allocator: std.mem.Allocator, device: vk.Device, usage: vk.BufferUsage, flags: vk.BufferFlags, descriptor_set: c.VkDescriptorSet, binding: u32, initial_capacity: usize) !Self {
+            const size = @sizeOf(T) * initial_capacity;
             const family_indices: []const u32 = &.{device.graphics_family};
 
             const create_info: c.VkBufferCreateInfo = .{
@@ -64,7 +68,7 @@ pub fn DynamicBuffer(comptime T: type) type {
                 @ptrCast(&mapped_data),
             ));
 
-            const mapped_memory: []T = @as([*]T, @ptrCast(@alignCast(mapped_data)))[0..10];
+            const mapped_memory: []T = @as([*]T, @ptrCast(@alignCast(mapped_data)))[0..initial_capacity];
 
             const descriptor_buffer_info = c.VkDescriptorBufferInfo{
                 .buffer = buffer,
@@ -85,7 +89,7 @@ pub fn DynamicBuffer(comptime T: type) type {
             c.vkUpdateDescriptorSets(device.handle, 1, &write_descriptor_set, 0, null);
 
             var free_indices = std.ArrayList(usize).empty;
-            for (0..10) |i| {
+            for (0..initial_capacity) |i| {
                 try free_indices.append(allocator, i);
             }
 
@@ -111,57 +115,60 @@ pub fn DynamicBuffer(comptime T: type) type {
         }
 
         pub fn items(self: Self) []T {
-            return self.mapped_memory[0..self.len-1];
+            return self.mapped_memory[0..self.len];
         }
 
-        pub fn remove(self: *Self, index: usize) void {
-            self.free_indices.append(index);
+        pub fn remove(self: *Self, index: usize) !void {
+            try self.free_indices.append(self.allocator, index);
             @memset(@as([*]u8, @ptrCast(@alignCast(self.mapped_memory[index..].ptr)))[0..self.element_size], 0);
+        }
+
+        pub fn capacity(self: Self) usize {
+            return self.mapped_memory.len;
+        }
+
+        pub fn ensureCapacity(self: *Self, min_capacity: usize) !void {
+            while (self.mapped_memory.len < min_capacity) {
+                try self.grow();
+            }
         }
 
         pub fn append(self: *Self, element: T) !void {
             if (self.free_indices.pop()) |index| {
                 self.mapped_memory[index] = element;
+                self.len += 1;
                 return;
             }
 
-            if (self.size + self.element_size >= self.size) self.grow();
+            if (self.len >= self.mapped_memory.len) try self.grow();
 
             self.mapped_memory[self.len] = element;
             self.len += 1;
         }
 
         pub fn grow(self: *Self) !void {
-            const new_size = self.size + (self.size / 2);
-            const new = try Self.init(self.allocator, self.device, self.usage, self.flags, new_size);
+            const old_capacity = self.mapped_memory.len;
+            const new_capacity = old_capacity + (old_capacity / 2) + 1;
+            var new = try initWithCapacity(self.allocator, self.device, self.usage, self.flags, self.descriptor_set, self.binding, new_capacity);
             try self.copyTo(new, 0);
 
             c.vkDestroyBuffer(self.device.handle, self.handle, null);
             c.vkUnmapMemory(self.device.handle, self.memory);
             c.vkFreeMemory(self.device.handle, self.memory, null);
 
+            // Clean up old free_indices and the new buffer's unused free_indices
+            self.free_indices.deinit(self.allocator);
+            new.free_indices.deinit(self.allocator);
+            self.free_indices = std.ArrayList(usize).empty;
+            // Only add the newly available slots as free (existing data occupies 0..len)
+            for (old_capacity..new_capacity) |i| {
+                try self.free_indices.append(self.allocator, i);
+            }
+
             self.size = new.size;
             self.handle = new.handle;
             self.memory = new.memory;
             self.mapped_memory = new.mapped_memory;
-
-            const descriptor_buffer_info = c.VkDescriptorBufferInfo{
-                .buffer = self.handle,
-                .offset = 0,
-                .range = self.size,
-            };
-
-            const write_descriptor_set = c.VkWriteDescriptorSet{
-                .sType = c.VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-                .dstSet = self.descriptor_set,
-                .dstBinding = self.binding,
-                .dstArrayElement = 0,
-                .descriptorCount = 1,
-                .descriptorType = c.VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
-                .pBufferInfo = &descriptor_buffer_info,
-            };
-
-            c.vkUpdateDescriptorSets(self.device.handle, 1, &write_descriptor_set, 0, null);
         }
 
         pub fn copyTo(self: Self, dest: Self, offset: usize) !void {
@@ -178,8 +185,8 @@ pub fn DynamicBuffer(comptime T: type) type {
             try self.device.endSingleTimeCommands(command_buffer);
         }
 
-        pub fn deinit(self: Self) void {
-            self.free_indices.deinit();
+        pub fn deinit(self: *Self) void {
+            self.free_indices.deinit(self.allocator);
             c.vkDestroyBuffer(self.device.handle, self.handle, null);
             c.vkUnmapMemory(self.device.handle, self.memory);
             c.vkFreeMemory(self.device.handle, self.memory, null);
