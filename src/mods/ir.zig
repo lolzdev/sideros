@@ -27,12 +27,9 @@ const DIndex = packed struct {
     x: u32,
     y: u32,
 };
-comptime {
-    // TODO: is this too big? we could do with 32 bits and a bit more indirection
-    std.debug.assert(@sizeOf(Index) == 8);
-}
-/// packed union has no tag
-const Index = packed union {
+
+/// This intentionally remains tagless; the opcode determines how to interpret it.
+const Index = union {
     u32: u32,
     i32: i32,
     u64: u64,

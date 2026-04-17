@@ -25,6 +25,10 @@ pub fn build(b: *std.Build) void {
         .link_libc = true,
     });
     rendering.addIncludePath(b.path("ext"));
+    if (target.result.os.tag == .macos) {
+        rendering.addSystemIncludePath(.{ .cwd_relative = "/usr/local/include" });
+        rendering.addLibraryPath(.{ .cwd_relative = "/usr/local/lib" });
+    }
     rendering.addCSourceFile(.{ .file = b.path("ext/stb_image.c") });
     rendering.addImport("math", math);
 
@@ -45,8 +49,12 @@ pub fn build(b: *std.Build) void {
             .optimize = optimize,
         }),
     });
-    sideros.addIncludePath(b.path("ext"));
-    sideros.addIncludePath(b.path("src"));
+    sideros.root_module.addIncludePath(b.path("ext"));
+    sideros.root_module.addIncludePath(b.path("src"));
+    if (target.result.os.tag == .macos) {
+        sideros.root_module.addSystemIncludePath(.{ .cwd_relative = "/usr/local/include" });
+        sideros.root_module.addLibraryPath(.{ .cwd_relative = "/usr/local/lib" });
+    }
 
     sideros.root_module.addImport("mods", mods);
     sideros.root_module.addImport("ecs", ecs);
@@ -71,18 +79,18 @@ pub fn build(b: *std.Build) void {
                 }),
             });
             exe.root_module.addIncludePath(b.path("src"));
-            exe.linkLibrary(sideros);
-            exe.linkLibC();
-            exe.linkSystemLibrary("vulkan");
+            exe.root_module.linkLibrary(sideros);
+            exe.root_module.link_libc = true;
+            exe.root_module.linkSystemLibrary("vulkan", .{ .needed = true });
             if (wayland) {
                 exe.root_module.addIncludePath(b.path("ext"));
-                exe.linkSystemLibrary("wayland-client");
-                exe.linkSystemLibrary("xkbcommon");
+                exe.root_module.linkSystemLibrary("wayland-client", .{});
+                exe.root_module.linkSystemLibrary("xkbcommon", .{});
                 exe.root_module.addCSourceFile(.{ .file = b.path("ext/xdg-shell.c") });
             } else {
-                exe.linkSystemLibrary("xcb");
-                exe.linkSystemLibrary("xcb-keysyms");
-                exe.linkSystemLibrary("xcb-icccm");
+                exe.root_module.linkSystemLibrary("xcb", .{});
+                exe.root_module.linkSystemLibrary("xcb-keysyms", .{});
+                exe.root_module.linkSystemLibrary("xcb-icccm", .{});
             }
             b.installArtifact(exe);
 
@@ -106,14 +114,14 @@ pub fn build(b: *std.Build) void {
                 }),
             });
             exe.root_module.addIncludePath(b.path("src"));
-            exe.linkSystemLibrary("vulkan");
+            exe.root_module.linkSystemLibrary("vulkan", .{});
             exe.root_module.addSystemIncludePath(.{ .cwd_relative = "/usr/local/include" });
             exe.root_module.addLibraryPath(.{ .cwd_relative = "/usr/local/lib" });
             exe.root_module.addCSourceFile(.{.file = b.path("src/window.m")});
             exe.root_module.linkFramework("Cocoa", .{});
             exe.root_module.linkFramework("Metal", .{});
             exe.root_module.linkFramework("QuartzCore", .{});
-            exe.linkLibrary(sideros);
+            exe.root_module.linkLibrary(sideros);
             b.installArtifact(exe);
 
             const run_cmd = b.addRunArtifact(exe);
@@ -156,13 +164,10 @@ pub fn build(b: *std.Build) void {
 }
 
 fn compileAllShaders(b: *std.Build, module: *std.Build.Module) void {
-    const shaders_dir = if (@hasDecl(@TypeOf(b.build_root.handle), "openIterableDir"))
-        b.build_root.handle.openIterableDir("assets/shaders", .{}) catch @panic("Failed to open shaders directory")
-    else
-        b.build_root.handle.openDir("assets/shaders", .{ .iterate = true }) catch @panic("Failed to open shaders directory");
+    const shaders_dir = b.build_root.handle.openDir(b.graph.io, "assets/shaders", .{ .iterate = true }) catch @panic("Failed to open shaders directory");
 
     var file_it = shaders_dir.iterate();
-    while (file_it.next() catch @panic("Failed to iterate shader directory")) |entry| {
+    while (file_it.next(b.graph.io) catch @panic("Failed to iterate shader directory")) |entry| {
         if (entry.kind == .file) {
             const ext = std.fs.path.extension(entry.name);
             const basename = std.fs.path.basename(entry.name);

@@ -149,18 +149,18 @@ fn vulkan_cleanup(gameInit: sideros.GameInit) void {
     //c.vkDestroyInstance(gameInit.instance, null);
 }
 
-pub fn main() !void {
+pub fn main(init: std.process.Init) !void {
     create_window();
     const layer = get_metal_layer();
 
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    var gpa: std.heap.DebugAllocator(.{}) = .init;
     const allocator = gpa.allocator();
     defer if (gpa.deinit() != .ok) @panic("Memory leaked");
 
     const gameInit = try vulkan_init(allocator, layer);
     defer vulkan_cleanup(gameInit);
 
-    sideros.sideros_init(gameInit);
+    sideros.sideros_init(init.io, gameInit);
 
     while (!is_window_closed()) {
         poll_cocoa_events();

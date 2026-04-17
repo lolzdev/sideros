@@ -12,7 +12,7 @@ const std = @import("std");
 
 const systems = @import("systems.zig");
 
-var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+var gpa: std.heap.DebugAllocator(.{}) = .{};
 const allocator = gpa.allocator();
 var pool: ecs.Pool = undefined;
 var renderer: Renderer = undefined;
@@ -26,7 +26,7 @@ const ModInfo = struct {
     runtime: *mods.Runtime,
     modIdx: u32,
 };
-var loadedMods: std.ArrayListUnmanaged(ModInfo) = .{};
+var loadedMods: std.ArrayListUnmanaged(ModInfo) = .empty;
 
 fn openOrCreateDir(fs: std.fs.Dir, path: []const u8) !std.fs.Dir {
     var dir: std.fs.Dir = undefined;
@@ -133,7 +133,7 @@ fn init_mods() void {
     }
 }
 
-export fn sideros_init(init: api.GameInit) callconv(.c) void {
+fn sideros_init(io: std.Io, init: api.GameInit) void {
     resources = .{
         .camera = &camera,
         .renderer = undefined,
@@ -145,7 +145,7 @@ export fn sideros_init(init: api.GameInit) callconv(.c) void {
     ecs.hooks.addHook(.scroll, systems.zoomCamera) catch @panic("TODO handle this");
     pool = ecs.Pool.init(allocator, &resources) catch @panic("TODO: Gracefully handle error");
     // TODO(ernesto): I think this @ptrCast are unavoidable but maybe not?
-    renderer = Renderer.init(allocator, @ptrCast(init.instance), @ptrCast(init.surface)) catch |err| std.debug.panic("TODO: Gracefully handle error: {}\n", .{err});
+    renderer = Renderer.init(allocator, io, @ptrCast(init.instance), @ptrCast(init.surface)) catch |err| std.debug.panic("TODO: Gracefully handle error: {}\n", .{err});
 
     resources.terrain = rendering.Terrain.init(allocator, renderer.device, .{
         .octaves = 8,

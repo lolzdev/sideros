@@ -20,10 +20,10 @@ terrain_pipeline: vk.TerrainPipeline,
 current_frame: u32,
 mesh: Mesh,
 transforms: std.ArrayList(math.Transform),
-previous_time: std.time.Instant,
+previous_time: std.Io.Timestamp,
 current_image: usize,
 
-pub fn init(allocator: Allocator, instance_handle: vk.c.VkInstance, surface_handle: vk.c.VkSurfaceKHR) !Self {
+pub fn init(allocator: Allocator, io: std.Io, instance_handle: vk.c.VkInstance, surface_handle: vk.c.VkSurfaceKHR) !Self {
     const instance: vk.Instance = .{ .handle = instance_handle };
     const surface: vk.Surface = .{ .handle = surface_handle };
     var physical_device = try vk.PhysicalDevice.pick(allocator, instance);
@@ -48,7 +48,7 @@ pub fn init(allocator: Allocator, instance_handle: vk.c.VkInstance, surface_hand
     _ = try pipeline_builder.addTexture(texture, diffuse);
     _ = try pipeline_builder.addTexture(texture, diffuse);
 
-    const mesh = try pipeline_builder.addMesh("assets/models/cube.glb");
+    const mesh = try pipeline_builder.addMesh(io, "assets/models/cube.glb");
     var graphics_pipeline = try pipeline_builder.build(swapchain, render_pass, vertex_shader, fragment_shader);
 
     const terrain_vertex_shader = try device.initShader("terrain_vert");
@@ -96,7 +96,7 @@ pub fn init(allocator: Allocator, instance_handle: vk.c.VkInstance, surface_hand
         .terrain_pipeline = terrain_pipeline,
         .current_frame = 0,
         .transforms = transforms,
-        .previous_time = try std.time.Instant.now(),
+        .previous_time = std.Io.Timestamp.now(std.Io.Threaded.global_single_threaded.io(), .awake),
         .mesh = mesh,
         .current_image = undefined,
     };

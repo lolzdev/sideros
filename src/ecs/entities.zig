@@ -33,26 +33,19 @@ pub const Pool = struct {
     allocator: Allocator,
     system_groups: std.ArrayList(SystemGroup),
     sync_groups: std.ArrayList(SyncGroup),
-    thread_pool: *std.Thread.Pool,
-    wait_group: std.Thread.WaitGroup,
-    mutex: std.Thread.Mutex,
+    threaded_io: std.Io.Threaded,
 
     pub fn init(allocator: Allocator, resources: *Resources) !@This() {
-        var pool = @This(){
+        const pool = @This(){
             .humans = .{},
             .resources = resources,
             .system_groups = std.ArrayList(SystemGroup).empty,
             .sync_groups = std.ArrayList(SystemGroup).empty,
-            .thread_pool = try allocator.create(std.Thread.Pool),
-            .wait_group = .{},
-            .mutex = .{},
+            .threaded_io = .init(allocator, .{
+                .concurrent_limit = .limited(4),
+            }),
             .allocator = allocator,
         };
-
-        try pool.thread_pool.init(.{
-            .allocator = allocator,
-            .n_jobs = 4,
-        });
 
         return pool;
     }
@@ -70,28 +63,37 @@ pub const Pool = struct {
 
         self.system_groups.deinit(self.allocator);
         self.sync_groups.deinit(self.allocator);
-        self.thread_pool.deinit();
-        self.allocator.destroy(self.thread_pool);
+        self.threaded_io.deinit();
     }
 
     pub fn tick(self: *@This()) void {
+        const io = self.threaded_io.io();
+        var group: std.Io.Group = .init;
+
         for (0..self.system_groups.items.len) |i| {
-            self.thread_pool.spawnWg(&self.wait_group, struct {
-                fn run(pool: *Pool, index: usize) void {
-                    const group = pool.system_groups.items[index];
-                    for (group) |system| {
+            group.concurrent(io, struct {
+                fn run(pool: *Pool, index: usize) std.Io.Cancelable!void {
+                    const system_group = pool.system_groups.items[index];
+                    for (system_group) |system| {
                         // TODO: system errors should be correctly handled
                         system(pool) catch unreachable;
                     }
                 }
-            }.run, .{ self, i });
+            }.run, .{ self, i }) catch {
+                const system_group = self.system_groups.items[i];
+                for (system_group) |system| {
+                    system(self) catch unreachable;
+                }
+            };
         }
         for (0..self.sync_groups.items.len) |i| {
-            const group = self.sync_groups.items[i];
-            for (group) |system| {
+            const system_group = self.sync_groups.items[i];
+            for (system_group) |system| {
                 system(self) catch unreachable;
             }
         }
+
+        group.await(io) catch unreachable;
     }
 
     fn getEntities(self: *@This(), T: type) *std.MultiArrayList(T) {

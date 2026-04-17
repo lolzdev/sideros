@@ -161,8 +161,8 @@ pub const Model = struct {
     };
 };
 
-pub fn parseFile(allocator: Allocator, name: []const u8) !struct { vertices: [][3]f32, normals: [][3]f32, uvs: [][2]f32, indices: []u16 } {
-    const file = try std.fs.cwd().openFile(name, .{});
+pub fn parseFile(allocator: Allocator, io: std.Io, name: []const u8) !struct { vertices: [][3]f32, normals: [][3]f32, uvs: [][2]f32, indices: []u16 } {
+    const file = try std.Io.Dir.cwd().openFile(name, io, .{});
     const all = try file.readToEndAlloc(allocator, 1_000_000);
     defer allocator.free(all);
     const json_chunk = std.mem.bytesAsValue(Model.Chunk, all[Model.Header.offset..]);
