@@ -18,6 +18,23 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
 
+    const vulkandeps = b.dependency("vulkan_headers", .{});
+
+    const vulkan_c = b.addTranslateC(.{
+        .root_source_file = b.addWriteFiles().add("vulkan.h",
+            \\#include <vulkan/vulkan.h>
+            \\#include <vulkan/vulkan_metal.h>
+            \\#include <sideros_api.h>
+        ),
+        .target = target,
+        .optimize = optimize,
+    });
+    vulkan_c.addIncludePath(vulkandeps.path("include/"));
+    vulkan_c.addIncludePath(b.path("src"));
+
+    const vulkan = vulkan_c.createModule();
+    vulkan.link_libc = true;
+
     const rendering = b.createModule(.{
         .root_source_file = b.path("src/rendering/rendering.zig"),
         .target = target,
@@ -31,6 +48,7 @@ pub fn build(b: *std.Build) void {
     }
     rendering.addCSourceFile(.{ .file = b.path("ext/stb_image.c") });
     rendering.addImport("math", math);
+    rendering.addImport("vulkan", vulkan);
 
     const ecs = b.createModule(.{
         .root_source_file = b.path("src/ecs/ecs.zig"),
@@ -60,6 +78,7 @@ pub fn build(b: *std.Build) void {
     sideros.root_module.addImport("ecs", ecs);
     sideros.root_module.addImport("rendering", rendering);
     sideros.root_module.addImport("math", math);
+    sideros.root_module.addImport("vulkan", vulkan);
 
     b.installArtifact(sideros);
 
@@ -92,6 +111,7 @@ pub fn build(b: *std.Build) void {
                 exe.root_module.linkSystemLibrary("xcb-keysyms", .{});
                 exe.root_module.linkSystemLibrary("xcb-icccm", .{});
             }
+            exe.root_module.addImport("vulkan", vulkan);
             b.installArtifact(exe);
 
             const run_cmd = b.addRunArtifact(exe);
@@ -122,6 +142,8 @@ pub fn build(b: *std.Build) void {
             exe.root_module.linkFramework("Metal", .{});
             exe.root_module.linkFramework("QuartzCore", .{});
             exe.root_module.linkLibrary(sideros);
+            exe.root_module.addImport("vulkan", vulkan);
+            exe.root_module.addImport("sideros", sideros.root_module);
             b.installArtifact(exe);
 
             const run_cmd = b.addRunArtifact(exe);
