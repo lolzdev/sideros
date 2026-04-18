@@ -8,8 +8,8 @@ pub fn render(pool: *ecs.Pool) anyerror!void {
     const camera = pool.resources.camera;
     const terrain = pool.resources.terrain;
 
-    const now = try std.time.Instant.now();
-    const delta_time: f32 = @as(f32, @floatFromInt(now.since(renderer.previous_time))) / @as(f32, 1_000_000_000.0);
+    const now = std.Io.Timestamp.now(pool.threaded_io.io(), .awake);
+    const delta_time: f32 = @as(f32, @floatFromInt(renderer.previous_time.durationTo(now).toNanoseconds())) / @as(f32, 1_000_000_000.0);
     pool.resources.delta_time = delta_time;
     renderer.previous_time = now;
 

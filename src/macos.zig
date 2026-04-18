@@ -1,13 +1,7 @@
 const std = @import("std");
-const sideros = @cImport({
-    @cInclude("sideros_api.h");
-});
 
-const c = @cImport({
-    @cInclude("vulkan/vulkan.h");
-    @cInclude("vulkan/vulkan_macos.h");
-    @cInclude("vulkan/vulkan_metal.h");
-});
+const c = @import("vulkan");
+const sideros = @import("sideros");
 
 const builtin = @import("builtin");
 const debug = (builtin.mode == .Debug);
@@ -47,7 +41,7 @@ extern fn is_window_closed() bool;
 extern fn get_metal_layer() *anyopaque;
 
 fn vulkan_init_instance(allocator: std.mem.Allocator, handle: *c.VkInstance) !void {
-    const extensions = [_][*c]const u8{ c.VK_MVK_MACOS_SURFACE_EXTENSION_NAME, c.VK_KHR_SURFACE_EXTENSION_NAME, c.VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME };
+    const extensions = [_][*c]const u8{ c.VK_EXT_METAL_SURFACE_EXTENSION_NAME, c.VK_KHR_SURFACE_EXTENSION_NAME, c.VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME };
 
     // Querry avaliable extensions size
     var avaliableExtensionsCount: u32 = 0;
@@ -126,11 +120,11 @@ fn vulkan_init_instance(allocator: std.mem.Allocator, handle: *c.VkInstance) !vo
 }
 
 fn vulkan_init_surface(instance: c.VkInstance, layer: *anyopaque, handle: *c.VkSurfaceKHR) !void {
-    const create_info: c.VkMacOSSurfaceCreateInfoMVK = .{
-        .sType = c.VK_STRUCTURE_TYPE_MACOS_SURFACE_CREATE_INFO_MVK,
-        .pView = layer,
+    const create_info: c.VkMetalSurfaceCreateInfoEXT = .{
+        .sType = c.VK_STRUCTURE_TYPE_METAL_SURFACE_CREATE_INFO_EXT,
+        .pLayer = layer,
     };
-    try mapError(c.vkCreateMacOSSurfaceMVK(instance, &create_info, null, handle));
+    try mapError(c.vkCreateMetalSurfaceEXT(instance, &create_info, null, handle));
 }
 
 fn vulkan_init(allocator: std.mem.Allocator, layer: *anyopaque) !sideros.GameInit {
@@ -149,18 +143,18 @@ fn vulkan_cleanup(gameInit: sideros.GameInit) void {
     //c.vkDestroyInstance(gameInit.instance, null);
 }
 
-pub fn main() !void {
+pub fn main(init: std.process.Init) !void {
     create_window();
     const layer = get_metal_layer();
 
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    var gpa: std.heap.DebugAllocator(.{}) = .init;
     const allocator = gpa.allocator();
     defer if (gpa.deinit() != .ok) @panic("Memory leaked");
 
     const gameInit = try vulkan_init(allocator, layer);
     defer vulkan_cleanup(gameInit);
 
-    sideros.sideros_init(gameInit);
+    sideros.sideros_init(init.io, gameInit);
 
     while (!is_window_closed()) {
         poll_cocoa_events();

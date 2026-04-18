@@ -61,8 +61,8 @@ pub const Builder = struct {
         };
     }
 
-    pub fn addMesh(self: *Builder, path: []const u8) !Mesh {
-        const gltf_data = try gltf.parseFile(self.allocator, path);
+    pub fn addMesh(self: *Builder, io: std.Io, path: []const u8) !Mesh {
+        const gltf_data = try gltf.parseFile(self.allocator, io, path);
 
         const vertex_buffer = try createVertexBuffer(self.allocator, self.device, gltf_data);
         const index_buffer = try createIndexBuffer(self.allocator, self.device, gltf_data);
