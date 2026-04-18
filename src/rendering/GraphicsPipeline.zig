@@ -20,6 +20,9 @@ texture_set_layout: c.VkDescriptorSetLayout,
 descriptor_pool: c.VkDescriptorPool,
 descriptor_set: c.VkDescriptorSet,
 descriptor_set_layout: c.VkDescriptorSetLayout,
+allocator: Allocator,
+diffuse_textures: std.ArrayList(vk.Texture),
+specular_textures: std.ArrayList(vk.Texture),
 projection_buffer: vk.Buffer,
 view_buffer: vk.Buffer,
 view_memory: [*c]u8,
@@ -80,7 +83,6 @@ pub const Builder = struct {
         };
     }
 
-
     pub fn addTexture(self: *Builder, diffuse: Texture, specular: Texture) !usize {
         const index = self.diffuse_textures.items.len;
         try self.diffuse_textures.append(self.allocator, diffuse);
@@ -92,8 +94,8 @@ pub const Builder = struct {
     pub fn build(self: *Builder, swapchain: vk.Swapchain, render_pass: vk.RenderPass, vertex_shader: c.VkShaderModule, fragment_shader: c.VkShaderModule) !Self {
         const vertex_buffer, const index_buffer = try self.createBuffers();
         const pipeline = try Self.init(self.allocator, self.device, swapchain, render_pass, vertex_shader, fragment_shader, vertex_buffer, index_buffer, self.diffuse_textures, self.specular_textures);
-        self.diffuse_textures.deinit(self.allocator);
-        self.specular_textures.deinit(self.allocator);
+        self.diffuse_textures = std.ArrayList(vk.Texture).empty;
+        self.specular_textures = std.ArrayList(vk.Texture).empty;
         return pipeline;
     }
 
@@ -210,7 +212,6 @@ pub const Builder = struct {
 
         return index_buffer;
     }
-
 };
 
 pub fn init(allocator: Allocator, device: vk.Device, swapchain: vk.Swapchain, render_pass: vk.RenderPass, vertex_shader: c.VkShaderModule, fragment_shader: c.VkShaderModule, vertex_buffer: vk.Buffer, index_buffer: vk.Buffer, diffuse_textures: std.ArrayList(vk.Texture), specular_textures: std.ArrayList(vk.Texture)) !Self {
@@ -366,8 +367,8 @@ pub fn init(allocator: Allocator, device: vk.Device, swapchain: vk.Swapchain, re
         .stageFlags = c.VK_SHADER_STAGE_FRAGMENT_BIT,
     };
 
-    const bindings = [_]c.VkDescriptorSetLayoutBinding{projection_binding, view_binding, transform_binding, directional_light_binding, point_lights_binding, view_pos_binding};
-    const texture_bindings = [_]c.VkDescriptorSetLayoutBinding{diffuse_sampler_binding, specular_sampler_binding};
+    const bindings = [_]c.VkDescriptorSetLayoutBinding{ projection_binding, view_binding, transform_binding, directional_light_binding, point_lights_binding, view_pos_binding };
+    const texture_bindings = [_]c.VkDescriptorSetLayoutBinding{ diffuse_sampler_binding, specular_sampler_binding };
 
     var descriptor_set_layout: c.VkDescriptorSetLayout = undefined;
     var texture_descriptor_set_layout: c.VkDescriptorSetLayout = undefined;
@@ -387,7 +388,7 @@ pub fn init(allocator: Allocator, device: vk.Device, swapchain: vk.Swapchain, re
     try vk.mapError(c.vkCreateDescriptorSetLayout(device.handle, &descriptor_set_layout_info, null, &descriptor_set_layout));
     try vk.mapError(c.vkCreateDescriptorSetLayout(device.handle, &texture_descriptor_set_layout_info, null, &texture_descriptor_set_layout));
 
-    var set_layouts = [_]c.VkDescriptorSetLayout{descriptor_set_layout, texture_descriptor_set_layout};
+    var set_layouts = [_]c.VkDescriptorSetLayout{ descriptor_set_layout, texture_descriptor_set_layout };
 
     const lights_range: c.VkPushConstantRange = .{
         .stageFlags = c.VK_SHADER_STAGE_FRAGMENT_BIT,
@@ -401,7 +402,7 @@ pub fn init(allocator: Allocator, device: vk.Device, swapchain: vk.Swapchain, re
         .size = 4,
     };
 
-    const range: [2]c.VkPushConstantRange = .{lights_range, transform_range};
+    const range: [2]c.VkPushConstantRange = .{ lights_range, transform_range };
 
     const layout_info: c.VkPipelineLayoutCreateInfo = .{
         .sType = c.VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
@@ -464,7 +465,7 @@ pub fn init(allocator: Allocator, device: vk.Device, swapchain: vk.Swapchain, re
         .descriptorCount = 1,
     };
 
-    const sizes = [_]c.VkDescriptorPoolSize {size, sampler_size, transforms_size};
+    const sizes = [_]c.VkDescriptorPoolSize{ size, sampler_size, transforms_size };
 
     const descriptor_pool_info = c.VkDescriptorPoolCreateInfo{
         .sType = c.VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
@@ -567,7 +568,7 @@ pub fn init(allocator: Allocator, device: vk.Device, swapchain: vk.Swapchain, re
         @ptrCast(&directional_light_data),
     ));
 
-    const directional_light: *lights.DirectionalLight = @alignCast(@ptrCast(directional_light_data));
+    const directional_light: *lights.DirectionalLight = @ptrCast(@alignCast(directional_light_data));
 
     const directional_light_descriptor_buffer_info = c.VkDescriptorBufferInfo{
         .buffer = directional_light_buffer.handle,
@@ -600,7 +601,7 @@ pub fn init(allocator: Allocator, device: vk.Device, swapchain: vk.Swapchain, re
         @ptrCast(&point_lights_data),
     ));
 
-    const point_lights: []lights.PointLight = @as([*]lights.PointLight, @alignCast(@ptrCast(point_lights_data)))[0..max_point_lights];
+    const point_lights: []lights.PointLight = @as([*]lights.PointLight, @ptrCast(@alignCast(point_lights_data)))[0..max_point_lights];
 
     var point_lights_descriptor_buffer_info: c.VkDescriptorBufferInfo = undefined;
     point_lights_descriptor_buffer_info.buffer = point_lights_buffer.handle;
@@ -702,7 +703,7 @@ pub fn init(allocator: Allocator, device: vk.Device, swapchain: vk.Swapchain, re
         .pImageInfo = specular_infos.items[0..].ptr,
     };
 
-    const writes = [_]c.VkWriteDescriptorSet {write_diffuse_descriptor_set, write_specular_descriptor_set};
+    const writes = [_]c.VkWriteDescriptorSet{ write_diffuse_descriptor_set, write_specular_descriptor_set };
     c.vkUpdateDescriptorSets(device.handle, 2, writes[0..].ptr, 0, null);
 
     return Self{
@@ -712,6 +713,9 @@ pub fn init(allocator: Allocator, device: vk.Device, swapchain: vk.Swapchain, re
         .descriptor_pool = descriptor_pool,
         .descriptor_set = descriptor_set,
         .descriptor_set_layout = descriptor_set_layout,
+        .allocator = allocator,
+        .diffuse_textures = diffuse_textures,
+        .specular_textures = specular_textures,
         .projection_buffer = projection_buffer,
         .view_buffer = view_buffer,
         .view_memory = view_data,
@@ -738,10 +742,44 @@ pub fn bind(self: Self, device: vk.Device, frame: usize) void {
     c.vkCmdBindPipeline(device.command_buffers[frame], c.VK_PIPELINE_BIND_POINT_GRAPHICS, self.handle);
 }
 
-pub fn deinit(self: Self, device: vk.Device) void {
+pub fn deinit(self: *Self, device: vk.Device) void {
+    for (self.diffuse_textures.items, 0..) |texture, index| {
+        var already_destroyed = false;
+        for (self.diffuse_textures.items[0..index]) |previous| {
+            if (previous.image == texture.image) {
+                already_destroyed = true;
+                break;
+            }
+        }
+        if (!already_destroyed) {
+            texture.deinit(device);
+        }
+    }
+    for (self.specular_textures.items, 0..) |texture, index| {
+        var already_destroyed = false;
+        for (self.specular_textures.items[0..index]) |previous| {
+            if (previous.image == texture.image) {
+                already_destroyed = true;
+                break;
+            }
+        }
+        if (!already_destroyed) {
+            texture.deinit(device);
+        }
+    }
+    self.diffuse_textures.deinit(self.allocator);
+    self.specular_textures.deinit(self.allocator);
     self.diffuse_sampler.deinit(device);
     self.specular_sampler.deinit(device);
     self.projection_buffer.deinit(device.handle);
+    self.view_buffer.deinit(device.handle);
+    self.view_pos_buffer.deinit(device.handle);
+    self.transform_buffer.deinit();
+    self.directional_light_buffer.deinit(device.handle);
+    self.point_lights_buffer.deinit(device.handle);
+    self.vertex_buffer.deinit(device.handle);
+    self.index_buffer.deinit(device.handle);
+    c.vkDestroyDescriptorSetLayout(device.handle, self.texture_set_layout, null);
     c.vkDestroyDescriptorSetLayout(device.handle, self.descriptor_set_layout, null);
     c.vkDestroyDescriptorPool(device.handle, self.descriptor_pool, null);
     c.vkDestroyPipeline(device.handle, self.handle, null);

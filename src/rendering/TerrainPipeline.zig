@@ -24,15 +24,14 @@ heightmap_sampler: vk.Sampler,
 sand_sampler: vk.Sampler,
 grass_sampler: vk.Sampler,
 rock_sampler: vk.Sampler,
+sand: ?Texture,
+grass: ?Texture,
+rock: ?Texture,
 map: c.VkDescriptorSet,
 
 const Self = @This();
 
-pub fn init(
-    graphics_pipeline: vk.GraphicsPipeline,
-    vertex_shader: c.VkShaderModule,
-    fragment_shader: c.VkShaderModule) !Self {
-
+pub fn init(graphics_pipeline: vk.GraphicsPipeline, vertex_shader: c.VkShaderModule, fragment_shader: c.VkShaderModule) !Self {
     const device = graphics_pipeline.device;
     const swapchain = graphics_pipeline.swapchain;
     const render_pass = graphics_pipeline.render_pass;
@@ -196,8 +195,8 @@ pub fn init(
         .stageFlags = c.VK_SHADER_STAGE_FRAGMENT_BIT,
     };
 
-    const bindings = [_]c.VkDescriptorSetLayoutBinding{projection_binding, view_binding, directional_light_binding, point_lights_binding, view_pos_binding};
-    const texture_bindings = [_]c.VkDescriptorSetLayoutBinding{heightmap_sampler_binding, sand_sampler_binding, grass_sampler_binding, stone_sampler_binding};
+    const bindings = [_]c.VkDescriptorSetLayoutBinding{ projection_binding, view_binding, directional_light_binding, point_lights_binding, view_pos_binding };
+    const texture_bindings = [_]c.VkDescriptorSetLayoutBinding{ heightmap_sampler_binding, sand_sampler_binding, grass_sampler_binding, stone_sampler_binding };
 
     var descriptor_set_layout: c.VkDescriptorSetLayout = undefined;
     var texture_descriptor_set_layout: c.VkDescriptorSetLayout = undefined;
@@ -217,7 +216,7 @@ pub fn init(
     try vk.mapError(c.vkCreateDescriptorSetLayout(device.handle, &descriptor_set_layout_info, null, &descriptor_set_layout));
     try vk.mapError(c.vkCreateDescriptorSetLayout(device.handle, &texture_descriptor_set_layout_info, null, &texture_descriptor_set_layout));
 
-    var set_layouts = [_]c.VkDescriptorSetLayout{descriptor_set_layout, texture_descriptor_set_layout};
+    var set_layouts = [_]c.VkDescriptorSetLayout{ descriptor_set_layout, texture_descriptor_set_layout };
 
     const lights_range: c.VkPushConstantRange = .{
         .stageFlags = c.VK_SHADER_STAGE_FRAGMENT_BIT,
@@ -283,7 +282,7 @@ pub fn init(
         .descriptorCount = 4,
     };
 
-    const sizes = [_]c.VkDescriptorPoolSize {size, sampler_size};
+    const sizes = [_]c.VkDescriptorPoolSize{ size, sampler_size };
 
     const descriptor_pool_info = c.VkDescriptorPoolCreateInfo{
         .sType = c.VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
@@ -407,6 +406,9 @@ pub fn init(
         .sand_sampler = try vk.Sampler.init(device, .linear),
         .grass_sampler = try vk.Sampler.init(device, .linear),
         .rock_sampler = try vk.Sampler.init(device, .linear),
+        .sand = null,
+        .grass = null,
+        .rock = null,
         .map = undefined,
     };
 }
@@ -491,10 +493,13 @@ pub fn setMaps(self: *Self, device: anytype, heightmap: Texture) !void {
         .pImageInfo = &rock_info,
     };
 
-    const writes = [_]c.VkWriteDescriptorSet {write_height_descriptor_set, write_sand_descriptor_set, write_grass_descriptor_set, write_rock_descriptor_set};
+    const writes = [_]c.VkWriteDescriptorSet{ write_height_descriptor_set, write_sand_descriptor_set, write_grass_descriptor_set, write_rock_descriptor_set };
 
     c.vkUpdateDescriptorSets(device.handle, 4, writes[0..].ptr, 0, null);
 
+    self.sand = sand;
+    self.grass = grass;
+    self.rock = rock;
     self.map = descriptor_set;
 }
 
@@ -504,10 +509,14 @@ pub fn bind(self: Self, device: vk.Device, frame: usize) void {
 }
 
 pub fn deinit(self: Self, device: vk.Device) void {
-    self.textures.deinit();
-    self.diffuse_sampler.deinit(device);
-    self.specular_sampler.deinit(device);
-    self.projection_buffer.deinit(device.handle);
+    if (self.sand) |texture| texture.deinit(device);
+    if (self.grass) |texture| texture.deinit(device);
+    if (self.rock) |texture| texture.deinit(device);
+    self.heightmap_sampler.deinit(device);
+    self.sand_sampler.deinit(device);
+    self.grass_sampler.deinit(device);
+    self.rock_sampler.deinit(device);
+    c.vkDestroyDescriptorSetLayout(device.handle, self.texture_set_layout, null);
     c.vkDestroyDescriptorSetLayout(device.handle, self.descriptor_set_layout, null);
     c.vkDestroyDescriptorPool(device.handle, self.descriptor_pool, null);
     c.vkDestroyPipeline(device.handle, self.handle, null);

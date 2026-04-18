@@ -193,8 +193,10 @@ pub export fn sideros_cleanup() callconv(.c) void {
         defer allocator.free(info.name);
     }
     loadedMods.deinit(allocator);
-    renderer.deinit();
     pool.deinit();
+    resources.terrain.deinit(allocator, renderer.device) catch @panic("TODO: handle this");
+    renderer.deinit();
+    ecs.hooks.deinit();
     if (gpa.deinit() != .ok) @panic("Memory leaked");
 }
 

@@ -140,7 +140,7 @@ pub fn init(allocator: Allocator, surface: vk.Surface, device: vk.Device, physic
 
     const framebuffers = try allocator.alloc(c.VkFramebuffer, image_count);
     for (image_views, 0..) |view, index| {
-        const attachments = &[_]c.VkImageView {color_image_view, render_pass.depth_view, view};
+        const attachments = &[_]c.VkImageView{ color_image_view, render_pass.depth_view, view };
         const framebuffer_info: c.VkFramebufferCreateInfo = .{
             .sType = c.VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO,
             .renderPass = render_pass.handle,
@@ -242,10 +242,12 @@ pub fn deinit(self: Self, device: vk.Device) void {
         c.vkDestroyFramebuffer(device.handle, framebuffer, null);
     }
 
+    c.vkDestroyImageView(device.handle, self.color_image_view, null);
+    c.vkDestroyImage(device.handle, self.color_image, null);
+    c.vkFreeMemory(device.handle, self.color_image_memory, null);
     c.vkDestroySwapchainKHR(device.handle, self.handle, null);
 
     self.allocator.free(self.images);
     self.allocator.free(self.image_views);
     self.allocator.free(self.framebuffers);
 }
-

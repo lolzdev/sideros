@@ -20,6 +20,7 @@ terrain_pipeline: vk.TerrainPipeline,
 current_frame: u32,
 mesh: Mesh,
 transforms: std.ArrayList(math.Transform),
+allocator: Allocator,
 previous_time: std.Io.Timestamp,
 current_image: usize,
 
@@ -58,32 +59,31 @@ pub fn init(allocator: Allocator, io: std.Io, instance_handle: vk.c.VkInstance, 
 
     const terrain_pipeline = try vk.TerrainPipeline.init(graphics_pipeline, terrain_vertex_shader, terrain_fragment_shader);
 
+    graphics_pipeline.directional_light.direction = .{ -0.2, -1.0, -0.3 };
+    graphics_pipeline.directional_light.ambient = .{ 0.5, 0.5, 0.5 };
+    graphics_pipeline.directional_light.diffuse = .{ 0.5, 0.5, 0.5 };
+    graphics_pipeline.directional_light.specular = .{ 0.5, 0.5, 0.5 };
 
-    graphics_pipeline.directional_light.direction = .{-0.2, -1.0, -0.3};
-    graphics_pipeline.directional_light.ambient = .{0.5, 0.5, 0.5};
-    graphics_pipeline.directional_light.diffuse = .{0.5, 0.5, 0.5};
-    graphics_pipeline.directional_light.specular = .{0.5, 0.5, 0.5};
-
-    graphics_pipeline.point_lights[0].position = .{0.0, 0.0, 0.0};
+    graphics_pipeline.point_lights[0].position = .{ 0.0, 0.0, 0.0 };
     graphics_pipeline.point_lights[0].data[0] = 1.0;
     graphics_pipeline.point_lights[0].data[1] = 0.9;
     graphics_pipeline.point_lights[0].data[2] = 0.8;
-    graphics_pipeline.point_lights[0].ambient = .{0.2, 0.2, 0.2};
-    graphics_pipeline.point_lights[0].diffuse = .{0.5, 0.5, 0.5};
-    graphics_pipeline.point_lights[0].specular = .{1.0, 1.0, 1.0};
+    graphics_pipeline.point_lights[0].ambient = .{ 0.2, 0.2, 0.2 };
+    graphics_pipeline.point_lights[0].diffuse = .{ 0.5, 0.5, 0.5 };
+    graphics_pipeline.point_lights[0].specular = .{ 1.0, 1.0, 1.0 };
 
-    graphics_pipeline.point_lights[1].position = .{0.0, 2.0, 0.5};
+    graphics_pipeline.point_lights[1].position = .{ 0.0, 2.0, 0.5 };
     graphics_pipeline.point_lights[1].data[0] = 1.0;
     graphics_pipeline.point_lights[1].data[1] = 0.9;
     graphics_pipeline.point_lights[1].data[2] = 0.8;
-    graphics_pipeline.point_lights[1].ambient = .{0.2, 0.2, 0.2};
-    graphics_pipeline.point_lights[1].diffuse = .{0.5, 0.5, 0.5};
-    graphics_pipeline.point_lights[1].specular = .{1.0, 1.0, 1.0};
+    graphics_pipeline.point_lights[1].ambient = .{ 0.2, 0.2, 0.2 };
+    graphics_pipeline.point_lights[1].diffuse = .{ 0.5, 0.5, 0.5 };
+    graphics_pipeline.point_lights[1].specular = .{ 1.0, 1.0, 1.0 };
 
     var transforms = std.ArrayList(math.Transform).empty;
 
-    try transforms.append(allocator, math.Transform.init(.{0.0, 0.0, 0.0}, .{0.5, 0.5, 0.5}, .{0.0, 0.0, 0.0}));
-    try transforms.append(allocator, math.Transform.init(.{0.0, 0.5, 1.0}, .{0.5, 0.5, 0.5}, .{0.0, 0.0, 0.0}));
+    try transforms.append(allocator, math.Transform.init(.{ 0.0, 0.0, 0.0 }, .{ 0.5, 0.5, 0.5 }, .{ 0.0, 0.0, 0.0 }));
+    try transforms.append(allocator, math.Transform.init(.{ 0.0, 0.5, 1.0 }, .{ 0.5, 0.5, 0.5 }, .{ 0.0, 0.0, 0.0 }));
 
     return .{
         .instance = instance,
@@ -96,17 +96,20 @@ pub fn init(allocator: Allocator, io: std.Io, instance_handle: vk.c.VkInstance, 
         .terrain_pipeline = terrain_pipeline,
         .current_frame = 0,
         .transforms = transforms,
+        .allocator = allocator,
         .previous_time = std.Io.Timestamp.now(std.Io.Threaded.global_single_threaded.io(), .awake),
         .mesh = mesh,
         .current_image = undefined,
     };
 }
 
-pub fn deinit(self: Self) void {
+pub fn deinit(self: *Self) void {
     self.device.waitIdle();
+    self.terrain_pipeline.deinit(self.device);
     self.graphics_pipeline.deinit(self.device);
     self.swapchain.deinit(self.device);
     self.render_pass.deinit(self.device);
+    self.transforms.deinit(self.allocator);
     self.device.deinit();
 }
 
@@ -116,7 +119,7 @@ pub fn setCamera(self: *Self, camera: *Camera) void {
     @memcpy(view_memory[0..@sizeOf(math.Matrix)], std.mem.asBytes(&view));
 
     const view_pos_memory = self.graphics_pipeline.view_pos_memory;
-    const view_pos: [*]f32 = @alignCast(@ptrCast(view_pos_memory));
+    const view_pos: [*]f32 = @ptrCast(@alignCast(view_pos_memory));
     view_pos[0] = camera.position[0];
     view_pos[1] = camera.position[1];
     view_pos[2] = camera.position[2];
@@ -144,11 +147,11 @@ pub fn beginTerrain(self: *Self) !void {
 }
 
 pub fn setLightCount(self: *Self, count: u32) void {
-    self.device.pushConstant(self.graphics_pipeline, c.VK_SHADER_STAGE_FRAGMENT_BIT, 0, 4, @constCast(@ptrCast(&count)), self.current_frame);
+    self.device.pushConstant(self.graphics_pipeline, c.VK_SHADER_STAGE_FRAGMENT_BIT, 0, 4, @ptrCast(@constCast(&count)), self.current_frame);
 }
 
 pub fn setTransform(self: *Self, transform: u32) void {
-    self.device.pushConstant(self.graphics_pipeline, c.VK_SHADER_STAGE_VERTEX_BIT, 4, 4, @constCast(@ptrCast(&transform)), self.current_frame);
+    self.device.pushConstant(self.graphics_pipeline, c.VK_SHADER_STAGE_VERTEX_BIT, 4, 4, @ptrCast(@constCast(&transform)), self.current_frame);
 }
 
 pub fn end(self: *Self) !void {
@@ -159,5 +162,5 @@ pub fn end(self: *Self) !void {
 
     self.current_frame = (self.current_frame + 1) % 2;
 
-        self.device.waitIdle();
-    }
+    self.device.waitIdle();
+}

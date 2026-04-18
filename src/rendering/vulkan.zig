@@ -28,7 +28,6 @@ const validation_layers: []const [*c]const u8 = if (!debug) &[0][*c]const u8{} e
     "VK_LAYER_KHRONOS_validation",
 };
 
-
 pub const Error = error{
     out_of_host_memory,
     out_of_device_memory,
@@ -162,7 +161,7 @@ pub const RenderPass = struct {
     pub fn init(allocator: Allocator, device: Device, surface: Surface, physical_device: PhysicalDevice) !Self {
         const swapchain_format = (try Swapchain.pickFormat(allocator, surface, physical_device)).format;
 
-        const depth_image, const depth_view , const depth_memory, const depth_format = try createDepthResources(device, physical_device);
+        const depth_image, const depth_view, const depth_memory, const depth_format = try createDepthResources(device, physical_device);
 
         const color_attachment: c.VkAttachmentDescription = .{
             .format = swapchain_format,
@@ -229,7 +228,7 @@ pub const RenderPass = struct {
             .dstAccessMask = c.VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | c.VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
         };
 
-        const attachments = &[_]c.VkAttachmentDescription { color_attachment, depth_attachment, color_attachment_resolve };
+        const attachments = &[_]c.VkAttachmentDescription{ color_attachment, depth_attachment, color_attachment_resolve };
 
         const render_pass_info: c.VkRenderPassCreateInfo = .{
             .sType = c.VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO,
@@ -258,7 +257,7 @@ pub const RenderPass = struct {
         const clear_color: c.VkClearValue = .{ .color = .{ .float32 = .{ 0.0, 0.0, 0.0, 1.0 } } };
         const depth_stencil: c.VkClearValue = .{ .depthStencil = .{ .depth = 1.0, .stencil = 0 } };
 
-        const clear_values = &[_]c.VkClearValue { clear_color, depth_stencil };
+        const clear_values = &[_]c.VkClearValue{ clear_color, depth_stencil };
 
         const begin_info: c.VkRenderPassBeginInfo = .{
             .sType = c.VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
@@ -296,7 +295,7 @@ pub const RenderPass = struct {
     }
 
     fn createDepthResources(device: Device, physical_device: PhysicalDevice) !struct { c.VkImage, c.VkImageView, c.VkDeviceMemory, c.VkFormat } {
-        const candidates = &[_]u32 {
+        const candidates = &[_]u32{
             c.VK_FORMAT_D32_SFLOAT,
             c.VK_FORMAT_D32_SFLOAT_S8_UINT,
             c.VK_FORMAT_D24_UNORM_S8_UINT,
@@ -362,8 +361,10 @@ pub const RenderPass = struct {
         }
     }
 
-
     pub fn deinit(self: Self, device: Device) void {
+        c.vkDestroyImageView(device.handle, self.depth_view, null);
+        c.vkDestroyImage(device.handle, self.depth_image, null);
+        c.vkFreeMemory(device.handle, self.depth_memory, null);
         c.vkDestroyRenderPass(device.handle, self.handle, null);
     }
 };

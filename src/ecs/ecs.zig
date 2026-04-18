@@ -22,15 +22,17 @@ pub const hooks = struct {
     pub var scroll: std.ArrayList(Scroll) = undefined;
     var allocator: std.mem.Allocator = undefined;
 
-    pub const Layer = enum {
-        key,
-        scroll
-    };
+    pub const Layer = enum { key, scroll };
 
     pub fn init(gpa: std.mem.Allocator) !void {
         key = std.ArrayList(Key).empty;
         scroll = std.ArrayList(Scroll).empty;
         allocator = gpa;
+    }
+
+    pub fn deinit() void {
+        key.deinit(allocator);
+        scroll.deinit(allocator);
     }
 
     pub fn addHook(comptime layer: Layer, hook: anytype) !void {
@@ -42,4 +44,3 @@ pub const hooks = struct {
         try list.append(allocator, hook);
     }
 };
-
