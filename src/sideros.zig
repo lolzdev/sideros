@@ -176,12 +176,12 @@ pub fn sideros_init(io: std.Io, init: GameInit) void {
     //init_mods();
 }
 
-export fn sideros_update(gameUpdate: GameUpdate) callconv(.c) void {
+pub export fn sideros_update(gameUpdate: GameUpdate) callconv(.c) void {
     _ = gameUpdate;
     pool.tick();
 }
 
-export fn sideros_cleanup() callconv(.c) void {
+pub export fn sideros_cleanup() callconv(.c) void {
     for (loadedMods.items) |info| {
         var runtime = info.runtime;
         runtime.externalCall(allocator, .deinit, &.{}) catch @panic("Failed to call deinit");

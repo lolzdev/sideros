@@ -158,5 +158,9 @@ pub fn main(init: std.process.Init) !void {
 
     while (!is_window_closed()) {
         poll_cocoa_events();
+        const gameUpdate: sideros.GameUpdate = undefined;
+        sideros.sideros_update(gameUpdate);
     }
+
+    sideros.sideros_cleanup();
 }
