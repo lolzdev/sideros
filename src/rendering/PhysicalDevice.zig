@@ -147,12 +147,10 @@ pub fn create_device(self: *PhysicalDevice, surface: vk.Surface, allocator: Allo
     };
 
     var image_available: [n]c.VkSemaphore = undefined;
-    var render_finished: [n]c.VkSemaphore = undefined;
     var in_flight_fence: [n]c.VkFence = undefined;
 
     inline for (0..n) |index| {
         try vk.mapError(c.vkCreateSemaphore(device, &semaphore_info, null, &image_available[index]));
-        try vk.mapError(c.vkCreateSemaphore(device, &semaphore_info, null, &render_finished[index]));
         try vk.mapError(c.vkCreateFence(device, &fence_info, null, &in_flight_fence[index]));
     }
 
@@ -195,7 +193,6 @@ pub fn create_device(self: *PhysicalDevice, surface: vk.Surface, allocator: Allo
         .command_pool = command_pool,
         .command_buffers = command_buffers,
         .image_available = image_available,
-        .render_finished = render_finished,
         .in_flight_fence = in_flight_fence,
         .graphics_family = graphics_queue_index,
         .present_family = present_queue_index,

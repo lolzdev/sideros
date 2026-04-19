@@ -501,7 +501,7 @@ pub fn init(allocator: Allocator, device: vk.Device, swapchain: vk.Swapchain, re
 
     try vk.mapError(c.vkAllocateDescriptorSets(device.handle, &descriptor_allocate_info, &descriptor_set));
 
-    const projection_buffer = try device.initBuffer(vk.BufferUsage{ .uniform_buffer = true, .transfer_dst = true }, vk.BufferFlags{ .device_local = true }, @sizeOf(math.Matrix));
+    const projection_buffer = try device.initBuffer(vk.BufferUsage{ .uniform_buffer = true }, vk.BufferFlags{ .host_visible = true, .host_coherent = true }, @sizeOf(math.Matrix));
 
     var data: [*c]u8 = undefined;
 
@@ -534,7 +534,7 @@ pub fn init(allocator: Allocator, device: vk.Device, swapchain: vk.Swapchain, re
 
     c.vkUpdateDescriptorSets(device.handle, 1, &write_descriptor_set, 0, null);
 
-    const view_buffer = try device.initBuffer(vk.BufferUsage{ .uniform_buffer = true, .transfer_dst = true }, vk.BufferFlags{ .device_local = true }, @sizeOf(math.Matrix));
+    const view_buffer = try device.initBuffer(vk.BufferUsage{ .uniform_buffer = true }, vk.BufferFlags{ .host_visible = true, .host_coherent = true }, @sizeOf(math.Matrix));
 
     var view_data: [*c]u8 = undefined;
 
@@ -565,9 +565,9 @@ pub fn init(allocator: Allocator, device: vk.Device, swapchain: vk.Swapchain, re
 
     c.vkUpdateDescriptorSets(device.handle, 1, &write_view_descriptor_set, 0, null);
 
-    const transform_buffer = try vk.DynamicBuffer(math.Transform).init(allocator, device, vk.BufferUsage{ .storage_buffer = true, .transfer_dst = true }, vk.BufferFlags{ .device_local = true }, descriptor_set, 4);
+    const transform_buffer = try vk.DynamicBuffer(math.Transform).init(allocator, device, vk.BufferUsage{ .storage_buffer = true }, vk.BufferFlags{ .host_visible = true, .host_coherent = true }, descriptor_set, 4);
 
-    const directional_light_buffer = try device.initBuffer(vk.BufferUsage{ .uniform_buffer = true, .transfer_dst = true }, vk.BufferFlags{ .device_local = true }, @sizeOf(lights.DirectionalLight));
+    const directional_light_buffer = try device.initBuffer(vk.BufferUsage{ .uniform_buffer = true }, vk.BufferFlags{ .host_visible = true, .host_coherent = true }, @sizeOf(lights.DirectionalLight));
 
     var directional_light_data: [*c]u8 = undefined;
 
@@ -600,7 +600,7 @@ pub fn init(allocator: Allocator, device: vk.Device, swapchain: vk.Swapchain, re
 
     c.vkUpdateDescriptorSets(device.handle, 1, &write_directional_light_descriptor_set, 0, null);
 
-    const point_lights_buffer = try device.initBuffer(vk.BufferUsage{ .uniform_buffer = true, .transfer_dst = true }, vk.BufferFlags{ .device_local = true }, @sizeOf(lights.PointLight) * max_point_lights);
+    const point_lights_buffer = try device.initBuffer(vk.BufferUsage{ .uniform_buffer = true }, vk.BufferFlags{ .host_visible = true, .host_coherent = true }, @sizeOf(lights.PointLight) * max_point_lights);
 
     var point_lights_data: [*c]u8 = undefined;
 
@@ -632,7 +632,7 @@ pub fn init(allocator: Allocator, device: vk.Device, swapchain: vk.Swapchain, re
 
     c.vkUpdateDescriptorSets(device.handle, 1, &write_point_lights_descriptor_set, 0, null);
 
-    const view_pos_buffer = try device.initBuffer(vk.BufferUsage{ .uniform_buffer = true, .transfer_dst = true }, vk.BufferFlags{ .device_local = true }, @sizeOf([3]f32));
+    const view_pos_buffer = try device.initBuffer(vk.BufferUsage{ .uniform_buffer = true }, vk.BufferFlags{ .host_visible = true, .host_coherent = true }, @sizeOf([3]f32));
 
     var view_pos_data: [*c]u8 = undefined;
 
@@ -762,6 +762,12 @@ pub fn bind(self: Self, device: vk.Device, frame: usize) void {
 }
 
 pub fn deinit(self: *Self, device: vk.Device) void {
+    c.vkDestroyDescriptorPool(device.handle, self.descriptor_pool, null);
+    c.vkDestroyDescriptorSetLayout(device.handle, self.texture_set_layout, null);
+    c.vkDestroyDescriptorSetLayout(device.handle, self.descriptor_set_layout, null);
+    c.vkDestroyPipeline(device.handle, self.handle, null);
+    c.vkDestroyPipelineLayout(device.handle, self.layout, null);
+
     for (self.diffuse_textures.items, 0..) |texture, index| {
         var already_destroyed = false;
         for (self.diffuse_textures.items[0..index]) |previous| {
@@ -798,9 +804,4 @@ pub fn deinit(self: *Self, device: vk.Device) void {
     self.point_lights_buffer.deinit(device.handle);
     self.vertex_buffer.deinit(device.handle);
     self.index_buffer.deinit(device.handle);
-    c.vkDestroyDescriptorSetLayout(device.handle, self.texture_set_layout, null);
-    c.vkDestroyDescriptorSetLayout(device.handle, self.descriptor_set_layout, null);
-    c.vkDestroyDescriptorPool(device.handle, self.descriptor_pool, null);
-    c.vkDestroyPipeline(device.handle, self.handle, null);
-    c.vkDestroyPipelineLayout(device.handle, self.layout, null);
 }

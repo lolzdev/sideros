@@ -520,6 +520,12 @@ pub fn bind(self: Self, device: vk.Device, frame: usize) void {
 }
 
 pub fn deinit(self: Self, device: vk.Device) void {
+    c.vkDestroyDescriptorPool(device.handle, self.descriptor_pool, null);
+    c.vkDestroyDescriptorSetLayout(device.handle, self.texture_set_layout, null);
+    c.vkDestroyDescriptorSetLayout(device.handle, self.descriptor_set_layout, null);
+    c.vkDestroyPipeline(device.handle, self.handle, null);
+    c.vkDestroyPipelineLayout(device.handle, self.layout, null);
+
     if (self.sand) |texture| texture.deinit(device);
     if (self.grass) |texture| texture.deinit(device);
     if (self.rock) |texture| texture.deinit(device);
@@ -527,9 +533,4 @@ pub fn deinit(self: Self, device: vk.Device) void {
     self.sand_sampler.deinit(device);
     self.grass_sampler.deinit(device);
     self.rock_sampler.deinit(device);
-    c.vkDestroyDescriptorSetLayout(device.handle, self.texture_set_layout, null);
-    c.vkDestroyDescriptorSetLayout(device.handle, self.descriptor_set_layout, null);
-    c.vkDestroyDescriptorPool(device.handle, self.descriptor_pool, null);
-    c.vkDestroyPipeline(device.handle, self.handle, null);
-    c.vkDestroyPipelineLayout(device.handle, self.layout, null);
 }

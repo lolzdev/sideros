@@ -11,7 +11,6 @@ present_queue: c.VkQueue,
 command_pool: c.VkCommandPool,
 command_buffers: [frames_in_flight]c.VkCommandBuffer,
 image_available: [frames_in_flight]c.VkSemaphore,
-render_finished: [frames_in_flight]c.VkSemaphore,
 in_flight_fence: [frames_in_flight]c.VkFence,
 graphics_family: u32,
 present_family: u32,
@@ -189,7 +188,6 @@ pub fn findMemoryType(self: Self, filter: u32, properties: c.VkMemoryPropertyFla
 pub fn waitFence(self: Self, frame: usize) !void {
     //std.debug.assert(frame < n);
     try vk.mapError(c.vkWaitForFences(self.handle, 1, &self.in_flight_fence[frame], c.VK_TRUE, std.math.maxInt(u64)));
-    try vk.mapError(c.vkResetFences(self.handle, 1, &self.in_flight_fence[frame]));
 }
 
 pub fn waitIdle(self: Self) void {
@@ -224,17 +222,16 @@ pub fn updateBuffer(self: Self, comptime T: type, buffer: vk.Buffer, data: [*]T,
     c.vkCmdUpdateBuffer(self.command_buffers[frame], buffer.handle, 0, @sizeOf(T), @ptrCast(@alignCast(data)));
 }
 
-pub fn pick_memory_type(self: Self, type_bits: u32, flags: u32) u32 {
-    var memory_type_index: u32 = 0;
+pub fn pick_memory_type(self: Self, type_bits: u32, flags: u32) error{NoSuitableMemory}!u32 {
     for (0..self.memory_properties.memoryTypeCount) |index| {
         const memory_type = self.memory_properties.memoryTypes[index];
 
         if (((type_bits & (@as(u64, 1) << @intCast(index))) != 0) and (memory_type.propertyFlags & flags) != 0 and (memory_type.propertyFlags & c.VK_MEMORY_PROPERTY_DEVICE_COHERENT_BIT_AMD) == 0) {
-            memory_type_index = @intCast(index);
+            return @intCast(index);
         }
     }
 
-    return memory_type_index;
+    return error.NoSuitableMemory;
 }
 
 pub fn initBuffer(self: Self, usage: vk.BufferUsage, flags: vk.BufferFlags, size: usize) !vk.Buffer {
@@ -258,7 +255,7 @@ pub fn initBuffer(self: Self, usage: vk.BufferUsage, flags: vk.BufferFlags, size
     const alloc_info: c.VkMemoryAllocateInfo = .{
         .sType = c.VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
         .allocationSize = memory_requirements.size,
-        .memoryTypeIndex = self.pick_memory_type(memory_requirements.memoryTypeBits, @bitCast(flags)),
+        .memoryTypeIndex = try self.pick_memory_type(memory_requirements.memoryTypeBits, @bitCast(flags)),
     };
 
     var device_memory: c.VkDeviceMemory = undefined;
@@ -277,7 +274,7 @@ pub fn initBuffer(self: Self, usage: vk.BufferUsage, flags: vk.BufferFlags, size
 pub fn submit(self: Self, swapchain: vk.Swapchain, image: usize, frame: usize) !void {
     std.debug.assert(frame < frames_in_flight);
     const wait_semaphores: [1]c.VkSemaphore = .{self.image_available[frame]};
-    const signal_semaphores: [1]c.VkSemaphore = .{self.render_finished[frame]};
+    const signal_semaphores: [1]c.VkSemaphore = .{swapchain.render_finished[image]};
     const swapchains: [1]c.VkSwapchainKHR = .{swapchain.handle};
     _ = swapchains;
     const stages: []const u32 = &[_]u32{c.VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT};
@@ -296,17 +293,18 @@ pub fn submit(self: Self, swapchain: vk.Swapchain, image: usize, frame: usize) !
     _ = c.vkResetFences(self.handle, 1, &self.in_flight_fence[frame]);
     try vk.mapError(c.vkQueueSubmit(self.graphics_queue, 1, &submit_info, self.in_flight_fence[frame]));
 
-    const present_info: c.VkPresentInfoKHR = .{
+    const image_index: u32 = @intCast(image);
+    const present_info_fixed = c.VkPresentInfoKHR{
         .sType = c.VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
         .waitSemaphoreCount = 1,
         .pWaitSemaphores = signal_semaphores[0..].ptr,
         .swapchainCount = 1,
         .pSwapchains = &swapchain.handle,
-        .pImageIndices = @ptrCast(&image),
+        .pImageIndices = &image_index,
         .pResults = null,
     };
 
-    const result = c.vkQueuePresentKHR(self.present_queue, &present_info);
+    const result = c.vkQueuePresentKHR(self.present_queue, &present_info_fixed);
     switch (result) {
         c.VK_SUCCESS => {},
         c.VK_SUBOPTIMAL_KHR, c.VK_ERROR_OUT_OF_DATE_KHR => return error.OutOfDate,
@@ -341,10 +339,13 @@ pub fn deinitShader(self: Self, shader: c.VkShaderModule) void {
 pub fn deinit(self: Self) void {
     inline for (0..frames_in_flight) |index| {
         c.vkDestroySemaphore(self.handle, self.image_available[index], null);
-        c.vkDestroySemaphore(self.handle, self.render_finished[index], null);
         c.vkDestroyFence(self.handle, self.in_flight_fence[index], null);
     }
 
     c.vkDestroyCommandPool(self.handle, self.command_pool, null);
     c.vkDestroyDevice(self.handle, null);
+}
+
+pub fn resetCommandPool(self: Self) !void {
+    try vk.mapError(c.vkResetCommandPool(self.handle, self.command_pool, 0));
 }

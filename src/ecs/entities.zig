@@ -66,7 +66,7 @@ pub const Pool = struct {
         self.threaded_io.deinit();
     }
 
-    pub fn tick(self: *@This()) void {
+    pub fn tick(self: *@This()) !void {
         const io = self.threaded_io.io();
         var group: std.Io.Group = .init;
 
@@ -75,25 +75,24 @@ pub const Pool = struct {
                 fn run(pool: *Pool, index: usize) std.Io.Cancelable!void {
                     const system_group = pool.system_groups.items[index];
                     for (system_group) |system| {
-                        // TODO: system errors should be correctly handled
-                        system(pool) catch unreachable;
+                        system(pool) catch |err| std.debug.panic("System execution failed: {any}\n", .{err});
                     }
                 }
             }.run, .{ self, i }) catch {
                 const system_group = self.system_groups.items[i];
                 for (system_group) |system| {
-                    system(self) catch unreachable;
+                    system(self) catch |err| std.debug.panic("System execution failed: {any}\n", .{err});
                 }
             };
         }
         for (0..self.sync_groups.items.len) |i| {
             const system_group = self.sync_groups.items[i];
             for (system_group) |system| {
-                system(self) catch unreachable;
+                try system(self);
             }
         }
 
-        group.await(io) catch unreachable;
+        try group.await(io);
     }
 
     fn getEntities(self: *@This(), T: type) *std.MultiArrayList(T) {

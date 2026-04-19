@@ -48,7 +48,7 @@ pub fn DynamicBuffer(comptime T: type) type {
             const alloc_info: c.VkMemoryAllocateInfo = .{
                 .sType = c.VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
                 .allocationSize = memory_requirements.size,
-                .memoryTypeIndex = device.pick_memory_type(memory_requirements.memoryTypeBits, @bitCast(flags)),
+                .memoryTypeIndex = try device.pick_memory_type(memory_requirements.memoryTypeBits, @bitCast(flags)),
             };
 
             var device_memory: c.VkDeviceMemory = undefined;
@@ -119,7 +119,13 @@ pub fn DynamicBuffer(comptime T: type) type {
         }
 
         pub fn remove(self: *Self, index: usize) !void {
+            if (index >= self.mapped_memory.len) {
+                return error.IndexOutOfBounds;
+            }
             try self.free_indices.append(self.allocator, index);
+            if (self.len > 0) {
+                self.len -= 1;
+            }
             @memset(@as([*]u8, @ptrCast(@alignCast(self.mapped_memory[index..].ptr)))[0..self.element_size], 0);
         }
 
@@ -157,13 +163,17 @@ pub fn DynamicBuffer(comptime T: type) type {
             c.vkFreeMemory(self.device.handle, self.memory, null);
 
             // Clean up old free_indices and the new buffer's unused free_indices
-            self.free_indices.deinit(self.allocator);
+            const old_free_indices = self.free_indices;
             new.free_indices.deinit(self.allocator);
             self.free_indices = std.ArrayList(usize).empty;
+            for (old_free_indices.items) |index| {
+                try self.free_indices.append(self.allocator, index);
+            }
             // Only add the newly available slots as free (existing data occupies 0..len)
             for (old_capacity..new_capacity) |i| {
                 try self.free_indices.append(self.allocator, i);
             }
+            old_free_indices.deinit(self.allocator);
 
             self.size = new.size;
             self.handle = new.handle;

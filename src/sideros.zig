@@ -174,13 +174,13 @@ pub fn sideros_init(io: std.Io, init: GameInit) void {
 
     pool.addSystemGroup(&[_]ecs.System{ systems.render, systems.moveCamera }, true) catch @panic("TODO: Gracefuly handle error");
     pool.resources.renderer = &renderer;
-    pool.tick();
+    pool.tick() catch |err| std.debug.panic("Initial engine tick failed: {any}\n", .{err});
     //init_mods();
 }
 
 pub export fn sideros_update(gameUpdate: GameUpdate) callconv(.c) void {
     _ = gameUpdate;
-    pool.tick();
+    pool.tick() catch |err| std.debug.panic("Engine tick failed: {any}\n", .{err});
 }
 
 pub export fn sideros_cleanup() callconv(.c) void {
@@ -196,8 +196,7 @@ pub export fn sideros_cleanup() callconv(.c) void {
     }
     loadedMods.deinit(allocator);
     pool.deinit();
-    resources.terrain.deinit(allocator, renderer.device) catch @panic("TODO: handle this");
-    renderer.deinit();
+    renderer.deinit(&resources.terrain);
     renderer_initialized = false;
     ecs.hooks.deinit();
     if (gpa.deinit() != .ok) @panic("Memory leaked");

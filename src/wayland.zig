@@ -31,6 +31,7 @@ const State = struct {
     seat: ?*c.wl_seat = null,
     configured: bool = false,
     xkb_context: ?*c.xkb_context = null,
+    xkb_keymap: ?*c.xkb_keymap = null,
     xkb_state: ?*c.xkb_state = null,
     allocator: std.mem.Allocator,
 };
@@ -241,7 +242,16 @@ fn keyboardHandleKeymap(data: ?*anyopaque, keyboard: ?*c.wl_keyboard, format: u3
     const mapped: []u8 = @as([*]u8, @ptrCast(addr))[0..size];
 
     const keymap = c.xkb_keymap_new_from_string(state.xkb_context, @ptrCast(mapped), c.XKB_KEYMAP_FORMAT_TEXT_V1, c.XKB_KEYMAP_COMPILE_NO_FLAGS);
+    if (state.xkb_state) |xkb_state| {
+        c.xkb_state_unref(xkb_state);
+    }
+    if (state.xkb_keymap) |xkb_keymap| {
+        c.xkb_keymap_unref(xkb_keymap);
+    }
+    state.xkb_keymap = keymap;
     state.xkb_state = c.xkb_state_new(keymap);
+    _ = std.posix.munmap(addr, size);
+    std.posix.close(fd);
 }
 
 fn keyboardHandleEnter(data: ?*anyopaque, keyboard: ?*c.wl_keyboard, serial: u32, surface: ?*c.wl_surface, keys: ?*c.wl_array) callconv(.c) void {
@@ -371,4 +381,19 @@ pub fn main() !void {
     while (!quit) {
         _ = c.wl_display_dispatch(display);
     }
+
+    if (state.xkb_state) |xkb_state| {
+        c.xkb_state_unref(xkb_state);
+    }
+    if (state.xkb_keymap) |xkb_keymap| {
+        c.xkb_keymap_unref(xkb_keymap);
+    }
+    if (state.xkb_context) |xkb_context| {
+        c.xkb_context_unref(xkb_context);
+    }
+    c.wl_keyboard_destroy(keyboard);
+    c.xdg_toplevel_destroy(toplevel);
+    c.xdg_surface_destroy(xdg_surface);
+    c.wl_surface_destroy(surface);
+    sideros.sideros_cleanup();
 }

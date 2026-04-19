@@ -12,6 +12,9 @@ image_view: c.VkImageView,
 
 pub fn fromBytes(data: []u8, device: anytype, width: u64, height: u64) !Texture {
     const size: c.VkDeviceSize  = @as(u64, @intCast(width)) * @as(u64, @intCast(height)) * 4;
+    if (data.len < size) {
+        return error.InvalidPixelData;
+    }
     const image_buffer = try device.initBuffer(vk.BufferUsage{ .transfer_src = true }, vk.BufferFlags{ .host_visible = true, .host_coherent = true }, size);
 
     const pixel_bytes: [*]u8 = @ptrCast(data);
@@ -89,9 +92,13 @@ pub fn init(path: [:0]const u8, device: anytype) !Texture {
     var channels: i32 = 0;
 
     const pixels = stb.stbi_load(path, &width, &height, &channels, stb.STBI_rgb_alpha);
+    if (pixels == null) {
+        return error.ImageLoadFailed;
+    }
     defer stb.stbi_image_free(pixels);
 
-    return try Texture.fromBytes(pixels[0..(@as(usize, @intCast(width*height)))], device, @intCast(width), @intCast(height));
+    const pixel_count: usize = @intCast(width * height);
+    return try Texture.fromBytes(pixels[0 .. pixel_count * 4], device, @intCast(width), @intCast(height));
 }
 
 pub fn deinit(self: Texture, device: vk.Device) void {

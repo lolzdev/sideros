@@ -11,6 +11,7 @@ image_views: []c.VkImageView,
 format: c.VkSurfaceFormatKHR,
 extent: c.VkExtent2D,
 framebuffers: []c.VkFramebuffer,
+render_finished: []c.VkSemaphore,
 color_image: c.VkImage,
 color_image_memory: c.VkDeviceMemory,
 color_image_view: c.VkImageView,
@@ -156,6 +157,14 @@ pub fn init(allocator: Allocator, surface: vk.Surface, device: vk.Device, physic
         try vk.mapError(c.vkCreateFramebuffer(device.handle, &framebuffer_info, null, &(framebuffers[index])));
     }
 
+    const semaphore_info: c.VkSemaphoreCreateInfo = .{
+        .sType = c.VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO,
+    };
+    const render_finished = try allocator.alloc(c.VkSemaphore, image_count);
+    for (render_finished) |*semaphore| {
+        try vk.mapError(c.vkCreateSemaphore(device.handle, &semaphore_info, null, semaphore));
+    }
+
     return Self{
         .handle = swapchain,
         .format = format,
@@ -163,6 +172,7 @@ pub fn init(allocator: Allocator, surface: vk.Surface, device: vk.Device, physic
         .images = images[0..image_count],
         .image_views = image_views[0..image_count],
         .framebuffers = framebuffers,
+        .render_finished = render_finished,
         .allocator = allocator,
         .color_image = color_image,
         .color_image_view = color_image_view,
@@ -248,6 +258,9 @@ pub fn deinit(self: Self, device: vk.Device) void {
     for (self.framebuffers) |framebuffer| {
         c.vkDestroyFramebuffer(device.handle, framebuffer, null);
     }
+    for (self.render_finished) |semaphore| {
+        c.vkDestroySemaphore(device.handle, semaphore, null);
+    }
 
     c.vkDestroyImageView(device.handle, self.color_image_view, null);
     c.vkDestroyImage(device.handle, self.color_image, null);
@@ -257,4 +270,5 @@ pub fn deinit(self: Self, device: vk.Device) void {
     self.allocator.free(self.images);
     self.allocator.free(self.image_views);
     self.allocator.free(self.framebuffers);
+    self.allocator.free(self.render_finished);
 }

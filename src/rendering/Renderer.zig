@@ -5,6 +5,7 @@ const c = vk.c;
 const Mesh = @import("Mesh.zig");
 const Texture = vk.Texture;
 const Camera = @import("Camera.zig");
+const Terrain = @import("Terrain.zig");
 const Allocator = std.mem.Allocator;
 
 const Self = @This();
@@ -106,12 +107,14 @@ pub fn init(allocator: Allocator, io: std.Io, instance_handle: vk.c.VkInstance, 
     };
 }
 
-pub fn deinit(self: *Self) void {
+pub fn deinit(self: *Self, terrain: *Terrain) void {
     self.device.waitIdle();
+    self.device.resetCommandPool() catch |err| std.debug.panic("Failed to reset command pool during shutdown: {any}\n", .{err});
     self.terrain_pipeline.deinit(self.device);
     self.graphics_pipeline.deinit(self.device);
     self.swapchain.deinit(self.device);
     self.render_pass.deinit(self.device);
+    terrain.deinit(self.allocator, self.device) catch @panic("Failed to deinit terrain");
     self.transforms.deinit(self.allocator);
     self.device.deinit();
 }
@@ -177,8 +180,6 @@ pub fn end(self: *Self) !void {
     };
 
     self.current_frame = (self.current_frame + 1) % 2;
-
-    self.device.waitIdle();
 }
 
 pub fn resize(self: *Self, width: u32, height: u32) void {

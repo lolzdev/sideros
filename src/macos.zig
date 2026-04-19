@@ -136,11 +136,9 @@ fn vulkan_init(allocator: std.mem.Allocator, layer: *anyopaque) !sideros.GameIni
     return gameInit;
 }
 
-// TODO: actually clean up these
 fn vulkan_cleanup(gameInit: sideros.GameInit) void {
-    _ = gameInit;
-    //c.vkDestroySurfaceKHR(gameInit.instance, gameInit.surface, null);
-    //c.vkDestroyInstance(gameInit.instance, null);
+    c.vkDestroySurfaceKHR(gameInit.instance, gameInit.surface, null);
+    c.vkDestroyInstance(gameInit.instance, null);
 }
 
 pub fn main(init: std.process.Init) !void {

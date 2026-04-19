@@ -143,6 +143,13 @@ fn vulkan_cleanup(gameInit: sideros.GameInit) void {
     c.vkDestroyInstance(gameInit.instance, null);
 }
 
+fn internAtom(connection: ?*c.xcb_connection_t, only_if_exists: u8, name: []const u8) !c.xcb_atom_t {
+    const cookie = c.xcb_intern_atom(connection, only_if_exists, @intCast(name.len), name.ptr);
+    const reply = c.xcb_intern_atom_reply(connection, cookie, null) orelse return error.AtomLookupFailed;
+    defer std.c.free(reply);
+    return reply.*.atom;
+}
+
 pub fn main() !void {
     const connection = c.xcb_connect(null, null);
     defer c.xcb_disconnect(connection);
@@ -158,6 +165,9 @@ pub fn main() !void {
 
     const window = c.xcb_generate_id(connection);
     _ = c.xcb_create_window(connection, c.XCB_COPY_FROM_PARENT, window, screen.*.root, 0, 0, 800, 600, 10, c.XCB_WINDOW_CLASS_INPUT_OUTPUT, screen.*.root_visual, mask, &value);
+    const wm_protocols = try internAtom(connection, 0, "WM_PROTOCOLS");
+    const wm_delete_window = try internAtom(connection, 0, "WM_DELETE_WINDOW");
+    _ = c.xcb_change_property(connection, c.XCB_PROP_MODE_REPLACE, window, wm_protocols, c.XCB_ATOM_ATOM, 32, 1, &wm_delete_window);
 
     var hints: c.xcb_size_hints_t = undefined;
     c.xcb_icccm_size_hints_set_min_size(&hints, 800, 600);
@@ -176,7 +186,8 @@ pub fn main() !void {
 
     sideros.sideros_init(gameInit);
 
-    while (true) {
+    var running = true;
+    while (running) {
         if (c.xcb_poll_for_event(connection)) |e| {
             switch (e.*.response_type & ~@as(u32, 0x80)) {
                 c.XCB_KEY_PRESS => {
@@ -201,12 +212,20 @@ pub fn main() !void {
                     const ev: *c.xcb_configure_notify_event_t = @ptrCast(e);
                     sideros.sideros_resize_callback(ev.width, ev.height);
                 },
+                c.XCB_CLIENT_MESSAGE => {
+                    const ev: *c.xcb_client_message_event_t = @ptrCast(e);
+                    if (ev.type == wm_protocols and ev.data.data32[0] == wm_delete_window) {
+                        running = false;
+                    }
+                },
                 else => {},
             }
             std.c.free(e);
         }
-        const gameUpdate: sideros.GameUpdate = undefined;
-        sideros.sideros_update(gameUpdate);
+        if (running) {
+            const gameUpdate: sideros.GameUpdate = undefined;
+            sideros.sideros_update(gameUpdate);
+        }
     }
 
     sideros.sideros_cleanup();

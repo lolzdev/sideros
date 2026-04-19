@@ -45,8 +45,8 @@ pub fn init(allocator: std.mem.Allocator, device: vk.Device, generator: Generato
     var max_noise_height = std.math.floatMin(f64);
     var min_noise_height = std.math.floatMax(f64);
 
-    const columns = generator.width*generator.resolution;
-    const rows = generator.height*generator.resolution;
+    const columns = generator.width * generator.resolution;
+    const rows = generator.height * generator.resolution;
 
     for (0..columns) |x| {
         for (0..rows) |y| {
@@ -56,23 +56,28 @@ pub fn init(allocator: std.mem.Allocator, device: vk.Device, generator: Generato
             const h_x = u * @as(f64, @floatFromInt(generator.width));
             const h_y = v * @as(f64, @floatFromInt(generator.height));
 
-            var pixel = (perlin.fbm(h_x / generator.scale, h_y / generator.scale, generator.octaves, generator.lacunarity, generator.gain) * generator.multiplier);
+            var pixel = perlin.fbm(h_x / generator.scale, h_y / generator.scale, generator.octaves, generator.lacunarity, generator.gain) * generator.multiplier;
+            pixel = std.math.pow(f64, pixel, generator.exponent);
 
             if (pixel > max_noise_height) {
                 max_noise_height = pixel;
-            } else if (pixel < min_noise_height) {
+            }
+            if (pixel < min_noise_height) {
                 min_noise_height = pixel;
             }
+            heightmap[x * rows + y] = pixel;
+        }
+    }
 
-            pixel = std.math.pow(f64, pixel, generator.exponent);
-            pixel = math.inverseLerp(min_noise_height, max_noise_height, pixel);
-            
-            heightmap[x*columns + y] = pixel;
+    for (0..columns) |x| {
+        for (0..rows) |y| {
+            const index = x * rows + y;
+            const pixel = math.inverseLerp(min_noise_height, max_noise_height, heightmap[index]);
+            heightmap[index] = pixel;
 
             const gray: u32 = @intFromFloat(pixel * 255);
             const grayscale: u32 = (255 << 24) | (gray << 16) | (gray << 8) | gray;
-
-            heightmap_data[x*columns + y] = grayscale;
+            heightmap_data[index] = grayscale;
         }
     }
 
@@ -81,8 +86,8 @@ pub fn init(allocator: std.mem.Allocator, device: vk.Device, generator: Generato
 
     return .{
         .heightmap = heightmap,
-        .width = generator.width,
-        .height = generator.height,
+        .width = columns,
+        .height = rows,
         .seed = generator.seed,
         .vertex_buffer = vertex_buffer,
         .index_buffer = index_buffer,
@@ -98,7 +103,7 @@ pub fn deinit(self: *Self, allocator: std.mem.Allocator, device: vk.Device) !voi
 }
 
 pub fn getHeight(self: Self, x: usize, y: usize) f64 {
-    return self.heightmap[x*self.width + y];
+    return self.heightmap[x * self.height + y];
 }
 
 fn pixelToNoise(
