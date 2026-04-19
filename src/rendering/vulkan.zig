@@ -7,9 +7,7 @@ pub const PhysicalDevice = @import("PhysicalDevice.zig");
 pub const DynamicBuffer = @import("dynamic_buffer.zig").DynamicBuffer;
 
 const std = @import("std");
-pub const c = @cImport({
-    @cInclude("vulkan/vulkan.h");
-});
+pub const c = @import("vulkan");
 const math = @import("math");
 const Mesh = @import("Mesh.zig");
 const Camera = @import("Camera.zig");
