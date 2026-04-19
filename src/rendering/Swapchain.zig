@@ -38,13 +38,29 @@ pub fn pickFormat(allocator: Allocator, surface: vk.Surface, physical_device: vk
     return format.?;
 }
 
-// TODO: Allow to recreate so Window can be resized
-pub fn init(allocator: Allocator, surface: vk.Surface, device: vk.Device, physical_device: vk.PhysicalDevice, render_pass: vk.RenderPass) !Self {
+pub fn pickExtent(surface: vk.Surface, physical_device: vk.PhysicalDevice, preferred_extent: ?c.VkExtent2D) !c.VkExtent2D {
+    const capabilities = try surface.capabilities(physical_device);
+    if (capabilities.currentExtent.width != std.math.maxInt(u32)) {
+        return capabilities.currentExtent;
+    }
+
+    const requested_extent = preferred_extent orelse c.VkExtent2D{
+        .width = 800,
+        .height = 600,
+    };
+
+    return .{
+        .width = std.math.clamp(requested_extent.width, capabilities.minImageExtent.width, capabilities.maxImageExtent.width),
+        .height = std.math.clamp(requested_extent.height, capabilities.minImageExtent.height, capabilities.maxImageExtent.height),
+    };
+}
+
+pub fn init(allocator: Allocator, surface: vk.Surface, device: vk.Device, physical_device: vk.PhysicalDevice, render_pass: vk.RenderPass, preferred_extent: ?c.VkExtent2D, old_swapchain: c.VkSwapchainKHR) !Self {
     const present_modes = try surface.presentModes(allocator, physical_device);
     defer allocator.free(present_modes);
-    const capabilities = try surface.capabilities(physical_device);
     var present_mode: ?c.VkPresentModeKHR = null;
-    var extent: c.VkExtent2D = undefined;
+    const capabilities = try surface.capabilities(physical_device);
+    const extent = try pickExtent(surface, physical_device, preferred_extent);
     const format = try Self.pickFormat(allocator, surface, physical_device);
 
     for (present_modes) |mode| {
@@ -55,20 +71,6 @@ pub fn init(allocator: Allocator, surface: vk.Surface, device: vk.Device, physic
 
     if (present_mode == null) {
         present_mode = c.VK_PRESENT_MODE_FIFO_KHR;
-    }
-
-    if (capabilities.currentExtent.width != std.math.maxInt(u32)) {
-        extent = capabilities.currentExtent;
-    } else {
-        const width: u32, const height: u32 = .{ 800, 600 };
-
-        extent = .{
-            .width = @intCast(width),
-            .height = @intCast(height),
-        };
-
-        extent.width = std.math.clamp(extent.width, capabilities.minImageExtent.width, capabilities.maxImageExtent.width);
-        extent.height = std.math.clamp(extent.height, capabilities.minImageExtent.height, capabilities.maxImageExtent.height);
     }
 
     var create_info: c.VkSwapchainCreateInfoKHR = .{
@@ -84,7 +86,7 @@ pub fn init(allocator: Allocator, surface: vk.Surface, device: vk.Device, physic
         .compositeAlpha = c.VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR,
         .presentMode = present_mode.?,
         .clipped = c.VK_TRUE,
-        .oldSwapchain = null,
+        .oldSwapchain = old_swapchain,
     };
 
     const graphics_family = try physical_device.graphicsQueue(allocator);
@@ -136,7 +138,7 @@ pub fn init(allocator: Allocator, surface: vk.Surface, device: vk.Device, physic
         try vk.mapError(c.vkCreateImageView(device.handle, &view_create_info, null, &(image_views[index])));
     }
 
-    const color_image, const color_image_view, const color_image_memory = try createColorResources(device, device.msaa_samples, format.format);
+    const color_image, const color_image_view, const color_image_memory = try createColorResources(device, device.msaa_samples, format.format, extent);
 
     const framebuffers = try allocator.alloc(c.VkFramebuffer, image_count);
     for (image_views, 0..) |view, index| {
@@ -171,18 +173,23 @@ pub fn init(allocator: Allocator, surface: vk.Surface, device: vk.Device, physic
 pub fn nextImage(self: Self, device: vk.Device, frame: usize) !usize {
     std.debug.assert(frame < frames_in_flight);
     var index: u32 = undefined;
-    try vk.mapError(c.vkAcquireNextImageKHR(device.handle, self.handle, std.math.maxInt(u64), device.image_available[frame], null, &index));
+    const result = c.vkAcquireNextImageKHR(device.handle, self.handle, std.math.maxInt(u64), device.image_available[frame], null, &index);
+    switch (result) {
+        c.VK_SUCCESS => {},
+        c.VK_SUBOPTIMAL_KHR, c.VK_ERROR_OUT_OF_DATE_KHR => return error.OutOfDate,
+        else => try vk.mapError(result),
+    }
 
     return @intCast(index);
 }
 
-fn createColorResources(device: vk.Device, samples: c.VkSampleCountFlags, format: c.VkFormat) !struct { c.VkImage, c.VkImageView, c.VkDeviceMemory } {
+fn createColorResources(device: vk.Device, samples: c.VkSampleCountFlags, format: c.VkFormat, extent: c.VkExtent2D) !struct { c.VkImage, c.VkImageView, c.VkDeviceMemory } {
     const create_info: c.VkImageCreateInfo = .{
         .sType = c.VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
         .imageType = c.VK_IMAGE_TYPE_2D,
         .extent = .{
-            .width = @intCast(800),
-            .height = @intCast(600),
+            .width = extent.width,
+            .height = extent.height,
             .depth = 1,
         },
         .mipLevels = 1,

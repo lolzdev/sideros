@@ -23,6 +23,7 @@ transforms: std.ArrayList(math.Transform),
 allocator: Allocator,
 previous_time: std.Io.Timestamp,
 current_image: usize,
+pending_resize: ?c.VkExtent2D,
 
 pub fn init(allocator: Allocator, io: std.Io, instance_handle: vk.c.VkInstance, surface_handle: vk.c.VkSurfaceKHR) !Self {
     const instance: vk.Instance = .{ .handle = instance_handle };
@@ -35,9 +36,10 @@ pub fn init(allocator: Allocator, io: std.Io, instance_handle: vk.c.VkInstance, 
     const fragment_shader = try device.initShader("shader_frag");
     defer device.deinitShader(fragment_shader);
 
-    const render_pass = try vk.RenderPass.init(allocator, device, surface, physical_device);
+    const initial_extent = try vk.Swapchain.pickExtent(surface, physical_device, null);
+    const render_pass = try vk.RenderPass.init(allocator, device, surface, physical_device, initial_extent);
 
-    const swapchain = try vk.Swapchain.init(allocator, surface, device, physical_device, render_pass);
+    const swapchain = try vk.Swapchain.init(allocator, surface, device, physical_device, render_pass, null, null);
 
     var pipeline_builder = vk.GraphicsPipeline.Builder.init(allocator, device);
 
@@ -100,6 +102,7 @@ pub fn init(allocator: Allocator, io: std.Io, instance_handle: vk.c.VkInstance, 
         .previous_time = std.Io.Timestamp.now(std.Io.Threaded.global_single_threaded.io(), .awake),
         .mesh = mesh,
         .current_image = undefined,
+        .pending_resize = null,
     };
 }
 
@@ -126,11 +129,19 @@ pub fn setCamera(self: *Self, camera: *Camera) void {
 }
 
 pub fn begin(self: *Self) !void {
+    try self.applyPendingResize();
     try self.device.waitFence(self.current_frame);
-    const image = try self.swapchain.nextImage(self.device, self.current_frame);
+    const image = self.swapchain.nextImage(self.device, self.current_frame) catch |err| switch (err) {
+        error.OutOfDate => {
+            try self.recreateSwapchain();
+            return self.begin();
+        },
+        else => return err,
+    };
     try self.device.resetCommand(self.current_frame);
     try self.device.beginCommand(self.current_frame);
     self.render_pass.begin(self.swapchain, self.device, image, self.current_frame);
+    self.setViewport();
     self.current_image = image;
 }
 
@@ -158,9 +169,60 @@ pub fn end(self: *Self) !void {
     self.render_pass.end(self.device, self.current_frame);
     try self.device.endCommand(self.current_frame);
 
-    try self.device.submit(self.swapchain, self.current_image, self.current_frame);
+    self.device.submit(self.swapchain, self.current_image, self.current_frame) catch |err| switch (err) {
+        error.OutOfDate => {
+            try self.recreateSwapchain();
+        },
+        else => return err,
+    };
 
     self.current_frame = (self.current_frame + 1) % 2;
 
     self.device.waitIdle();
+}
+
+pub fn resize(self: *Self, width: u32, height: u32) void {
+    if (width == 0 or height == 0) {
+        return;
+    }
+    self.pending_resize = .{ .width = width, .height = height };
+}
+
+fn applyPendingResize(self: *Self) !void {
+    if (self.pending_resize != null) {
+        try self.recreateSwapchain();
+    }
+}
+
+fn recreateSwapchain(self: *Self) !void {
+    const preferred_extent = self.pending_resize orelse self.swapchain.extent;
+    const extent = try vk.Swapchain.pickExtent(self.surface, self.physical_device, preferred_extent);
+    self.pending_resize = null;
+
+    self.device.waitIdle();
+    try self.render_pass.resize(self.device, self.physical_device, extent);
+
+    const old_swapchain = self.swapchain;
+    const new_swapchain = try vk.Swapchain.init(self.allocator, self.surface, self.device, self.physical_device, self.render_pass, extent, old_swapchain.handle);
+    self.swapchain = new_swapchain;
+    self.graphics_pipeline.updateSwapchain(new_swapchain);
+    old_swapchain.deinit(self.device);
+}
+
+fn setViewport(self: *Self) void {
+    const viewport: c.VkViewport = .{
+        .x = 0.0,
+        .y = 0.0,
+        .width = @floatFromInt(self.swapchain.extent.width),
+        .height = @floatFromInt(self.swapchain.extent.height),
+        .minDepth = 0.0,
+        .maxDepth = 1.0,
+    };
+    const scissor: c.VkRect2D = .{
+        .offset = .{ .x = 0, .y = 0 },
+        .extent = self.swapchain.extent,
+    };
+
+    c.vkCmdSetViewport(self.device.command_buffers[self.current_frame], 0, 1, &viewport);
+    c.vkCmdSetScissor(self.device.command_buffers[self.current_frame], 0, 1, &scissor);
 }

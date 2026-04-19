@@ -95,6 +95,17 @@ pub fn init(graphics_pipeline: vk.GraphicsPipeline, vertex_shader: c.VkShaderMod
         .pScissors = &scissor,
     };
 
+    const dynamic_states = [_]c.VkDynamicState{
+        c.VK_DYNAMIC_STATE_VIEWPORT,
+        c.VK_DYNAMIC_STATE_SCISSOR,
+    };
+
+    const dynamic_state_info: c.VkPipelineDynamicStateCreateInfo = .{
+        .sType = c.VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO,
+        .dynamicStateCount = dynamic_states.len,
+        .pDynamicStates = dynamic_states[0..].ptr,
+    };
+
     const rasterizer_info: c.VkPipelineRasterizationStateCreateInfo = .{
         .sType = c.VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO,
         .depthClampEnable = c.VK_FALSE,
@@ -260,7 +271,7 @@ pub fn init(graphics_pipeline: vk.GraphicsPipeline, vertex_shader: c.VkShaderMod
         .pMultisampleState = &multisampling_info,
         .pDepthStencilState = &depth_stencil,
         .pColorBlendState = &color_blend_info,
-        .pDynamicState = null,
+        .pDynamicState = &dynamic_state_info,
         .layout = layout,
         .renderPass = render_pass.handle,
         .subpass = 0,

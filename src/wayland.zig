@@ -200,6 +200,7 @@ fn toplevelHandleConfigure(data: ?*anyopaque, toplevel: ?*c.xdg_toplevel, width:
         resize = true;
         new_width = @intCast(width);
         new_height = @intCast(height);
+        sideros.sideros_resize_callback(new_width, new_height);
     }
 }
 
@@ -350,7 +351,6 @@ pub fn main() !void {
     c.xdg_toplevel_set_title(toplevel, @ptrCast(&title[0]));
     c.xdg_toplevel_set_app_id(toplevel, @ptrCast(&title[0]));
     c.xdg_toplevel_set_min_size(toplevel, 800, 600);
-    c.xdg_toplevel_set_max_size(toplevel, 800, 600);
 
     _ = c.wl_surface_commit(surface);
 

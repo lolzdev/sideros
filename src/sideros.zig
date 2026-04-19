@@ -28,6 +28,7 @@ var camera: rendering.Camera = .{
 };
 var input: ecs.Input = .{ .key_pressed = .{false} ** @intFromEnum(ecs.Input.KeyCode.menu) };
 var resources: ecs.Resources = undefined;
+var renderer_initialized = false;
 const ModInfo = struct {
     name: []const u8,
     runtime: *mods.Runtime,
@@ -153,6 +154,7 @@ pub fn sideros_init(io: std.Io, init: GameInit) void {
     pool = ecs.Pool.init(allocator, &resources) catch @panic("TODO: Gracefully handle error");
     // TODO(ernesto): I think this @ptrCast are unavoidable but maybe not?
     renderer = Renderer.init(allocator, io, @ptrCast(init.instance), @ptrCast(init.surface)) catch |err| std.debug.panic("TODO: Gracefully handle error: {}\n", .{err});
+    renderer_initialized = true;
 
     resources.terrain = rendering.Terrain.init(allocator, renderer.device, .{
         .octaves = 8,
@@ -196,6 +198,7 @@ pub export fn sideros_cleanup() callconv(.c) void {
     pool.deinit();
     resources.terrain.deinit(allocator, renderer.device) catch @panic("TODO: handle this");
     renderer.deinit();
+    renderer_initialized = false;
     ecs.hooks.deinit();
     if (gpa.deinit() != .ok) @panic("Memory leaked");
 }
@@ -214,4 +217,11 @@ export fn sideros_scroll_callback(up: bool) callconv(.c) void {
     for (ecs.hooks.scroll.items) |hook| {
         hook(&pool, if (up) .up else .down) catch @panic("TODO: actually handle this");
     }
+}
+
+export fn sideros_resize_callback(width: u32, height: u32) callconv(.c) void {
+    if (!renderer_initialized) {
+        return;
+    }
+    renderer.resize(width, height);
 }

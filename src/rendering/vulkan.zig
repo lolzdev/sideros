@@ -158,10 +158,9 @@ pub const RenderPass = struct {
 
     const Self = @This();
 
-    pub fn init(allocator: Allocator, device: Device, surface: Surface, physical_device: PhysicalDevice) !Self {
+    pub fn init(allocator: Allocator, device: Device, surface: Surface, physical_device: PhysicalDevice, extent: c.VkExtent2D) !Self {
         const swapchain_format = (try Swapchain.pickFormat(allocator, surface, physical_device)).format;
-
-        const depth_image, const depth_view, const depth_memory, const depth_format = try createDepthResources(device, physical_device);
+        const depth_image, const depth_view, const depth_memory, const depth_format = try createDepthResources(device, physical_device, extent);
 
         const color_attachment: c.VkAttachmentDescription = .{
             .format = swapchain_format,
@@ -294,7 +293,7 @@ pub const RenderPass = struct {
         return null;
     }
 
-    fn createDepthResources(device: Device, physical_device: PhysicalDevice) !struct { c.VkImage, c.VkImageView, c.VkDeviceMemory, c.VkFormat } {
+    fn createDepthResources(device: Device, physical_device: PhysicalDevice, extent: c.VkExtent2D) !struct { c.VkImage, c.VkImageView, c.VkDeviceMemory, c.VkFormat } {
         const candidates = &[_]u32{
             c.VK_FORMAT_D32_SFLOAT,
             c.VK_FORMAT_D32_SFLOAT_S8_UINT,
@@ -306,8 +305,8 @@ pub const RenderPass = struct {
                 .sType = c.VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
                 .imageType = c.VK_IMAGE_TYPE_2D,
                 .extent = .{
-                    .width = @intCast(800),
-                    .height = @intCast(600),
+                    .width = extent.width,
+                    .height = extent.height,
                     .depth = 1,
                 },
                 .mipLevels = 1,
@@ -366,6 +365,17 @@ pub const RenderPass = struct {
         c.vkDestroyImage(device.handle, self.depth_image, null);
         c.vkFreeMemory(device.handle, self.depth_memory, null);
         c.vkDestroyRenderPass(device.handle, self.handle, null);
+    }
+
+    pub fn resize(self: *Self, device: Device, physical_device: PhysicalDevice, extent: c.VkExtent2D) !void {
+        c.vkDestroyImageView(device.handle, self.depth_view, null);
+        c.vkDestroyImage(device.handle, self.depth_image, null);
+        c.vkFreeMemory(device.handle, self.depth_memory, null);
+
+        const depth_image, const depth_view, const depth_memory, _ = try createDepthResources(device, physical_device, extent);
+        self.depth_image = depth_image;
+        self.depth_view = depth_view;
+        self.depth_memory = depth_memory;
     }
 };
 

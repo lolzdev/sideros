@@ -306,7 +306,12 @@ pub fn submit(self: Self, swapchain: vk.Swapchain, image: usize, frame: usize) !
         .pResults = null,
     };
 
-    try vk.mapError(c.vkQueuePresentKHR(self.present_queue, &present_info));
+    const result = c.vkQueuePresentKHR(self.present_queue, &present_info);
+    switch (result) {
+        c.VK_SUCCESS => {},
+        c.VK_SUBOPTIMAL_KHR, c.VK_ERROR_OUT_OF_DATE_KHR => return error.OutOfDate,
+        else => try vk.mapError(result),
+    }
 }
 
 pub fn initShader(self: Self, comptime name: []const u8) !c.VkShaderModule {

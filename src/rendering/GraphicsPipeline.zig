@@ -24,6 +24,7 @@ allocator: Allocator,
 diffuse_textures: std.ArrayList(vk.Texture),
 specular_textures: std.ArrayList(vk.Texture),
 projection_buffer: vk.Buffer,
+projection_memory: [*c]u8,
 view_buffer: vk.Buffer,
 view_memory: [*c]u8,
 transform_buffer: vk.DynamicBuffer(math.Transform),
@@ -274,6 +275,17 @@ pub fn init(allocator: Allocator, device: vk.Device, swapchain: vk.Swapchain, re
         .pScissors = &scissor,
     };
 
+    const dynamic_states = [_]c.VkDynamicState{
+        c.VK_DYNAMIC_STATE_VIEWPORT,
+        c.VK_DYNAMIC_STATE_SCISSOR,
+    };
+
+    const dynamic_state_info: c.VkPipelineDynamicStateCreateInfo = .{
+        .sType = c.VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO,
+        .dynamicStateCount = dynamic_states.len,
+        .pDynamicStates = dynamic_states[0..].ptr,
+    };
+
     const rasterizer_info: c.VkPipelineRasterizationStateCreateInfo = .{
         .sType = c.VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO,
         .depthClampEnable = c.VK_FALSE,
@@ -438,7 +450,7 @@ pub fn init(allocator: Allocator, device: vk.Device, swapchain: vk.Swapchain, re
         .pMultisampleState = &multisampling_info,
         .pDepthStencilState = &depth_stencil,
         .pColorBlendState = &color_blend_info,
-        .pDynamicState = null,
+        .pDynamicState = &dynamic_state_info,
         .layout = layout,
         .renderPass = render_pass.handle,
         .subpass = 0,
@@ -717,6 +729,7 @@ pub fn init(allocator: Allocator, device: vk.Device, swapchain: vk.Swapchain, re
         .diffuse_textures = diffuse_textures,
         .specular_textures = specular_textures,
         .projection_buffer = projection_buffer,
+        .projection_memory = data,
         .view_buffer = view_buffer,
         .view_memory = view_data,
         .view_pos_memory = view_pos_data,
@@ -735,6 +748,12 @@ pub fn init(allocator: Allocator, device: vk.Device, swapchain: vk.Swapchain, re
         .swapchain = swapchain,
         .render_pass = render_pass,
     };
+}
+
+pub fn updateSwapchain(self: *Self, swapchain: vk.Swapchain) void {
+    self.swapchain = swapchain;
+    const projection = Camera.getProjection(swapchain.extent.width, swapchain.extent.height);
+    @memcpy(self.projection_memory[0..@sizeOf(math.Matrix)], std.mem.asBytes(&projection));
 }
 
 pub fn bind(self: Self, device: vk.Device, frame: usize) void {

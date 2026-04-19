@@ -4,6 +4,8 @@
 
 static NSWindow *window = nil;
 static bool window_closed = false;
+static NSSize drawable_size(void);
+static void update_drawable_size(void);
 
 static unsigned int map_modifier_key(unsigned short key_code) {
   switch (key_code) {
@@ -148,12 +150,43 @@ static void dispatch_key_event(NSEvent *event, bool release) {
 - (void)windowWillClose:(NSNotification *)notification {
   window_closed = true;
 }
+
+- (void)windowDidResize:(NSNotification *)notification {
+  update_drawable_size();
+  NSSize size = drawable_size();
+  if (size.width > 0.0 && size.height > 0.0) {
+    sideros_resize_callback((unsigned int)size.width, (unsigned int)size.height);
+  }
+}
 @end
 
 static WindowDelegate *window_delegate = nil;
 
 @interface MetalView : NSView
 @end
+
+static MetalView *metal_view = nil;
+
+static NSSize drawable_size(void) {
+  if (metal_view == nil) {
+    return NSMakeSize(0.0, 0.0);
+  }
+
+  NSView *view = (NSView *)metal_view;
+  NSRect backing = [view convertRectToBacking:view.bounds];
+  return backing.size;
+}
+
+static void update_drawable_size(void) {
+  if (metal_view == nil) {
+    return;
+  }
+
+  NSView *view = (NSView *)metal_view;
+  CAMetalLayer *layer = (CAMetalLayer *)view.layer;
+  layer.contentsScale = view.window.screen.backingScaleFactor;
+  layer.drawableSize = drawable_size();
+}
 
 @implementation MetalView
 + (Class)layerClass {
@@ -231,8 +264,6 @@ static WindowDelegate *window_delegate = nil;
 }
 @end
 
-static MetalView *metal_view = nil;
-
 static void initialize_app(void) {
   static BOOL initialized = NO;
   if (!initialized) {
@@ -267,6 +298,7 @@ void create_window(void) {
 
   metal_view = [[MetalView alloc] initWithFrame:frame];
   [window setContentView:metal_view];
+  update_drawable_size();
   NSLog(@"Layer class: %@", NSStringFromClass([metal_view.layer class]));
 
   window_delegate = [[WindowDelegate alloc] init];
