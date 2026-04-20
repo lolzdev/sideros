@@ -27,6 +27,7 @@ var camera: rendering.Camera = .{
     .position = .{ 0.0, 5.0, -5.0 },
 };
 var input: ecs.Input = .{ .key_pressed = .{false} ** @intFromEnum(ecs.Input.KeyCode.menu) };
+var placement: ecs.entities.Placement = .{};
 var resources: ecs.Resources = undefined;
 var renderer_initialized = false;
 const ModInfo = struct {
@@ -147,6 +148,7 @@ pub fn sideros_init(io: std.Io, init: GameInit) void {
         .renderer = undefined,
         .input = &input,
         .terrain = undefined,
+        .placement = &placement,
     };
 
     ecs.hooks.init(allocator) catch @panic("TODO: handle this");
@@ -167,12 +169,12 @@ pub fn sideros_init(io: std.Io, init: GameInit) void {
         .width = 200,
         .height = 200,
         .seed = 2497852058242342,
-        .resolution = 1,
+        .resolution = 2,
     }) catch @panic("TODO: handle this");
 
     renderer.terrain_pipeline.setMaps(renderer.device, resources.terrain.texture) catch @panic("TODO: handle this");
 
-    pool.addSystemGroup(&[_]ecs.System{ systems.render, systems.moveCamera }, true) catch @panic("TODO: Gracefuly handle error");
+    pool.addSystemGroup(&[_]ecs.System{ systems.updatePlacement, systems.render, systems.moveCamera, systems.endInputFrame }, true) catch @panic("TODO: Gracefuly handle error");
     pool.resources.renderer = &renderer;
     pool.tick() catch |err| std.debug.panic("Initial engine tick failed: {any}\n", .{err});
     //init_mods();
@@ -203,11 +205,36 @@ pub export fn sideros_cleanup() callconv(.c) void {
 }
 
 export fn sideros_key_callback(key: u32, release: bool) callconv(.c) void {
-    if (key <= @intFromEnum(ecs.Input.KeyCode.menu) and key >= @intFromEnum(ecs.Input.KeyCode.space)) {
+    if (key < input.key_pressed.len and key >= @intFromEnum(ecs.Input.KeyCode.space)) {
         if (release) {
             input.key_pressed[key] = false;
         } else {
+            if (!input.key_pressed[key]) {
+                input.key_pressed_this_frame[key] = true;
+            }
             input.key_pressed[key] = true;
+        }
+    }
+}
+
+export fn sideros_cursor_callback(x: f64, y: f64) callconv(.c) void {
+    if (input.mouse_first) {
+        input.mouse_first = false;
+    } else {
+        input.mouse_delta_x += x - input.mouse_x;
+        input.mouse_delta_y += y - input.mouse_y;
+    }
+    input.mouse_x = x;
+    input.mouse_y = y;
+}
+
+export fn sideros_mouse_button_callback(button: u32, release: bool) callconv(.c) void {
+    if (button < input.mouse_down.len) {
+        if (release) {
+            input.mouse_down[button] = false;
+        } else {
+            input.queueMousePress(button);
+            input.mouse_down[button] = true;
         }
     }
 }

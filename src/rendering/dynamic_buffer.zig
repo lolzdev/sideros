@@ -29,12 +29,15 @@ pub fn DynamicBuffer(comptime T: type) type {
         fn initWithCapacity(allocator: std.mem.Allocator, device: vk.Device, usage: vk.BufferUsage, flags: vk.BufferFlags, descriptor_set: c.VkDescriptorSet, binding: u32, initial_capacity: usize) !Self {
             const size = @sizeOf(T) * initial_capacity;
             const family_indices: []const u32 = &.{device.graphics_family};
+            var buffer_usage = usage;
+            buffer_usage.transfer_src = true;
+            buffer_usage.transfer_dst = true;
 
             const create_info: c.VkBufferCreateInfo = .{
                 .sType = c.VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
                 .size = size,
                 .sharingMode = c.VK_SHARING_MODE_EXCLUSIVE,
-                .usage = @bitCast(usage),
+                .usage = @bitCast(buffer_usage),
                 .queueFamilyIndexCount = 1,
                 .pQueueFamilyIndices = family_indices.ptr,
             };
@@ -153,17 +156,19 @@ pub fn DynamicBuffer(comptime T: type) type {
         }
 
         pub fn grow(self: *Self) !void {
+            self.device.waitIdle();
+
             const old_capacity = self.mapped_memory.len;
             const new_capacity = old_capacity + (old_capacity / 2) + 1;
             var new = try initWithCapacity(self.allocator, self.device, self.usage, self.flags, self.descriptor_set, self.binding, new_capacity);
             try self.copyTo(new, 0);
 
-            c.vkDestroyBuffer(self.device.handle, self.handle, null);
             c.vkUnmapMemory(self.device.handle, self.memory);
+            c.vkDestroyBuffer(self.device.handle, self.handle, null);
             c.vkFreeMemory(self.device.handle, self.memory, null);
 
             // Clean up old free_indices and the new buffer's unused free_indices
-            const old_free_indices = self.free_indices;
+            var old_free_indices = self.free_indices;
             new.free_indices.deinit(self.allocator);
             self.free_indices = std.ArrayList(usize).empty;
             for (old_free_indices.items) |index| {

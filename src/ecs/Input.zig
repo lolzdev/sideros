@@ -3,9 +3,13 @@ const Allocator = std.mem.Allocator;
 
 const Input = @This();
 
-pub const ScrollDirection = enum {
-    up,
-    down
+pub const ScrollDirection = enum { up, down };
+
+pub const MouseButton = enum(u32) {
+    left = 0,
+    right = 1,
+    middle = 2,
+    _,
 };
 
 pub const KeyCode = enum(u32) {
@@ -133,6 +137,10 @@ pub const KeyCode = enum(u32) {
 };
 
 key_pressed: [@intFromEnum(KeyCode.menu)]bool = .{false} ** @intFromEnum(Input.KeyCode.menu),
+key_pressed_this_frame: [@intFromEnum(KeyCode.menu)]bool = .{false} ** @intFromEnum(Input.KeyCode.menu),
+mouse_down: [3]bool = .{false} ** 3,
+mouse_pressed: [3]bool = .{false} ** 3,
+mouse_press_count: [3]u32 = .{0} ** 3,
 mouse_delta_x: f64 = 0.0,
 mouse_delta_y: f64 = 0.0,
 mouse_x: f64 = 0.0,
@@ -150,4 +158,53 @@ pub fn getCursorPosition(self: Input) @Vector(2, f64) {
 
 pub fn isKeyDown(self: Input, key: KeyCode) bool {
     return self.key_pressed[@intFromEnum(key)];
+}
+
+pub fn wasKeyPressed(self: Input, key: KeyCode) bool {
+    return self.key_pressed_this_frame[@intFromEnum(key)];
+}
+
+pub fn isMouseDown(self: Input, button: MouseButton) bool {
+    const index = @intFromEnum(button);
+    return index < self.mouse_down.len and self.mouse_down[index];
+}
+
+pub fn wasMousePressed(self: Input, button: MouseButton) bool {
+    const index = @intFromEnum(button);
+    return index < self.mouse_pressed.len and self.mouse_pressed[index];
+}
+
+pub fn queueMousePress(self: *Input, button: u32) void {
+    if (button < self.mouse_press_count.len) {
+        self.mouse_pressed[button] = true;
+        self.mouse_press_count[button] += 1;
+    }
+}
+
+pub fn consumeMousePress(self: *Input, button: MouseButton) bool {
+    const index = @intFromEnum(button);
+    if (index >= self.mouse_press_count.len or self.mouse_press_count[index] == 0) {
+        return false;
+    }
+    self.mouse_press_count[index] -= 1;
+    return true;
+}
+
+pub fn hasMousePress(self: Input, button: MouseButton) bool {
+    const index = @intFromEnum(button);
+    return index < self.mouse_press_count.len and self.mouse_press_count[index] > 0;
+}
+
+pub fn discardMousePresses(self: *Input, button: MouseButton) void {
+    const index = @intFromEnum(button);
+    if (index < self.mouse_press_count.len) {
+        self.mouse_press_count[index] = 0;
+    }
+}
+
+pub fn endFrame(self: *Input) void {
+    @memset(&self.key_pressed_this_frame, false);
+    @memset(&self.mouse_pressed, false);
+    self.mouse_delta_x = 0.0;
+    self.mouse_delta_y = 0.0;
 }

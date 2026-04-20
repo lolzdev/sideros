@@ -6,6 +6,7 @@ static NSWindow *window = nil;
 static bool window_closed = false;
 static NSSize drawable_size(void);
 static void update_drawable_size(void);
+static void dispatch_cursor_event(NSEvent *event);
 
 static unsigned int map_modifier_key(unsigned short key_code) {
   switch (key_code) {
@@ -188,6 +189,18 @@ static void update_drawable_size(void) {
   layer.drawableSize = drawable_size();
 }
 
+static void dispatch_cursor_event(NSEvent *event) {
+  if (metal_view == nil) {
+    return;
+  }
+
+  NSView *view = (NSView *)metal_view;
+  NSPoint point = [view convertPoint:event.locationInWindow fromView:nil];
+  NSPoint backing = [view convertPointToBacking:point];
+  NSSize size = drawable_size();
+  sideros_cursor_callback((double)backing.x, (double)(size.height - backing.y));
+}
+
 @implementation MetalView
 + (Class)layerClass {
   return [CAMetalLayer class];
@@ -217,6 +230,52 @@ static void update_drawable_size(void) {
 
 - (void)keyUp:(NSEvent *)event {
   dispatch_key_event(event, true);
+}
+
+- (void)mouseMoved:(NSEvent *)event {
+  dispatch_cursor_event(event);
+}
+
+- (void)mouseDragged:(NSEvent *)event {
+  dispatch_cursor_event(event);
+}
+
+- (void)rightMouseDragged:(NSEvent *)event {
+  dispatch_cursor_event(event);
+}
+
+- (void)otherMouseDragged:(NSEvent *)event {
+  dispatch_cursor_event(event);
+}
+
+- (void)mouseDown:(NSEvent *)event {
+  dispatch_cursor_event(event);
+  sideros_mouse_button_callback(0, false);
+}
+
+- (void)mouseUp:(NSEvent *)event {
+  dispatch_cursor_event(event);
+  sideros_mouse_button_callback(0, true);
+}
+
+- (void)rightMouseDown:(NSEvent *)event {
+  dispatch_cursor_event(event);
+  sideros_mouse_button_callback(1, false);
+}
+
+- (void)rightMouseUp:(NSEvent *)event {
+  dispatch_cursor_event(event);
+  sideros_mouse_button_callback(1, true);
+}
+
+- (void)otherMouseDown:(NSEvent *)event {
+  dispatch_cursor_event(event);
+  sideros_mouse_button_callback(2, false);
+}
+
+- (void)otherMouseUp:(NSEvent *)event {
+  dispatch_cursor_event(event);
+  sideros_mouse_button_callback(2, true);
 }
 
 - (void)flagsChanged:(NSEvent *)event {
@@ -295,6 +354,7 @@ void create_window(void) {
                     defer:NO];
 
   [window setTitle:@"Sideros"];
+  [window setAcceptsMouseMovedEvents:YES];
 
   metal_view = [[MetalView alloc] initWithFrame:frame];
   [window setContentView:metal_view];

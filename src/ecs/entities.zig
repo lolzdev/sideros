@@ -8,7 +8,6 @@ const Camera = rendering.Camera;
 const ecs = @import("ecs.zig");
 const Input = ecs.Input;
 
-
 pub const System = *const fn (*Pool) anyerror!void;
 pub const SystemGroup = []const System;
 pub const SyncGroup = []const System;
@@ -18,7 +17,15 @@ pub const Resources = struct {
     renderer: *Renderer,
     input: *Input,
     terrain: rendering.Terrain,
+    placement: *Placement,
     delta_time: f32 = 0.0,
+};
+
+pub const Placement = struct {
+    active: bool = false,
+    preview_valid: bool = false,
+    preview_position: @Vector(3, f32) = .{ 0.0, 0.0, 0.0 },
+    preview_scale: @Vector(3, f32) = .{ 0.5, 0.5, 0.5 },
 };
 
 pub const Human = struct {

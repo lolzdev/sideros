@@ -22,6 +22,8 @@ pub const Generator = struct {
 heightmap: []f64,
 width: usize,
 height: usize,
+world_width: usize,
+world_height: usize,
 seed: u64,
 
 texture: vk.Texture,
@@ -29,17 +31,17 @@ vertex_buffer: vk.Buffer,
 index_buffer: vk.Buffer,
 
 const layers: [5][3]u32 = .{
-    .{0, 94, 255},
-    .{222, 208, 20},
-    .{14, 122, 41},
-    .{64, 20, 20},
-    .{253, 253, 253},
+    .{ 0, 94, 255 },
+    .{ 222, 208, 20 },
+    .{ 14, 122, 41 },
+    .{ 64, 20, 20 },
+    .{ 253, 253, 253 },
 };
 
 pub fn init(allocator: std.mem.Allocator, device: vk.Device, generator: Generator) !Self {
     const perlin: math.PerlinNoise = .{ .seed = generator.seed };
-    const heightmap = try allocator.alloc(f64, generator.width*generator.resolution * generator.height*generator.resolution);
-    const heightmap_data = try allocator.alloc(u32, generator.width*generator.resolution * generator.height*generator.resolution);
+    const heightmap = try allocator.alloc(f64, generator.width * generator.resolution * generator.height * generator.resolution);
+    const heightmap_data = try allocator.alloc(u32, generator.width * generator.resolution * generator.height * generator.resolution);
     defer allocator.free(heightmap_data);
 
     var max_noise_height = std.math.floatMin(f64);
@@ -48,10 +50,10 @@ pub fn init(allocator: std.mem.Allocator, device: vk.Device, generator: Generato
     const columns = generator.width * generator.resolution;
     const rows = generator.height * generator.resolution;
 
-    for (0..columns) |x| {
-        for (0..rows) |y| {
+    for (0..rows) |z| {
+        for (0..columns) |x| {
             const u = @as(f64, @floatFromInt(x)) / @as(f64, @floatFromInt(columns - 1));
-            const v = @as(f64, @floatFromInt(y)) / @as(f64, @floatFromInt(rows - 1));
+            const v = @as(f64, @floatFromInt(z)) / @as(f64, @floatFromInt(rows - 1));
 
             const h_x = u * @as(f64, @floatFromInt(generator.width));
             const h_y = v * @as(f64, @floatFromInt(generator.height));
@@ -65,13 +67,13 @@ pub fn init(allocator: std.mem.Allocator, device: vk.Device, generator: Generato
             if (pixel < min_noise_height) {
                 min_noise_height = pixel;
             }
-            heightmap[x * rows + y] = pixel;
+            heightmap[z * columns + x] = pixel;
         }
     }
 
-    for (0..columns) |x| {
-        for (0..rows) |y| {
-            const index = x * rows + y;
+    for (0..rows) |z| {
+        for (0..columns) |x| {
+            const index = z * columns + x;
             const pixel = math.inverseLerp(min_noise_height, max_noise_height, heightmap[index]);
             heightmap[index] = pixel;
 
@@ -82,12 +84,14 @@ pub fn init(allocator: std.mem.Allocator, device: vk.Device, generator: Generato
     }
 
     const vertex_buffer, const index_buffer = try Mesh.terrain(allocator, device, generator.width, generator.height, generator.resolution);
-    const heightmap_texture = try vk.Texture.fromBytes(@alignCast(@ptrCast(heightmap_data)), device, generator.width*generator.resolution, generator.height*generator.resolution);
+    const heightmap_texture = try vk.Texture.fromBytes(@ptrCast(@alignCast(heightmap_data)), device, generator.width * generator.resolution, generator.height * generator.resolution);
 
     return .{
         .heightmap = heightmap,
         .width = columns,
         .height = rows,
+        .world_width = generator.width,
+        .world_height = generator.height,
         .seed = generator.seed,
         .vertex_buffer = vertex_buffer,
         .index_buffer = index_buffer,
@@ -102,19 +106,11 @@ pub fn deinit(self: *Self, allocator: std.mem.Allocator, device: vk.Device) !voi
     self.texture.deinit(device);
 }
 
-pub fn getHeight(self: Self, x: usize, y: usize) f64 {
-    return self.heightmap[x * self.height + y];
+pub fn getHeight(self: Self, x: usize, z: usize) f64 {
+    return self.heightmap[z * self.width + x];
 }
 
-fn pixelToNoise(
-    x: usize,
-    y: usize,
-    width: usize,
-    height: usize,
-    world_min: @Vector(2, f64),
-    world_max: @Vector(2, f64),
-    scale: f64
-) struct { f64, f64 }{
+fn pixelToNoise(x: usize, y: usize, width: usize, height: usize, world_min: @Vector(2, f64), world_max: @Vector(2, f64), scale: f64) struct { f64, f64 } {
     const u = (@as(f64, @floatFromInt(x)) + 0.5) / @as(f64, @floatFromInt(width));
     const v = (@as(f64, @floatFromInt(y)) + 0.5) / @as(f64, @floatFromInt(height));
 

@@ -13,6 +13,8 @@ typedef struct {
 void sideros_init(GameInit init);
 void sideros_update(GameUpdate state);
 void sideros_key_callback(unsigned int key, bool release);
+void sideros_cursor_callback(double x, double y);
+void sideros_mouse_button_callback(unsigned int button, bool release);
 void sideros_scroll_callback(bool up);
 void sideros_resize_callback(unsigned int width, unsigned int height);
 void sideros_cleanup(void);

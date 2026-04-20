@@ -161,7 +161,7 @@ pub fn main() !void {
     const screen = iter.data;
 
     const mask = c.XCB_CW_EVENT_MASK;
-    const value = c.XCB_EVENT_MASK_EXPOSURE | c.XCB_EVENT_MASK_KEY_PRESS | c.XCB_EVENT_MASK_KEY_RELEASE | c.XCB_EVENT_MASK_BUTTON_PRESS | c.XCB_EVENT_MASK_STRUCTURE_NOTIFY;
+    const value = c.XCB_EVENT_MASK_EXPOSURE | c.XCB_EVENT_MASK_KEY_PRESS | c.XCB_EVENT_MASK_KEY_RELEASE | c.XCB_EVENT_MASK_BUTTON_PRESS | c.XCB_EVENT_MASK_BUTTON_RELEASE | c.XCB_EVENT_MASK_POINTER_MOTION | c.XCB_EVENT_MASK_STRUCTURE_NOTIFY;
 
     const window = c.xcb_generate_id(connection);
     _ = c.xcb_create_window(connection, c.XCB_COPY_FROM_PARENT, window, screen.*.root, 0, 0, 800, 600, 10, c.XCB_WINDOW_CLASS_INPUT_OUTPUT, screen.*.root_visual, mask, &value);
@@ -202,11 +202,29 @@ pub fn main() !void {
                 },
                 c.XCB_BUTTON_PRESS => {
                     const ev: *c.xcb_button_press_event_t = @ptrCast(e);
+                    sideros.sideros_cursor_callback(@floatFromInt(ev.event_x), @floatFromInt(ev.event_y));
                     switch (ev.detail) {
                         4 => sideros.sideros_scroll_callback(true),
                         5 => sideros.sideros_scroll_callback(false),
+                        1 => sideros.sideros_mouse_button_callback(0, false),
+                        2 => sideros.sideros_mouse_button_callback(2, false),
+                        3 => sideros.sideros_mouse_button_callback(1, false),
                         else => {},
                     }
+                },
+                c.XCB_BUTTON_RELEASE => {
+                    const ev: *c.xcb_button_release_event_t = @ptrCast(e);
+                    sideros.sideros_cursor_callback(@floatFromInt(ev.event_x), @floatFromInt(ev.event_y));
+                    switch (ev.detail) {
+                        1 => sideros.sideros_mouse_button_callback(0, true),
+                        2 => sideros.sideros_mouse_button_callback(2, true),
+                        3 => sideros.sideros_mouse_button_callback(1, true),
+                        else => {},
+                    }
+                },
+                c.XCB_MOTION_NOTIFY => {
+                    const ev: *c.xcb_motion_notify_event_t = @ptrCast(e);
+                    sideros.sideros_cursor_callback(@floatFromInt(ev.event_x), @floatFromInt(ev.event_y));
                 },
                 c.XCB_CONFIGURE_NOTIFY => {
                     const ev: *c.xcb_configure_notify_event_t = @ptrCast(e);

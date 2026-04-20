@@ -163,7 +163,7 @@ fn vulkan_cleanup(gameInit: sideros.GameInit) void {
 
 fn registryHandleGlobal(data: ?*anyopaque, registry: ?*c.wl_registry, name: u32, interface: [*c]const u8, version: u32) callconv(.c) void {
     _ = version;
-    const state: *State = @alignCast(@ptrCast(data));
+    const state: *State = @ptrCast(@alignCast(data));
     if (std.mem.eql(u8, std.mem.span(interface), std.mem.span(c.wl_compositor_interface.name))) {
         state.compositor = @ptrCast(c.wl_registry_bind(registry.?, name, &c.wl_compositor_interface, 4));
     } else if (std.mem.eql(u8, @as([:0]const u8, std.mem.span(interface)), std.mem.span(c.xdg_wm_base_interface.name))) {
@@ -186,7 +186,7 @@ fn shellHandlePing(data: ?*anyopaque, shell: ?*c.xdg_wm_base, serial: u32) callc
 }
 
 fn shellHandleSurfaceConfigure(data: ?*anyopaque, surface: ?*c.xdg_surface, serial: u32) callconv(.c) void {
-    const state: *State = @alignCast(@ptrCast(data));
+    const state: *State = @ptrCast(@alignCast(data));
 
     c.xdg_surface_ack_configure(surface, serial);
     state.configured = true;
@@ -221,7 +221,7 @@ fn toplevelHandleConfigureBounds(data: ?*anyopaque, toplevel: ?*c.xdg_toplevel, 
 
 fn frameHandleDone(data: ?*anyopaque, callback: ?*c.wl_callback, time: u32) callconv(.c) void {
     _ = time;
-    const state: *State = @alignCast(@ptrCast(data));
+    const state: *State = @ptrCast(@alignCast(data));
     _ = c.wl_callback_destroy(callback);
     const cb = c.wl_surface_frame(state.surface);
     _ = c.wl_callback_add_listener(cb, &frame_listener, state);
@@ -236,9 +236,9 @@ fn keyboardHandleKeymap(data: ?*anyopaque, keyboard: ?*c.wl_keyboard, format: u3
     _ = keyboard;
     _ = format;
 
-    const state: *State = @alignCast(@ptrCast(data));
+    const state: *State = @ptrCast(@alignCast(data));
 
-    const addr = std.posix.mmap(null, size, std.posix.PROT.READ, std.os.linux.MAP { .TYPE = .PRIVATE }, fd, 0) catch @panic("Can't mmap keymap data");
+    const addr = std.posix.mmap(null, size, std.posix.PROT.READ, std.os.linux.MAP{ .TYPE = .PRIVATE }, fd, 0) catch @panic("Can't mmap keymap data");
     const mapped: []u8 = @as([*]u8, @ptrCast(addr))[0..size];
 
     const keymap = c.xkb_keymap_new_from_string(state.xkb_context, @ptrCast(mapped), c.XKB_KEYMAP_FORMAT_TEXT_V1, c.XKB_KEYMAP_COMPILE_NO_FLAGS);
@@ -274,9 +274,9 @@ fn keyboardHandleKey(data: ?*anyopaque, keyboard: ?*c.wl_keyboard, serial: u32, 
     _ = serial;
     _ = time;
 
-    const state: *State = @alignCast(@ptrCast(data));
+    const state: *State = @ptrCast(@alignCast(data));
 
-    const keysym = c.xkb_state_key_get_one_sym(state.xkb_state, key+8);
+    const keysym = c.xkb_state_key_get_one_sym(state.xkb_state, key + 8);
     sideros.sideros_key_callback(mapKeysym(keysym), s == 0);
 }
 
@@ -295,6 +295,56 @@ fn keyboardHandleRepeatInfo(data: ?*anyopaque, keyboard: ?*c.wl_keyboard, rate: 
     _ = keyboard;
     _ = rate;
     _ = delay;
+}
+
+fn pointerHandleEnter(data: ?*anyopaque, pointer: ?*c.wl_pointer, serial: u32, surface: ?*c.wl_surface, surface_x: c.wl_fixed_t, surface_y: c.wl_fixed_t) callconv(.c) void {
+    _ = data;
+    _ = pointer;
+    _ = serial;
+    _ = surface;
+    sideros.sideros_cursor_callback(c.wl_fixed_to_double(surface_x), c.wl_fixed_to_double(surface_y));
+}
+
+fn pointerHandleLeave(data: ?*anyopaque, pointer: ?*c.wl_pointer, serial: u32, surface: ?*c.wl_surface) callconv(.c) void {
+    _ = data;
+    _ = pointer;
+    _ = serial;
+    _ = surface;
+}
+
+fn pointerHandleMotion(data: ?*anyopaque, pointer: ?*c.wl_pointer, time: u32, surface_x: c.wl_fixed_t, surface_y: c.wl_fixed_t) callconv(.c) void {
+    _ = data;
+    _ = pointer;
+    _ = time;
+    sideros.sideros_cursor_callback(c.wl_fixed_to_double(surface_x), c.wl_fixed_to_double(surface_y));
+}
+
+fn pointerHandleButton(data: ?*anyopaque, pointer: ?*c.wl_pointer, serial: u32, time: u32, button: u32, s: u32) callconv(.c) void {
+    _ = data;
+    _ = pointer;
+    _ = serial;
+    _ = time;
+    const release = s == 0;
+    switch (button) {
+        0x110 => sideros.sideros_mouse_button_callback(0, release),
+        0x111 => sideros.sideros_mouse_button_callback(1, release),
+        0x112 => sideros.sideros_mouse_button_callback(2, release),
+        else => {},
+    }
+}
+
+fn pointerHandleAxis(data: ?*anyopaque, pointer: ?*c.wl_pointer, time: u32, axis: u32, value: c.wl_fixed_t) callconv(.c) void {
+    _ = data;
+    _ = pointer;
+    _ = time;
+    if (axis == 0) {
+        const amount = c.wl_fixed_to_double(value);
+        if (amount < 0.0) {
+            sideros.sideros_scroll_callback(true);
+        } else if (amount > 0.0) {
+            sideros.sideros_scroll_callback(false);
+        }
+    }
 }
 
 const frame_listener: c.wl_callback_listener = .{
@@ -329,6 +379,14 @@ const keyboard_listener: c.wl_keyboard_listener = .{
     .repeat_info = keyboardHandleRepeatInfo,
 };
 
+const pointer_listener: c.wl_pointer_listener = .{
+    .enter = pointerHandleEnter,
+    .leave = pointerHandleLeave,
+    .motion = pointerHandleMotion,
+    .button = pointerHandleButton,
+    .axis = pointerHandleAxis,
+};
+
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     const allocator = gpa.allocator();
@@ -348,6 +406,8 @@ pub fn main() !void {
 
     const keyboard = c.wl_seat_get_keyboard(state.seat);
     _ = c.wl_keyboard_add_listener(keyboard, &keyboard_listener, @ptrCast(&state));
+    const pointer = c.wl_seat_get_pointer(state.seat);
+    _ = c.wl_pointer_add_listener(pointer, &pointer_listener, @ptrCast(&state));
 
     const surface = c.wl_compositor_create_surface(state.compositor);
     const xdg_surface = c.xdg_wm_base_get_xdg_surface(state.shell, surface);
@@ -357,7 +417,7 @@ pub fn main() !void {
 
     const toplevel = c.xdg_surface_get_toplevel(xdg_surface);
     _ = c.xdg_toplevel_add_listener(toplevel, &toplevel_listener, @ptrCast(&state));
-    const title = [_]u8 {'s', 'i', 'd', 'e', 'r', 'o', 's', 0};
+    const title = [_]u8{ 's', 'i', 'd', 'e', 'r', 'o', 's', 0 };
     c.xdg_toplevel_set_title(toplevel, @ptrCast(&title[0]));
     c.xdg_toplevel_set_app_id(toplevel, @ptrCast(&title[0]));
     c.xdg_toplevel_set_min_size(toplevel, 800, 600);
@@ -367,8 +427,6 @@ pub fn main() !void {
     while (!state.configured) {
         _ = c.wl_display_dispatch(display);
     }
-
-
 
     const gameInit = try vulkan_init(allocator, display, surface);
     defer vulkan_cleanup(gameInit);
@@ -392,6 +450,7 @@ pub fn main() !void {
         c.xkb_context_unref(xkb_context);
     }
     c.wl_keyboard_destroy(keyboard);
+    c.wl_pointer_destroy(pointer);
     c.xdg_toplevel_destroy(toplevel);
     c.xdg_surface_destroy(xdg_surface);
     c.wl_surface_destroy(surface);

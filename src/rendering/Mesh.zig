@@ -20,7 +20,7 @@ pub const Vertex = struct {
         return Vertex{
             .position = .{ x, y, z },
             .normal = .{ normal_x, normal_y, normal_z },
-            .uv = .{u, v},
+            .uv = .{ u, v },
         };
     }
 
@@ -101,7 +101,6 @@ pub const TerrainVertex = struct {
     }
 };
 
-
 fn createVertexBuffer(device: vk.Device, vertices: std.ArrayList([6]f32)) !vk.Buffer {
     var data: [*c]?*anyopaque = null;
 
@@ -168,36 +167,38 @@ pub fn terrain(allocator: std.mem.Allocator, device: vk.Device, width: usize, he
     var indices = std.ArrayList(u32).empty;
     defer indices.deinit(allocator);
 
-    for (0..width*resolution) |x| {
-        for (0..height*resolution) |z| {
-            const offset_x = @as(f32, @floatFromInt(x)) / @as(f32, @floatFromInt(width*resolution - 1)) * @as(f32, @floatFromInt(width));
-            const offset_z = @as(f32, @floatFromInt(z)) / @as(f32, @floatFromInt(height*resolution - 1)) * @as(f32, @floatFromInt(height));
-            const u = @as(f32, @floatFromInt(x)) / @as(f32, @floatFromInt(width*resolution - 1));
-            const v = @as(f32, @floatFromInt(z)) / @as(f32, @floatFromInt(width*resolution - 1));
+    const columns = width * resolution;
+    const rows = height * resolution;
 
-            const vertex: [6]f32 = .{offset_x, offset_z, u, v, offset_x, offset_z };
+    for (0..rows) |z| {
+        for (0..columns) |x| {
+            const offset_x = @as(f32, @floatFromInt(x)) / @as(f32, @floatFromInt(columns - 1)) * @as(f32, @floatFromInt(width));
+            const offset_z = @as(f32, @floatFromInt(z)) / @as(f32, @floatFromInt(rows - 1)) * @as(f32, @floatFromInt(height));
+            const u = @as(f32, @floatFromInt(x)) / @as(f32, @floatFromInt(columns - 1));
+            const v = @as(f32, @floatFromInt(z)) / @as(f32, @floatFromInt(rows - 1));
+
+            const vertex: [6]f32 = .{ offset_x, offset_z, u, v, offset_x, offset_z };
             try vertices.append(allocator, vertex);
         }
     }
 
-
-    for (0..width*resolution-1) |x| {
-        for (0..height*resolution-1) |z| {
-            const top_left = @as(u32, @intCast(z * width*resolution + x));
-            const top_right = @as(u32, @intCast(z * width*resolution + (x+1)));
-            const bottom_left = @as(u32, @intCast((z+1) * width*resolution + x));
-            const bottom_right = @as(u32, @intCast((z+1) * width*resolution + (x + 1)));
+    for (0..rows - 1) |z| {
+        for (0..columns - 1) |x| {
+            const top_left = @as(u32, @intCast(z * columns + x));
+            const top_right = @as(u32, @intCast(z * columns + (x + 1)));
+            const bottom_left = @as(u32, @intCast((z + 1) * columns + x));
+            const bottom_right = @as(u32, @intCast((z + 1) * columns + (x + 1)));
 
             try indices.append(allocator, top_left);
-            try indices.append(allocator, top_right);
             try indices.append(allocator, bottom_left);
+            try indices.append(allocator, top_right);
 
             try indices.append(allocator, top_right);
-            try indices.append(allocator, bottom_right);
             try indices.append(allocator, bottom_left);
+            try indices.append(allocator, bottom_right);
         }
     }
-    
+
     const vertex_buffer = try createVertexBuffer(device, vertices);
     const index_buffer = try createIndexBuffer(device, indices);
 
