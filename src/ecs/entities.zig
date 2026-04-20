@@ -26,6 +26,14 @@ pub const Placement = struct {
     preview_valid: bool = false,
     preview_position: @Vector(3, f32) = .{ 0.0, 0.0, 0.0 },
     preview_scale: @Vector(3, f32) = .{ 0.5, 0.5, 0.5 },
+
+    pub fn modelPosition(self: Placement) @Vector(3, f32) {
+        return .{
+            self.preview_position[0],
+            self.preview_position[1] + self.preview_scale[1] * 0.5,
+            self.preview_position[2],
+        };
+    }
 };
 
 pub const Human = struct {

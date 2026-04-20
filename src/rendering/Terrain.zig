@@ -1,6 +1,7 @@
 const std = @import("std");
 const vk = @import("vulkan.zig");
 const Mesh = @import("Mesh.zig");
+const Camera = @import("Camera.zig");
 const math = @import("math");
 const stb = vk.Texture.stb;
 const Self = @This();
@@ -17,6 +18,10 @@ pub const Generator = struct {
     height: usize,
     seed: u64,
     resolution: usize = 1,
+};
+
+pub const Hit = struct {
+    position: @Vector(3, f32),
 };
 
 heightmap: []f64,
@@ -108,6 +113,103 @@ pub fn deinit(self: *Self, allocator: std.mem.Allocator, device: vk.Device) !voi
 
 pub fn getHeight(self: Self, x: usize, z: usize) f64 {
     return self.heightmap[z * self.width + x];
+}
+
+pub fn cursorHit(self: Self, camera: *Camera, cursor_x: f64, cursor_y: f64, viewport_width: u32, viewport_height: u32) ?Hit {
+    const ray = camera.screenRay(cursor_x, cursor_y, viewport_width, viewport_height) orelse return null;
+    return self.raycast(camera.position, ray);
+}
+
+pub fn raycast(self: Self, origin: @Vector(3, f32), ray: @Vector(3, f32)) ?Hit {
+    const max_distance: f32 = 1000.0;
+    const step: f32 = 1.0;
+    var t: f32 = 0.0;
+
+    while (t <= max_distance) : (t += step) {
+        const point = origin + ray * @as(@Vector(3, f32), @splat(t));
+        if (!self.containsWorldPoint(point)) {
+            continue;
+        }
+
+        const height = self.worldHeight(point[0], point[2]);
+        if (point[1] <= height) {
+            var low = @max(0.0, t - step);
+            var high = t;
+            for (0..12) |_| {
+                const mid = (low + high) * 0.5;
+                const mid_point = origin + ray * @as(@Vector(3, f32), @splat(mid));
+                if (!self.containsWorldPoint(mid_point) or mid_point[1] > self.worldHeight(mid_point[0], mid_point[2])) {
+                    low = mid;
+                } else {
+                    high = mid;
+                }
+            }
+
+            const hit_point = origin + ray * @as(@Vector(3, f32), @splat(high));
+            return .{ .position = .{ hit_point[0], self.worldHeight(hit_point[0], hit_point[2]), hit_point[2] } };
+        }
+    }
+
+    return null;
+}
+
+pub fn containsWorldPoint(self: Self, point: @Vector(3, f32)) bool {
+    return point[0] >= 0.0 and point[2] >= 0.0 and point[0] <= self.worldWidth() and point[2] <= self.worldDepth();
+}
+
+pub fn worldHeight(self: Self, world_x: f32, world_z: f32) f32 {
+    const x = clampFloat(world_x, 0.0, self.worldWidth());
+    const z = clampFloat(world_z, 0.0, self.worldDepth());
+    const max_x = @as(f32, @floatFromInt(self.width - 1));
+    const max_z = @as(f32, @floatFromInt(self.height - 1));
+    const sample_x = if (self.width > 1) x / self.worldWidth() * max_x else 0.0;
+    const sample_z = if (self.height > 1) z / self.worldDepth() * max_z else 0.0;
+
+    const x0: usize = @intFromFloat(@floor(sample_x));
+    const z0: usize = @intFromFloat(@floor(sample_z));
+    const x1 = @min(x0 + 1, self.width - 1);
+    const z1 = @min(z0 + 1, self.height - 1);
+    const tx = sample_x - @as(f32, @floatFromInt(x0));
+    const tz = sample_z - @as(f32, @floatFromInt(z0));
+
+    const h00 = self.normalizedHeight(x0, z0);
+    const h10 = self.normalizedHeight(x1, z0);
+    const h01 = self.normalizedHeight(x0, z1);
+    const h11 = self.normalizedHeight(x1, z1);
+
+    const hx0 = lerp(h00, h10, tx);
+    const hx1 = lerp(h01, h11, tx);
+    const h = lerp(hx0, hx1, tz);
+    return h * std.math.pow(f32, 2.0, h * 5.0);
+}
+
+pub fn worldWidth(self: Self) f32 {
+    return @floatFromInt(self.world_width);
+}
+
+pub fn worldDepth(self: Self) f32 {
+    return @floatFromInt(self.world_height);
+}
+
+fn normalizedHeight(self: Self, x: usize, z: usize) f32 {
+    const height = clampFloat(@floatCast(self.getHeight(x, z)), 0.0, 1.0);
+    const quantized = @as(f32, @floatFromInt(@as(u32, @intFromFloat(height * 255.0)))) / 255.0;
+    return srgbToLinear(quantized);
+}
+
+fn lerp(a: f32, b: f32, t: f32) f32 {
+    return a + (b - a) * t;
+}
+
+fn clampFloat(value: f32, min: f32, max: f32) f32 {
+    return @min(@max(value, min), max);
+}
+
+fn srgbToLinear(value: f32) f32 {
+    if (value <= 0.04045) {
+        return value / 12.92;
+    }
+    return std.math.pow(f32, (value + 0.055) / 1.055, 2.4);
 }
 
 fn pixelToNoise(x: usize, y: usize, width: usize, height: usize, world_min: @Vector(2, f64), world_max: @Vector(2, f64), scale: f64) struct { f64, f64 } {

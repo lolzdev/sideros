@@ -140,7 +140,8 @@ key_pressed: [@intFromEnum(KeyCode.menu)]bool = .{false} ** @intFromEnum(Input.K
 key_pressed_this_frame: [@intFromEnum(KeyCode.menu)]bool = .{false} ** @intFromEnum(Input.KeyCode.menu),
 mouse_down: [3]bool = .{false} ** 3,
 mouse_pressed: [3]bool = .{false} ** 3,
-mouse_press_count: [3]u32 = .{0} ** 3,
+mouse_click_count: [3]u32 = .{0} ** 3,
+mouse_click_handled: [3]bool = .{false} ** 3,
 mouse_delta_x: f64 = 0.0,
 mouse_delta_y: f64 = 0.0,
 mouse_x: f64 = 0.0,
@@ -175,30 +176,42 @@ pub fn wasMousePressed(self: Input, button: MouseButton) bool {
 }
 
 pub fn queueMousePress(self: *Input, button: u32) void {
-    if (button < self.mouse_press_count.len) {
+    if (button < self.mouse_click_count.len) {
         self.mouse_pressed[button] = true;
-        self.mouse_press_count[button] += 1;
+        self.mouse_click_count[button] += 1;
+        self.mouse_click_handled[button] = false;
     }
 }
 
-pub fn consumeMousePress(self: *Input, button: MouseButton) bool {
+pub fn queueMouseRelease(self: *Input, button: u32) void {
+    if (button < self.mouse_click_count.len) {
+        if (!self.mouse_click_handled[button] and self.mouse_click_count[button] == 0) {
+            self.mouse_click_count[button] += 1;
+        }
+        self.mouse_click_handled[button] = false;
+    }
+}
+
+pub fn consumeMouseClick(self: *Input, button: MouseButton) bool {
     const index = @intFromEnum(button);
-    if (index >= self.mouse_press_count.len or self.mouse_press_count[index] == 0) {
+    if (index >= self.mouse_click_count.len or self.mouse_click_count[index] == 0) {
         return false;
     }
-    self.mouse_press_count[index] -= 1;
+    self.mouse_click_count[index] -= 1;
+    self.mouse_click_handled[index] = true;
     return true;
 }
 
-pub fn hasMousePress(self: Input, button: MouseButton) bool {
+pub fn hasMouseClick(self: Input, button: MouseButton) bool {
     const index = @intFromEnum(button);
-    return index < self.mouse_press_count.len and self.mouse_press_count[index] > 0;
+    return index < self.mouse_click_count.len and self.mouse_click_count[index] > 0;
 }
 
-pub fn discardMousePresses(self: *Input, button: MouseButton) void {
+pub fn discardMouseClicks(self: *Input, button: MouseButton) void {
     const index = @intFromEnum(button);
-    if (index < self.mouse_press_count.len) {
-        self.mouse_press_count[index] = 0;
+    if (index < self.mouse_click_count.len) {
+        self.mouse_click_count[index] = 0;
+        self.mouse_click_handled[index] = false;
     }
 }
 

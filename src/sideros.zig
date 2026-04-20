@@ -231,6 +231,7 @@ export fn sideros_cursor_callback(x: f64, y: f64) callconv(.c) void {
 export fn sideros_mouse_button_callback(button: u32, release: bool) callconv(.c) void {
     if (button < input.mouse_down.len) {
         if (release) {
+            input.queueMouseRelease(button);
             input.mouse_down[button] = false;
         } else {
             input.queueMousePress(button);
