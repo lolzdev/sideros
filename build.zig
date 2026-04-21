@@ -18,6 +18,12 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
 
+    const ui = b.createModule(.{
+        .root_source_file = b.path("src/ui/ui.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+
     const vulkandeps = b.dependency("vulkan_headers", .{});
 
     const vulkan_c = b.addTranslateC(.{
@@ -49,6 +55,7 @@ pub fn build(b: *std.Build) void {
     rendering.addCSourceFile(.{ .file = b.path("ext/stb_image.c") });
     rendering.addImport("math", math);
     rendering.addImport("vulkan", vulkan);
+    rendering.addImport("ui", ui);
 
     const ecs = b.createModule(.{
         .root_source_file = b.path("src/ecs/ecs.zig"),
@@ -56,6 +63,7 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
     ecs.addImport("rendering", rendering);
+    ecs.addImport("ui", ui);
 
     compileAllShaders(b, rendering);
 
@@ -79,6 +87,7 @@ pub fn build(b: *std.Build) void {
     sideros.root_module.addImport("rendering", rendering);
     sideros.root_module.addImport("math", math);
     sideros.root_module.addImport("vulkan", vulkan);
+    sideros.root_module.addImport("ui", ui);
 
     b.installArtifact(sideros);
 
@@ -137,7 +146,7 @@ pub fn build(b: *std.Build) void {
             exe.root_module.linkSystemLibrary("vulkan", .{});
             exe.root_module.addSystemIncludePath(.{ .cwd_relative = "/usr/local/include" });
             exe.root_module.addLibraryPath(.{ .cwd_relative = "/usr/local/lib" });
-            exe.root_module.addCSourceFile(.{.file = b.path("src/window.m")});
+            exe.root_module.addCSourceFile(.{ .file = b.path("src/window.m") });
             exe.root_module.linkFramework("Cocoa", .{});
             exe.root_module.linkFramework("Metal", .{});
             exe.root_module.linkFramework("QuartzCore", .{});
@@ -168,8 +177,6 @@ pub fn build(b: *std.Build) void {
     });
     const docs_step = b.step("docs", "Generate documentation");
     docs_step.dependOn(&install_docs.step);
-
-    
 
     const exe_unit_tests = b.addTest(.{
         .root_module = b.createModule(.{

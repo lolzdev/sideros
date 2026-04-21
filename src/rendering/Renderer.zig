@@ -7,6 +7,7 @@ const Texture = vk.Texture;
 const Camera = @import("Camera.zig");
 const Terrain = @import("Terrain.zig");
 const Allocator = std.mem.Allocator;
+const ui = @import("ui");
 
 const Self = @This();
 
@@ -18,6 +19,7 @@ render_pass: vk.RenderPass,
 swapchain: vk.Swapchain,
 graphics_pipeline: vk.GraphicsPipeline,
 terrain_pipeline: vk.TerrainPipeline,
+ui_pipeline: vk.UiPipeline,
 current_frame: u32,
 mesh: Mesh,
 transforms: std.ArrayList(math.Transform),
@@ -62,6 +64,13 @@ pub fn init(allocator: Allocator, io: std.Io, instance_handle: vk.c.VkInstance, 
 
     const terrain_pipeline = try vk.TerrainPipeline.init(graphics_pipeline, terrain_vertex_shader, terrain_fragment_shader);
 
+    const ui_vertex_shader = try device.initShader("ui_vert");
+    defer device.deinitShader(ui_vertex_shader);
+    const ui_fragment_shader = try device.initShader("ui_frag");
+    defer device.deinitShader(ui_fragment_shader);
+
+    const ui_pipeline = try vk.UiPipeline.init(allocator, device, swapchain, render_pass, ui_vertex_shader, ui_fragment_shader);
+
     graphics_pipeline.directional_light.direction = .{ -0.2, -1.0, -0.3 };
     graphics_pipeline.directional_light.ambient = .{ 0.5, 0.5, 0.5 };
     graphics_pipeline.directional_light.diffuse = .{ 0.5, 0.5, 0.5 };
@@ -97,6 +106,7 @@ pub fn init(allocator: Allocator, io: std.Io, instance_handle: vk.c.VkInstance, 
         .swapchain = swapchain,
         .graphics_pipeline = graphics_pipeline,
         .terrain_pipeline = terrain_pipeline,
+        .ui_pipeline = ui_pipeline,
         .current_frame = 0,
         .transforms = transforms,
         .allocator = allocator,
@@ -110,6 +120,7 @@ pub fn init(allocator: Allocator, io: std.Io, instance_handle: vk.c.VkInstance, 
 pub fn deinit(self: *Self, terrain: *Terrain) void {
     self.device.waitIdle();
     self.device.resetCommandPool() catch |err| std.debug.panic("Failed to reset command pool during shutdown: {any}\n", .{err});
+    self.ui_pipeline.deinit(self.device);
     self.terrain_pipeline.deinit(self.device);
     self.graphics_pipeline.deinit(self.device);
     self.swapchain.deinit(self.device);
@@ -158,6 +169,10 @@ pub fn beginGraphics(self: *Self) !void {
 pub fn beginTerrain(self: *Self) !void {
     self.terrain_pipeline.bind(self.device, self.current_frame);
     self.device.bindTerrainSets(self.terrain_pipeline, self.current_frame);
+}
+
+pub fn drawUi(self: *Self, context: *const ui.Context) void {
+    self.ui_pipeline.draw(self.device, self.swapchain, self.current_frame, context);
 }
 
 pub fn setLightCount(self: *Self, count: u32) void {

@@ -1,6 +1,7 @@
 pub const ecs = @import("ecs");
 pub const rendering = @import("rendering");
 pub const mods = @import("mods");
+pub const ui = @import("ui");
 
 const c = @import("vulkan");
 
@@ -28,6 +29,8 @@ var camera: rendering.Camera = .{
 };
 var input: ecs.Input = .{ .key_pressed = .{false} ** @intFromEnum(ecs.Input.KeyCode.menu) };
 var placement: ecs.entities.Placement = .{};
+var ui_context: ui.Context = undefined;
+var command_queue: ecs.entities.CommandQueue = .init();
 var resources: ecs.Resources = undefined;
 var renderer_initialized = false;
 const ModInfo = struct {
@@ -149,8 +152,11 @@ pub fn sideros_init(io: std.Io, init: GameInit) void {
         .input = &input,
         .terrain = undefined,
         .placement = &placement,
+        .ui = &ui_context,
+        .commands = &command_queue,
     };
 
+    ui_context = ui.Context.init(allocator);
     ecs.hooks.init(allocator) catch @panic("TODO: handle this");
     ecs.hooks.addHook(.scroll, systems.zoomCamera) catch @panic("TODO handle this");
     pool = ecs.Pool.init(allocator, &resources) catch @panic("TODO: Gracefully handle error");
@@ -174,7 +180,7 @@ pub fn sideros_init(io: std.Io, init: GameInit) void {
 
     renderer.terrain_pipeline.setMaps(renderer.device, resources.terrain.texture) catch @panic("TODO: handle this");
 
-    pool.addSystemGroup(&[_]ecs.System{ systems.updatePlacement, systems.render, systems.moveCamera, systems.endInputFrame }, true) catch @panic("TODO: Gracefuly handle error");
+    pool.addSystemGroup(&[_]ecs.System{ systems.updateUi, systems.applyCommands, systems.updatePlacement, systems.render, systems.moveCamera, systems.endInputFrame }, true) catch @panic("TODO: Gracefuly handle error");
     pool.resources.renderer = &renderer;
     pool.tick() catch |err| std.debug.panic("Initial engine tick failed: {any}\n", .{err});
     //init_mods();
@@ -199,6 +205,8 @@ pub export fn sideros_cleanup() callconv(.c) void {
     loadedMods.deinit(allocator);
     pool.deinit();
     renderer.deinit(&resources.terrain);
+    ui_context.deinit();
+    command_queue.deinit(allocator);
     renderer_initialized = false;
     ecs.hooks.deinit();
     if (gpa.deinit() != .ok) @panic("Memory leaked");

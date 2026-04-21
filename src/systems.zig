@@ -3,6 +3,92 @@ const math = @import("math");
 const std = @import("std");
 const Input = ecs.Input;
 
+pub fn updateUi(pool: *ecs.Pool) !void {
+    var context = pool.resources.ui;
+    var input = pool.resources.input;
+    var commands = pool.resources.commands;
+    const renderer = pool.resources.renderer;
+    const placement = pool.resources.placement;
+
+    const cursor = input.getCursorPosition();
+    context.beginFrame(
+        .{ @floatCast(cursor[0]), @floatCast(cursor[1]) },
+        input.isMouseDown(.left),
+    );
+
+    const extent = renderer.swapchain.extent;
+    const panel_height: f32 = 96.0;
+    try context.panel(.{
+        .x = 0.0,
+        .y = @as(f32, @floatFromInt(extent.height)) - panel_height,
+        .width = @floatFromInt(extent.width),
+        .height = panel_height,
+    });
+
+    const click_available = input.hasMouseClick(.left);
+    const build_rect: @import("ui").Rect = .{
+        .x = 16.0,
+        .y = @as(f32, @floatFromInt(extent.height)) - panel_height + 20.0,
+        .width = 72.0,
+        .height = 56.0,
+    };
+    if (try context.button(.{ .id = context.id("build.cube"), .rect = build_rect }, click_available)) {
+        _ = input.consumeMouseClick(.left);
+        try commands.push(pool.allocator, .start_placement);
+    }
+    try context.rect(.{
+        .x = build_rect.x + 18.0,
+        .y = build_rect.y + 14.0,
+        .width = 36.0,
+        .height = 28.0,
+    }, .{ .r = 0.25, .g = 0.76, .b = 0.38, .a = 1.0 });
+
+    if (placement.active) {
+        const cancel_rect: @import("ui").Rect = .{
+            .x = 104.0,
+            .y = @as(f32, @floatFromInt(extent.height)) - panel_height + 20.0,
+            .width = 72.0,
+            .height = 56.0,
+        };
+        if (try context.button(.{ .id = context.id("placement.cancel"), .rect = cancel_rect }, input.hasMouseClick(.left))) {
+            _ = input.consumeMouseClick(.left);
+            try commands.push(pool.allocator, .cancel_placement);
+        }
+        try context.rect(.{
+            .x = cancel_rect.x + 18.0,
+            .y = cancel_rect.y + 14.0,
+            .width = 36.0,
+            .height = 28.0,
+        }, .{ .r = 0.80, .g = 0.18, .b = 0.16, .a = 1.0 });
+    }
+
+    if (context.wants_mouse) {
+        input.discardMouseClicks(.left);
+    }
+
+    context.endFrame();
+}
+
+pub fn applyCommands(pool: *ecs.Pool) !void {
+    var commands = pool.resources.commands;
+    var placement = pool.resources.placement;
+
+    for (commands.items.items) |command| {
+        switch (command) {
+            .start_placement => {
+                placement.active = true;
+                placement.preview_valid = false;
+            },
+            .cancel_placement => {
+                placement.active = false;
+                placement.preview_valid = false;
+            },
+        }
+    }
+
+    commands.clear();
+}
+
 pub fn render(pool: *ecs.Pool) anyerror!void {
     var renderer = pool.resources.renderer;
     const camera = pool.resources.camera;
@@ -47,6 +133,8 @@ pub fn render(pool: *ecs.Pool) anyerror!void {
         renderer.device.draw(renderer.mesh.index_count, renderer.current_frame, renderer.mesh);
     }
 
+    renderer.drawUi(pool.resources.ui);
+
     try renderer.end();
 }
 
@@ -67,6 +155,9 @@ pub fn updatePlacement(pool: *ecs.Pool) !void {
     }
     if (!placement.active) {
         input.discardMouseClicks(.left);
+        return;
+    }
+    if (pool.resources.ui.wants_mouse) {
         return;
     }
 

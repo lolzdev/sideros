@@ -211,7 +211,7 @@ pub fn discardMouseClicks(self: *Input, button: MouseButton) void {
     const index = @intFromEnum(button);
     if (index < self.mouse_click_count.len) {
         self.mouse_click_count[index] = 0;
-        self.mouse_click_handled[index] = false;
+        self.mouse_click_handled[index] = self.mouse_down[index];
     }
 }
 

@@ -1,6 +1,7 @@
 pub const Texture = @import("Texture.zig");
 pub const GraphicsPipeline = @import("GraphicsPipeline.zig");
 pub const TerrainPipeline = @import("TerrainPipeline.zig");
+pub const UiPipeline = @import("UiPipeline.zig");
 pub const Device = @import("Device.zig");
 pub const Swapchain = @import("Swapchain.zig");
 pub const PhysicalDevice = @import("PhysicalDevice.zig");

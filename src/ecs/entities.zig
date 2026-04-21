@@ -3,6 +3,7 @@ const Allocator = std.mem.Allocator;
 const components = @import("components.zig");
 const sparse = @import("sparse.zig");
 const rendering = @import("rendering");
+const ui = @import("ui");
 const Renderer = rendering.Renderer;
 const Camera = rendering.Camera;
 const ecs = @import("ecs.zig");
@@ -18,7 +19,34 @@ pub const Resources = struct {
     input: *Input,
     terrain: rendering.Terrain,
     placement: *Placement,
+    ui: *ui.Context,
+    commands: *CommandQueue,
     delta_time: f32 = 0.0,
+};
+
+pub const Command = union(enum) {
+    start_placement,
+    cancel_placement,
+};
+
+pub const CommandQueue = struct {
+    items: std.ArrayList(Command),
+
+    pub fn init() CommandQueue {
+        return .{ .items = std.ArrayList(Command).empty };
+    }
+
+    pub fn deinit(self: *CommandQueue, allocator: Allocator) void {
+        self.items.deinit(allocator);
+    }
+
+    pub fn push(self: *CommandQueue, allocator: Allocator, command: Command) !void {
+        try self.items.append(allocator, command);
+    }
+
+    pub fn clear(self: *CommandQueue) void {
+        self.items.clearRetainingCapacity();
+    }
 };
 
 pub const Placement = struct {
